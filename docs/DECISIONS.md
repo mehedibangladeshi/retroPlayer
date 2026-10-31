@@ -130,3 +130,17 @@ Why: No font was provided, and matching the artwork's ink colours keeps the labe
 Decision: Disabled buttons are shown with opacity 0.7 and no grayscale filter.
 
 Why: A stronger dimming (opacity 0.45 with grayscale) made the whole player look darker than the artwork, because the disabled style was applied to all buttons in the empty state.
+
+## 2026-10-31 — Test bundles with electron-builder, built per OS in CI
+
+Decision: Packaging uses `electron-builder` (dev dependency of `app/`). Targets: AppImage and tar.gz on Linux, an NSIS installer and a zip on Windows, dmg and zip on macOS (arm64 and x64). The release-mode sidecar is copied next to `app.asar` through `extraResources`, and `main/sidecar.ts` resolves it from `process.resourcesPath` when packaged. The GitHub Actions workflow `.github/workflows/package.yml` builds each OS on its own runner. Linux builds on Ubuntu 22.04 to keep the glibc requirement low. The Squirrel installer helper's build script is denied in `pnpm-workspace.yaml` because we don't build Squirrel installers.
+
+Why: The Rust sidecar has to be compiled for each OS and architecture, and cross-compiling from one machine is not reliable (macOS needs Apple's SDK). Running electron-builder per runner keeps one config for all three platforms.
+
+Builds are unsigned. Windows shows a SmartScreen warning. On macOS the app is ad-hoc signed (`identity: '-'`, hardened runtime off), which Apple Silicon needs before it will launch it, but Gatekeeper still blocks the first open. Real signing and notarisation are deferred until there is a certificate.
+
+## 2026-10-31 — Dev runs use a separate userData profile
+
+Decision: When not packaged, main sets `userData` to `<default>-dev` before taking the single-instance lock. The app's `productName` is `RetroPlayer`.
+
+Why: Without this, an installed build and a running `pnpm dev` session shared one profile and one single-instance lock, so the second one to start quit silently.

@@ -13,6 +13,7 @@ Run all commands from the repo root.
 - `pnpm install`: install JS deps (pnpm 12; Electron and esbuild build scripts are allow-listed in `pnpm-workspace.yaml`).
 - `pnpm dev`: builds the engine sidecar (cargo, debug), then starts electron-vite dev. The app spawns `engine/target/debug/engine-sidecar`. Override the path with `RETRO_SIDECAR=/path`.
 - `pnpm build`: production build of the Electron app into `app/out`. Run it with `cd app && pnpm exec electron .`.
+- `pnpm package`: release-builds the sidecar, stages it into `app/build/sidecar/`, and bundles the app for the host OS into `app/dist/`. Windows and macOS bundles come from the `package` GitHub Actions workflow (run it by hand, or push a `v*` tag to get a draft release). Tester install notes: `docs/TESTING.md`.
 - `pnpm typecheck`, `pnpm lint`.
 - `cargo test --manifest-path engine/Cargo.toml --workspace`: all Rust tests (no audio device needed).
 - `cargo test --manifest-path engine/Cargo.toml -p player-core -- --ignored`: playback tests that need an audio device (they play a short quiet tone).

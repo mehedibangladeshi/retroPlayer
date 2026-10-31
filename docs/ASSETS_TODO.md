@@ -13,3 +13,7 @@ Missing or broken assets. Each item: what is missing, current workaround, what t
 9. **Cassette is red only** (`audio-red-*`); no other cassette colours or labels, and the cassette PNG scale was fitted to the reference by measurement, not given by the artist.
 10. **Source canvases have no registration data.** The cassette canvas offset relative to the body was found by fitting against the reference JPEG (error about 2/255 mean). Provide: layers exported on one shared canvas, or the cassette position.
 11. **No bundled label font.** The title and time on the label use a system font stack, so text rendering differs per OS. This breaks the rule that the UI looks identical on Windows, macOS and Linux. Workaround: the system font stack. Provide: a font file for the label text, for example a condensed typeface that matches "AUDIO RED", licensed for bundling in the app.
+
+## App icon
+
+No application icon exists, so bundles use the default Electron icon. Needed: a 1024×1024 PNG (electron-builder derives `.ico` and `.icns` from it), placed at `app/build/icon.png`.

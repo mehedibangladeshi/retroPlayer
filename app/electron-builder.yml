@@ -1,0 +1,34 @@
+# Packaging for test builds (unsigned). `pnpm package` at the repo root builds the release
+# sidecar, stages it into build/sidecar/, then runs electron-builder for the host OS.
+appId: dev.mehedibangladeshi.retroplayer
+productName: RetroPlayer
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# The Rust engine ships next to app.asar, outside the archive, so it can be spawned.
+# main/sidecar.ts resolves it from process.resourcesPath when the app is packaged.
+extraResources:
+  - from: build/sidecar/
+    to: .
+    filter:
+      - engine-sidecar*
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+linux:
+  target: [AppImage, tar.gz]
+  executableName: retroplayer
+  category: Audio
+win:
+  target: [nsis, zip]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target: [dmg, zip]
+  category: public.app-category.music
+  # No Apple certificate yet: ad-hoc sign so Apple Silicon will launch it. Hardened runtime
+  # must be off with ad-hoc signing (see electron-builder's macOptions docs).
+  identity: '-'
+  hardenedRuntime: false

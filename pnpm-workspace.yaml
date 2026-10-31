@@ -3,6 +3,8 @@ packages:
 allowBuilds:
   electron: true
   esbuild: true
+  # Squirrel.Windows installer helper pulled in by electron-builder; we build NSIS, so its script is not needed.
+  electron-winstaller: false
 minimumReleaseAgeExclude:
   - electron@45.2.1
   - eslint@10.14.0

@@ -6,6 +6,7 @@
     "dev": "cargo build --manifest-path engine/Cargo.toml -p engine-sidecar && pnpm --filter app dev",
     "typecheck": "pnpm --filter app typecheck",
     "lint": "pnpm --filter app lint",
-    "build": "pnpm --filter app build"
+    "build": "pnpm --filter app build",
+    "package": "node scripts/stage-sidecar.mjs && pnpm --filter app package"
   }
 }

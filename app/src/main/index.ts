@@ -47,6 +47,10 @@ function createWindow(): void {
   else void w.loadFile(join(__dirname, '../renderer/index.html'))
 }
 
+// Dev gets its own profile so a running dev session and an installed build don't share the
+// single-instance lock (one would silently quit).
+if (!app.isPackaged) app.setPath('userData', app.getPath('userData') + '-dev')
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {

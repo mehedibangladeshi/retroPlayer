@@ -120,4 +120,4 @@ The renderer's pieces:
 
 ## Phase 1 status
 
-Phase 1 features are built. The automated checks pass, and the renderer-freeze test passed: a 3 s busy loop in the renderer advanced the engine position by about 3.3 s. Still open: the manual check that a FLAC, a WAV and an MP3 each play correctly (only WAV was exercised automatically), and packaging, which is not done. The sidecar path is the dev build. See `docs/ROADMAP.md` for the checklist.
+Phase 1 features are built. The automated checks pass, and the renderer-freeze test passed: a 3 s busy loop in the renderer advanced the engine position by about 3.3 s. Still open: the manual check that a FLAC, a WAV and an MP3 each play correctly (only WAV was exercised automatically), Unsigned test bundles are built by `pnpm package` (host OS) and the `package` CI workflow (all three OSes). A packaged app runs the release sidecar from its resources folder; dev runs `engine/target/debug/engine-sidecar`. See `docs/ROADMAP.md` for the checklist.

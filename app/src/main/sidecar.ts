@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import { IPC } from '@shared/api'
 import { PROTOCOL_VERSION, type Command, type EngineEvent } from '@shared/protocol'
@@ -10,12 +10,13 @@ const BACKOFF_MAX_MS = 8000
 const STABLE_UPTIME_MS = 10_000
 const KILL_AFTER_MS = 1000
 
-// TODO(packaging): resolve the bundled sidecar from process.resourcesPath when packaged.
+// Packaged builds ship the release sidecar in resources/ (electron-builder extraResources);
+// dev uses the debug build next to the repo's app/ folder.
 function sidecarPath(): string {
-  return (
-    process.env.RETRO_SIDECAR ??
-    resolve(app.getAppPath(), '../engine/target/debug/engine-sidecar' + (process.platform === 'win32' ? '.exe' : ''))
-  )
+  const exe = 'engine-sidecar' + (process.platform === 'win32' ? '.exe' : '')
+  if (process.env.RETRO_SIDECAR) return process.env.RETRO_SIDECAR
+  if (app.isPackaged) return join(process.resourcesPath, exe)
+  return resolve(app.getAppPath(), '../engine/target/debug', exe)
 }
 
 export class Sidecar {
@@ -75,7 +76,7 @@ export class Sidecar {
     })
     child.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'ENOENT') {
-        onDown(`engine binary not found at ${path} — run \`cargo build -p engine-sidecar\``)
+        onDown(`engine binary not found at ${path}` + (app.isPackaged ? '' : ' — run `cargo build -p engine-sidecar`'))
       } else {
         onDown(`engine failed to run: ${err.message}`)
       }
