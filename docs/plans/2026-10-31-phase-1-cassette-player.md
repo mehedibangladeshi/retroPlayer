@@ -1,5 +1,5 @@
 # Plan: Phase 1 — minimal cassette player
-Status: Executing (wave 2)
+Status: Executing (wave 3)
 
 ## Goal / Done when / Non-goals
 Goal: build Phase 1 as specified in AGENTS.md (Rust sidecar engine + Electron/React cassette UI; import a file, play/pause/stop/back/forward).
@@ -142,3 +142,18 @@ Commit with `/git-commit` after each verified wave.
 - 2.3 done (sonnet): WINDOW 767x616, 7 PNGs @2x, paint order bodyBase, cassetteBase, cassetteMid, cassetteReel, bodyTopCover, bodyBottom, bodyButtons. Reels L(263.5,249,r36) R(512.5,249.5,r36). Button labels live in body-bottom; chrome/brand/HQA in top-cover. No tape layer. Orchestrator removed leftover empty dir "cassette player/" (rmdir, no file content).
 - W2 verifier (haiku): all checks pass, OUTSIDE-OWN none; PNG sizes 2x, even, body-* identical. Awaiting 2.3 review.
 - 2.3 review: no blockers; 3 minors → VERIFY fix 2.3 (3 lines): layout.ts REELS comment (clip radius), MANIFEST reel centres, ASSETS_TODO reel workaround wording. typecheck re-run.
+- W2 committed 35d0366 (user yes). W3 baseline: clean at 35d0366.
+- W3 launched: 3.1 sonnet (Player; may add OutputHandle to output.rs additively; Output opened lazily on first load) · 3.2 sonnet (sidecar; stdio test accepts no_output_device) · 3.3 sonnet (main/preload + electron.vite.config.ts preload → CJS).
+- 3.3 done (sonnet): typecheck/lint/build pass; preload → out/preload/index.cjs (CJS). Not runtime-tested yet.
+- 3.3 security read by orchestrator (preload + main/index.ts): contextIsolation/sandbox on, only `retro` API exposed, event object not leaked, all IPC sender-checked to main frame, window.open denied, navigation blocked, commands validated. OK. Note: `load` accepts any path from the renderer (by design: dialog/DnD paths); engine only decodes audio.
+- 3.1 done (sonnet): 33 unit + 5 decode + 2 player tests pass, clippy clean. Worker thread per Output; OutputHandle added (player_core::output::OutputHandle); ring fixed 24000 frames; play after Ended rewinds; seek decode failure → Error event. Review launched.
+- 3.2 done (sonnet): 5 unit + 5 stdio tests pass, clippy clean; all PROTOCOL.md examples round-trip. W3 verifier + 3.2 reviewer launched.
+- 3.2 review: BLOCKERS (non-UTF-8 line exits sidecar; float positionMs/deltaMs rejected) → Retry 3.2 #1 (same agent): read_until + lossy, lenient rounding, 1 MiB line cap, catch_unwind.
+- 3.3 cross-check: TS sends unrounded floats → VERIFY fix 3.3 (3 lines, sidecar.ts send(): Math.round, seek ≥ 0). typecheck+lint re-run.
+- 3.1 review: no blockers; minors → follow-up (same agent): play/ended race, seek after Ended, ring 96000 frames, #[ignore] device tests for acceptance behaviours.
+- W3 verifier: all checks pass, OUTSIDE-OWN none; smoke: Electron + dev server launch, no errors, no orphan processes; engine startup not confirmed by the 30-line tail → re-verify after retries with engine-start evidence.
+- 3.1 follow-up done: play() race fixed under one lock, seek clears needs_rewind, ring 96_000; 4 #[ignore] device tests pass on this machine (`-- --ignored`), normal suite + clippy pass.
+- 3.2 retry #1 done: raw reader (1 MiB cap, invalid UTF-8 → bad_message), lenient rounding (half away from zero, negative seek → 0), catch_unwind recreates Player. 9 unit + 7 stdio pass, clippy clean.
+- For 6.1: PROTOCOL.md must add rounding rule ("positionMs/deltaMs accept any JSON number; rounded half away from zero; negative positionMs → 0") + the Empty/pause/stop/seek rules logged under 1.1.
+- W3 re-verify launched (with engine-start evidence).
+- W3 re-verified: workspace tests + 4 device tests + clippy + typecheck/lint/build pass; engine smoke (load fixture → state stopped 250 ms, pcm_s16le); pnpm dev spawns engine-sidecar alongside Electron; no leftovers.

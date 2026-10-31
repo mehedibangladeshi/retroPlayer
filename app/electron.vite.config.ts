@@ -6,7 +6,11 @@ const shared = resolve(__dirname, 'src/shared')
 
 export default defineConfig({
   main: { resolve: { alias: { '@shared': shared } } },
-  preload: { resolve: { alias: { '@shared': shared } } },
+  preload: {
+    resolve: { alias: { '@shared': shared } },
+    // Sandboxed renderers only load CommonJS preloads.
+    build: { rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } } }
+  },
   renderer: {
     plugins: [react()],
     resolve: { alias: { '@shared': shared, '@assets': resolve(__dirname, '../assets/ui') } },
