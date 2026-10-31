@@ -1,0 +1,8 @@
+node_modules/
+out/
+dist/
+app/out/
+engine/target/
+*.log
+.DS_Store
+*.tsbuildinfo

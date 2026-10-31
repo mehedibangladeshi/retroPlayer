@@ -1,0 +1,8 @@
+packages:
+  - app
+allowBuilds:
+  electron: true
+  esbuild: true
+minimumReleaseAgeExclude:
+  - electron@45.2.1
+  - eslint@10.14.0

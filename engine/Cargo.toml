@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["crates/player-core", "crates/engine-sidecar"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+symphonia = { version = "0.6.1", default-features = false, features = ["flac", "wav", "pcm", "mp3", "aac", "isomp4", "alac", "ogg", "vorbis"] }
+cpal = "0.18.2"
+rubato = "5.0.1"
+rtrb = "0.4.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"

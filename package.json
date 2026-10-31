@@ -1,0 +1,11 @@
+{
+  "name": "retro-player",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "dev": "cargo build --manifest-path engine/Cargo.toml -p engine-sidecar && pnpm --filter app dev",
+    "typecheck": "pnpm --filter app typecheck",
+    "lint": "pnpm --filter app lint",
+    "build": "pnpm --filter app build"
+  }
+}

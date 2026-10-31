@@ -1,0 +1,167 @@
+# Engine <-> UI protocol
+
+This file is the source of truth for every message exchanged between the Electron app and the engine sidecar. To change the protocol, edit this file first (see "Changing the protocol" at the end).
+
+## Transport
+
+- Newline-delimited JSON (NDJSON) over the sidecar's stdin and stdout.
+- Commands go from the UI to the engine on stdin. Events go from the engine to the UI on stdout.
+- One JSON object per line. Encoding is UTF-8. Each line ends with `\n`.
+- stderr is for logs only. Nothing other than events is written to stdout.
+
+## Envelope
+
+Every message has these fields:
+
+- `"v": 1`: the protocol version. Messages with any other `v` are treated as `bad_message`.
+- `"type"`: the message tag, for example `"play"` or `"state"`.
+
+All keys are camelCase. Fields listed below are required unless marked as nullable.
+
+## Commands (UI to engine)
+
+### load
+
+Loads the file at `path`, replacing any current track. The player ends in `Stopped`. The UI then sends `play`.
+
+Fields: `path` (string, absolute path to the audio file).
+
+```json
+{"v":1,"type":"load","path":"/home/user/Music/song.flac"}
+```
+
+### play
+
+Starts playback, or resumes it from `Paused`. Valid from `Stopped`, `Paused`, and (as an error) `Empty`.
+
+```json
+{"v":1,"type":"play"}
+```
+
+### pause
+
+Holds the current position. Valid while `Playing`.
+
+```json
+{"v":1,"type":"pause"}
+```
+
+### stop
+
+Halts playback and resets the position to 0. The player moves to `Stopped`.
+
+```json
+{"v":1,"type":"stop"}
+```
+
+### seek
+
+Absolute seek. The target is clamped to `[0, durationMs]`.
+
+Fields: `positionMs` (integer, milliseconds).
+
+```json
+{"v":1,"type":"seek","positionMs":30000}
+```
+
+### seekRelative
+
+Seeks by `deltaMs` from the current position. The result is clamped to `[0, durationMs]`. The UI uses this for the forward and backward buttons (10 seconds per click, repeated while held).
+
+Fields: `deltaMs` (integer, milliseconds, may be negative).
+
+```json
+{"v":1,"type":"seekRelative","deltaMs":-10000}
+```
+
+## Events (engine to UI)
+
+### state
+
+Full snapshot of the player. Sent on startup and after every state transition.
+
+Fields:
+- `status`: one of `"empty"`, `"stopped"`, `"playing"`, `"paused"`.
+- `positionMs`: integer, milliseconds. Always 0 while `Empty`.
+- `durationMs`: integer, milliseconds, or `null` when unknown or no track is loaded.
+- `trackInfo`: object or `null` (`null` while `Empty`).
+
+`trackInfo` fields: `title` (string, display title), `path` (string), `codec` (string, short codec name such as `FLAC`), `sampleRate` (integer, Hz), `channels` (integer).
+
+```json
+{"v":1,"type":"state","status":"playing","positionMs":12340,"durationMs":185000,"trackInfo":{"title":"song","path":"/home/user/Music/song.flac","codec":"FLAC","sampleRate":44100,"channels":2}}
+```
+
+### position
+
+Playback position. Sent about 20 times per second (roughly every 50 ms) while `Playing`. Not sent in other states.
+
+Fields: `positionMs` (integer, milliseconds).
+
+```json
+{"v":1,"type":"position","positionMs":12360}
+```
+
+### ended
+
+Sent when the track reaches its end. It is followed by a `state` event with `status` `"stopped"` and `positionMs` 0.
+
+```json
+{"v":1,"type":"ended"}
+```
+
+### error
+
+Reports a failure. Errors are events, never crashes. The engine keeps running after sending one.
+
+Fields: `code` (one of the error codes below), `message` (string, human-readable, may be shown in the UI).
+
+```json
+{"v":1,"type":"error","code":"file_not_found","message":"File not found: /home/user/Music/missing.mp3"}
+```
+
+## Error codes
+
+| Code | Meaning |
+|---|---|
+| `unsupported_format` | The file cannot be opened as a supported audio format. |
+| `file_not_found` | The path given to `load` does not exist or cannot be read. |
+| `no_output_device` | No audio output device is available. |
+| `decode_error` | The file was recognized but decoding failed. |
+| `invalid_state` | The command is not valid in the current state, for example `play` while `Empty`. |
+| `bad_message` | A line is not valid JSON, has an unknown `type`, has missing or wrong fields, or has a `v` other than 1. |
+| `internal` | An unexpected engine failure. |
+| `engine_crashed` | The sidecar process exited unexpectedly. Emitted only by the Electron main process, never by the engine. |
+
+## State machine
+
+```
+Empty --load--> Stopped --play--> Playing <--pause/play--> Paused
+                   ^                 |                       |
+                   |----stop---------+-----------stop--------+
+```
+
+- `Empty` to `Stopped`: `load` succeeds.
+- `Stopped` or `Paused` to `Playing`: `play`.
+- `Playing` to `Paused`: `pause`.
+- `Playing` or `Paused` to `Stopped`: `stop`, which also resets the position to 0.
+- Any state to `Stopped`: `load` replaces the track.
+- `Playing` to `Stopped`: the track ends (`ended`, then `state` with `stopped`).
+
+## Behaviour rules
+
+- The engine emits a `state` event with `status` `"empty"` on startup.
+- The engine emits a `state` event after every transition.
+- `seek` and `seekRelative` clamp the target to `[0, durationMs]`. When `durationMs` is `null`, only the lower bound applies.
+- `stop` resets `positionMs` to 0.
+- `play` while `Empty` produces an `error` with code `invalid_state`.
+- An unknown, malformed, or wrong-version line is logged to stderr and answered with an `error` with code `bad_message`. The engine never exits because of bad input.
+
+## Changing the protocol
+
+1. Update this file first. Describe the message, its fields, and its behaviour, and add one JSON example per message.
+2. Update the Rust types in `engine/crates/engine-sidecar`.
+3. Update the TypeScript types in `app/src/shared/protocol.ts`.
+4. Bump `"v"` on any breaking change (removing or renaming a field or tag, or changing its meaning).
+
+The Rust tests parse every ```` ```json ```` example in this file and round-trip it through the Rust types. Each example must be exactly one single-line JSON object.

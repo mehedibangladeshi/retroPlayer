@@ -1,5 +1,5 @@
 # Plan: Phase 1 — minimal cassette player
-Status: Awaiting approval
+Status: Executing (wave 1)
 
 ## Goal / Done when / Non-goals
 Goal: build Phase 1 as specified in AGENTS.md (Rust sidecar engine + Electron/React cassette UI; import a file, play/pause/stop/back/forward).
@@ -119,3 +119,13 @@ Commit with `/git-commit` after each verified wave.
 ## Log
 - MAP: none (empty repo, no code map)
 - Toolchain: node v26.8.2, rustc/cargo 1.98.1, ALSA 1.2.16.1 present, pnpm MISSING
+- Approved by user 2026-10-31 ("approved, go").
+- Baseline: commit a28f223 (global git identity set per user: Mehedi Hasan <mehedipy@gmail.com>); `git status --porcelain` = clean.
+- W1 launched: 1.1 haiku (docs) · 1.2 sonnet (engine skeleton) · 1.3 sonnet (app scaffold).
+- Next: W2 briefs 2.1 decode/resample, 2.2 output, 2.3 assets/layout — drafted after W1 reports (need resolved crate versions + electron-vite config facts).
+- 1.1 done (haiku): 4 docs, 10 JSON blocks ok. Gap to close in 6.1 (or 3.2 brief): PROTOCOL.md doesn't state pause on Empty/Stopped → invalid_state, stop/seek on Empty → no-op, play while Playing → no-op (per C4 Transport).
+- 1.2 done (sonnet): 16 tests pass, clippy clean, sidecar builds. Versions: symphonia 0.6.1, cpal 0.18.2, rubato 5.0.1, rtrb 0.4.1, serde 1.0.229, serde_json 1.0.154. Deviation: ran `cargo search` (read-only, accepted). W2 briefs must tell agents to read crate APIs from ~/.cargo/registry/src (versions newer than training data).
+- 1.3 done (sonnet): install/typecheck/lint/build pass. electron 45.2.1, electron-vite 6.0.0, vite 8.3.5, react 19.3.1, TS ~6.0.3, eslint 10.14.0. app is "type":"module" → preload emitted as index.mjs.
+  ⚠ ESM preload is not supported with sandbox: true → 3.3 must emit preload as CJS (give 3.3 ownership of app/electron.vite.config.ts).
+- W1 verify launched: verifier (haiku) + reviewer (sonnet: 1.2, 1.3).
+- W1 review: 1.2 no findings. 1.3: BLOCKER ESM preload + sandbox → assigned to 3.3 (owns app/electron.vite.config.ts: preload output cjs `[name].js`, main points to ../preload/index.js); minor CSP blocks Vite dev preamble/HMR → assigned to 4.1 (owns renderer/index.html; dev-only CSP relax); minor `*.tsbuildinfo` not ignored → VERIFY fix 1.3 (1 line, .gitignore).

@@ -1,0 +1,11 @@
+[package]
+name = "player-core"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+symphonia.workspace = true
+cpal.workspace = true
+rubato.workspace = true
+rtrb.workspace = true
