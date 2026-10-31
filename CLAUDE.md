@@ -8,7 +8,7 @@ The full project spec, locked architectural decisions and working rules are in A
 
 ## Commands
 
-Run all commands from the repo root.
+Run all commands from the repo root. Per-OS setup (macOS, Linux, Windows) is in `docs/DEVELOPMENT.md`.
 
 - `pnpm install`: install JS deps (pnpm 12; Electron and esbuild build scripts are allow-listed in `pnpm-workspace.yaml`).
 - `pnpm dev`: builds the engine sidecar (cargo, debug), then starts electron-vite dev. The app spawns `engine/target/debug/engine-sidecar`. Override the path with `RETRO_SIDECAR=/path`.

@@ -144,3 +144,9 @@ Builds are unsigned. Windows shows a SmartScreen warning. On macOS the app is ad
 Decision: When not packaged, main sets `userData` to `<default>-dev` before taking the single-instance lock. The app's `productName` is `RetroPlayer`.
 
 Why: Without this, an installed build and a running `pnpm dev` session shared one profile and one single-instance lock, so the second one to start quit silently.
+
+## 2026-10-31 — Node 26 LTS
+
+Decision: The project targets Node 26 (LTS "Lithium" since 2026-10-28). `.nvmrc` holds `26`, the root `package.json` has `engines.node >=26`, and CI reads its Node version from `.nvmrc`. The GitHub Actions used in CI were moved to their current majors, which run on the Node 24 actions runtime.
+
+Why: AGENTS.md asks for the current Node LTS, and Node 26 became LTS this week. The old action versions ran on the deprecated Node 20 runtime and printed warnings on every run.
