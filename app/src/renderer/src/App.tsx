@@ -1,5 +1,6 @@
+import CassettePlayer from './views/CassettePlayer'
 import DebugPlayer from './views/DebugPlayer'
 
 export default function App() {
-  return <DebugPlayer />
+  return location.hash === '#debug' ? <DebugPlayer /> : <CassettePlayer />
 }

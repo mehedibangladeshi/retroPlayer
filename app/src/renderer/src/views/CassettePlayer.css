@@ -1,0 +1,29 @@
+html, body, #root { margin: 0; height: 100%; }
+body { background: #2c2f38; overflow: hidden; }
+.cp { position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-app-region: drag; background: #2c2f38; font-family: 'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif; }
+.cp .layer { position: absolute; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+.cp .reel { will-change: transform; }
+.cp button { -webkit-app-region: no-drag; position: absolute; margin: 0; padding: 0; border: 0; font: inherit; color: inherit; cursor: pointer; }
+.cp button:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); outline-offset: 1px; }
+
+.cp-btn { background-color: transparent; background-repeat: no-repeat; border-radius: 10px; transition: filter 80ms, transform 60ms; touch-action: none; }
+.cp-btn:not(:disabled):hover { filter: brightness(1.18); }
+.cp-btn:not(:disabled):active, .cp-btn.pressed:not(:disabled) { transform: translateY(2px); filter: brightness(0.85); box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.55); }
+.cp-btn:disabled { opacity: 0.7; cursor: default; }
+
+.cp-title { position: absolute; box-sizing: border-box; padding: 0 8px; pointer-events: none; color: #7f2a3c; font-size: 19px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 30px; text-align: center; }
+.cp-title.empty { opacity: 0.55; }
+.cp-time { position: absolute; pointer-events: none; text-align: right; color: #6b6c72; font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.cp-open { background: transparent; border-radius: 6px; transition: box-shadow 120ms, background-color 120ms; }
+.cp-open:hover { background-color: rgba(255, 255, 255, 0.06); }
+.cp-open.dragging { box-shadow: 0 0 0 3px rgba(120, 180, 255, 0.9), 0 0 22px 6px rgba(120, 180, 255, 0.6); background-color: rgba(120, 180, 255, 0.1); }
+.cp-hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 3px 10px; border-radius: 10px; background: rgba(20, 20, 26, 0.75); color: #e8e8ec; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0; transition: opacity 120ms; pointer-events: none; }
+.cp-open:hover .cp-hint { opacity: 1; }
+
+.cp-toast { box-sizing: border-box; padding: 6px 12px; border-radius: 6px; background: rgba(40, 14, 18, 0.92); color: #ffd7d7; font-size: 13px; text-align: center; font-family: system-ui, sans-serif; }
+.cp-toast small { display: block; font-size: 10px; opacity: 0.7; margin-top: 2px; }
+
+.cp-chrome { background: transparent; border-radius: 2px; }
+.cp-chrome:hover { background: rgba(255, 255, 255, 0.18); }
+@media (prefers-reduced-motion: reduce) { .cp-btn, .cp-open, .cp-hint { transition: none; } }

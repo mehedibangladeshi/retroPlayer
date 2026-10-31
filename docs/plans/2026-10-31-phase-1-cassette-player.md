@@ -1,5 +1,5 @@
 # Plan: Phase 1 — minimal cassette player
-Status: Executing (wave 4)
+Status: Executing (wave 5)
 
 ## Goal / Done when / Non-goals
 Goal: build Phase 1 as specified in AGENTS.md (Rust sidecar engine + Electron/React cassette UI; import a file, play/pause/stop/back/forward).
@@ -166,3 +166,12 @@ Commit with `/git-commit` after each verified wave.
 - e2e harness kept at scratchpad/w4e2e/e2e.mjs for reuse in W5/final verify.
 - 4.1 follow-up done: hold ends on status change; keyup direction/source match; modifiers ignored; smoothing keyed on lastPositionAt; explicit start() in main.tsx + preload guard; drop messages. Hook API backward compatible. Re-verify (haiku) with e2e + hold_end check launched.
 - W4 re-verified: static pass; e2e all PASS; hold_end PASS (ended → stopped 0, no further seeks); no leftovers, clean logs.
+- W4 committed 44a6ea9 (user yes). W5 baseline clean at 44a6ea9.
+- Q9 (user): Open = click the cassette (hover hint, empty label "Click or drop a file"), plus Ctrl/Cmd+O. For DECISIONS.md in 6.1.
+- W5 launched: 5.1 sonnet (cassette UI).
+- 5.1 done (sonnet): CassettePlayer + useReels + transport.ts; typecheck/lint/build pass; screenshots match reference (orchestrator viewed seek-held.png). Label font = system stack (TODO bundled font → ASSETS_TODO/DECISIONS in 6.1). Ink colours guessed. Agent loaded a local Noise.wav found on the machine (read-only, noted).
+- W5 verify (sonnet e2e: reel angles, toast, freeze, chrome close) + review launched.
+- 5.1 review: no blockers; minors (Ctrl+O repeat/in-flight guard, empty-title ||, duplicated geometry in CSS, dead CSS decls, dt clamp + reduced-motion listener, aria-pressed). Bundle with e2e findings into one 5.1 follow-up.
+- W5 e2e (sonnet): a–i PASS (reels +77°/500 ms playing, −592°/s rewind held, settle on pause; toast; freeze +3.3 s; chrome close). DEFECT: whole UI renders darker than reference/2.3 composite. → 5.1 follow-up (same agent) with dimming root-cause (pixel-measured) + review minors + sampled colours.
+- 5.1 follow-up done: dimming root cause = disabled-button style (opacity .45 + grayscale) on all buttons in empty state; base layers pixel-identical to 2.3 composite. Disabled now opacity .7. Colours sampled (title #7f2a3c, time #6b6c72). Minors fixed. Re-verify launched.
+- W5 re-verified: static pass; e2e a–i PASS (reels +75°/500 ms, rewind −592°/s, settle 0.5°, toast inside cassette, freeze +3.3 s, close). No leftovers. (EXC line = harness junk selector, known.)

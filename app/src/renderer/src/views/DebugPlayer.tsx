@@ -5,6 +5,7 @@ import { useFileDrop } from '../input/useFileDrop'
 import { useKeyboard } from '../input/useKeyboard'
 import { openFile } from '../input/openFile'
 import { useSeekHold } from '../input/useSeekHold'
+import { transportDisabled } from './transport'
 import './DebugPlayer.css'
 
 export default function DebugPlayer() {
@@ -14,8 +15,7 @@ export default function DebugPlayer() {
   useKeyboard(seek)
   const dragging = useFileDrop()
 
-  const loaded = status !== 'empty'
-  const playing = status === 'playing'
+  const off = transportDisabled(status)
 
   return (
     <div className={`dbg${dragging ? ' dragging' : ''}`}>
@@ -34,11 +34,11 @@ export default function DebugPlayer() {
         {seek.held ? ` (seeking ${seek.held})` : ''}
       </div>
       <div className="dbg-buttons">
-        <button disabled={!playing} onClick={pause}>Pause</button>
-        <button disabled={!loaded} {...seek.bind('back')}>Rewind</button>
-        <button disabled={!loaded || playing} onClick={play}>Play</button>
-        <button disabled={!loaded} {...seek.bind('forward')}>Forward</button>
-        <button disabled={!(playing || status === 'paused')} onClick={stop}>Stop</button>
+        <button disabled={off.pause} onClick={pause}>Pause</button>
+        <button disabled={off.rewind} {...seek.bind('back')}>Rewind</button>
+        <button disabled={off.play} onClick={play}>Play</button>
+        <button disabled={off.forward} {...seek.bind('forward')}>Forward</button>
+        <button disabled={off.stop} onClick={stop}>Stop</button>
       </div>
       {error && (
         <div className="dbg-error">
