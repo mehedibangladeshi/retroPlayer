@@ -12,7 +12,19 @@ export default defineConfig({
     build: { rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } } }
   },
   renderer: {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        // Dev only: React refresh preamble is inline and HMR uses a websocket.
+        name: 'dev-csp',
+        apply: 'serve',
+        transformIndexHtml: (html) =>
+          html.replace(
+            /(<meta http-equiv="Content-Security-Policy" content=")[^"]*"/,
+            `$1default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* http://localhost:*"`
+          )
+      }
+    ],
     resolve: { alias: { '@shared': shared, '@assets': resolve(__dirname, '../assets/ui') } },
     server: { fs: { allow: [resolve(__dirname, '..')] } }
   }

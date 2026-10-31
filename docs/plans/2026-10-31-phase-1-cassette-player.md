@@ -1,5 +1,5 @@
 # Plan: Phase 1 — minimal cassette player
-Status: Executing (wave 3)
+Status: Executing (wave 4)
 
 ## Goal / Done when / Non-goals
 Goal: build Phase 1 as specified in AGENTS.md (Rust sidecar engine + Electron/React cassette UI; import a file, play/pause/stop/back/forward).
@@ -157,3 +157,12 @@ Commit with `/git-commit` after each verified wave.
 - For 6.1: PROTOCOL.md must add rounding rule ("positionMs/deltaMs accept any JSON number; rounded half away from zero; negative positionMs → 0") + the Empty/pause/stop/seek rules logged under 1.1.
 - W3 re-verify launched (with engine-start evidence).
 - W3 re-verified: workspace tests + 4 device tests + clippy + typecheck/lint/build pass; engine smoke (load fixture → state stopped 250 ms, pcm_s16le); pnpm dev spawns engine-sidecar alongside Electron; no leftovers.
+- W3 committed 51b9f79 (user yes). W4 baseline clean at 51b9f79. Launched 4.1 sonnet (renderer store/input/debug view; also owns app/electron.vite.config.ts for dev-only CSP plugin).
+- 4.1 done (sonnet): typecheck/lint/build pass; prod CSP has no script unsafe-inline; dev smoke clean. UI interaction not runtime-tested → W4 verify uses a CDP-driven e2e smoke (sonnet verifier, justified: cross-process e2e) + reviewer.
+  API for 5.1: useEngine(), useDisplayPosition(), useSeekHold() {held,start,stop,bind(dir)}, useKeyboard(seek), useFileDrop(), engine/commands.ts, input/openFile.ts, format.ts.
+- 4.1 review: no blockers; minors (hold keeps firing after stop/ended, stale animated frame, cross-key keyup stops other hold, no-extension message, store start() at import, modifier keys). Bundle into a 4.1 follow-up together with any e2e findings.
+- W4 e2e (CDP, built app + real engine): a–k PASS incl. renderer-freeze acceptance (+3.3 s during 3 s freeze), pause holds, ±10 s seeks, stop→0, file_not_found readable, close exits, no leftovers. g "weak pass" explained by review minor #1 (hold kept seeking after ended) → confirmed bug.
+- 4.1 follow-up sent (same agent): hold stops on leaving playing/paused, keyup direction match, ignore modifiers, smoothing reset, explicit store start + preload guard, drop messages.
+- e2e harness kept at scratchpad/w4e2e/e2e.mjs for reuse in W5/final verify.
+- 4.1 follow-up done: hold ends on status change; keyup direction/source match; modifiers ignored; smoothing keyed on lastPositionAt; explicit start() in main.tsx + preload guard; drop messages. Hook API backward compatible. Re-verify (haiku) with e2e + hold_end check launched.
+- W4 re-verified: static pass; e2e all PASS; hold_end PASS (ended → stopped 0, no further seeks); no leftovers, clean logs.

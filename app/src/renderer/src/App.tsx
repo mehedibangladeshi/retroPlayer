@@ -1,3 +1,5 @@
+import DebugPlayer from './views/DebugPlayer'
+
 export default function App() {
-  return <div>retroPlayer</div>
+  return <DebugPlayer />
 }

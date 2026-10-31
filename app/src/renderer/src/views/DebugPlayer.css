@@ -1,0 +1,14 @@
+html, body, #root { margin: 0; height: 100%; }
+body { background: #15151a; color: #ddd; font: 14px system-ui, sans-serif; user-select: none; }
+.dbg { height: 100%; box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; gap: 12px; align-items: center; -webkit-app-region: drag; border: 3px solid transparent; }
+.dbg.dragging { border-color: #6aa7ff; background: #1b2233; }
+.dbg button { -webkit-app-region: no-drag; padding: 8px 14px; background: #2b2b35; color: #eee; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+.dbg button:disabled { opacity: 0.35; cursor: default; }
+.dbg-bar { align-self: stretch; display: flex; gap: 6px; align-items: center; }
+.dbg-bar span { flex: 1; opacity: 0.6; }
+.dbg-title { font-size: 18px; }
+.dbg-time { font-size: 28px; font-variant-numeric: tabular-nums; }
+.dbg-status { opacity: 0.6; }
+.dbg-buttons { display: flex; gap: 8px; }
+.dbg-error { color: #ff8a8a; text-align: center; max-width: 80%; }
+.dbg-error small { display: block; font-size: 11px; opacity: 0.7; }
