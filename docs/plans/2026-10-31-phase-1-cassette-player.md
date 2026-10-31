@@ -1,5 +1,5 @@
 # Plan: Phase 1 — minimal cassette player
-Status: Executing (wave 1)
+Status: Executing (wave 2)
 
 ## Goal / Done when / Non-goals
 Goal: build Phase 1 as specified in AGENTS.md (Rust sidecar engine + Electron/React cassette UI; import a file, play/pause/stop/back/forward).
@@ -129,3 +129,16 @@ Commit with `/git-commit` after each verified wave.
   ⚠ ESM preload is not supported with sandbox: true → 3.3 must emit preload as CJS (give 3.3 ownership of app/electron.vite.config.ts).
 - W1 verify launched: verifier (haiku) + reviewer (sonnet: 1.2, 1.3).
 - W1 review: 1.2 no findings. 1.3: BLOCKER ESM preload + sandbox → assigned to 3.3 (owns app/electron.vite.config.ts: preload output cjs `[name].js`, main points to ../preload/index.js); minor CSP blocks Vite dev preamble/HMR → assigned to 4.1 (owns renderer/index.html; dev-only CSP relax); minor `*.tsbuildinfo` not ignored → VERIFY fix 1.3 (1 line, .gitignore).
+- W1 verified (verifier haiku: all checks pass, OUTSIDE-OWN none). Committed f71b708 via /git-commit (user yes).
+- W2 baseline: clean at f71b708. Launched 2.1 sonnet (decode/resample) · 2.2 sonnet (output; contract + `has_failed()`) · 2.3 sonnet (assets/layout; allowed git mv, magick, python3 -I).
+- Contract C4 addition: Output::has_failed(&self)->bool (device error flag from cpal error callback).
+- 2.2 done (sonnet): 22 tests pass, clippy clean. Output is Send on Linux (compile-time test). Formats f32/i16/u16. Fatal-only `failed`.
+  ⚠ clear() race: samples pushed after clear() but before the callback's next run are also dropped → 3.1 gets output.rs in Own to add a clear-ack (e.g. `clear_pending()` or a generation counter) and must wait for it before refilling.
+- 2.2 review (sonnet): BLOCKER clear race (confirmed) + minors (more sample formats, error mapping → NoOutputDevice). RT safety: no findings. → Retry 2.2 #1 (sonnet, same agent resumed): clear_gen/clear_ack + `clear_pending()`; C4 addition: Output::clear_pending(&self)->bool. 3.1 then no longer needs output.rs in Own.
+- 2.2 retry #1 done: clear_gen/ack + clear_pending(), 10 sample formats, all cpal errors → NoOutputDevice; lib 26 tests pass, clippy clean. (decode_wav seek test failing = 2.1 in progress.)
+- 2.1 done (sonnet): 26 unit + 5 integration pass, clippy clean. rubato Fft FixedSync::Input chunk 1024. Seek lands on packet boundary ≤ target (WAV: 100→78 ms); test relaxed accordingly — accepted (player must use the returned position). Codec = symphonia short_name lowercased.
+- 2.1 review: no blockers. Minors sent back to 2.1 agent (follow-up): Resampler::reset() + has_failed(); clamp unknown-duration seek; format-level ResetRequired. C4 additions: Resampler::reset(&mut self), Resampler::has_failed(&self)->bool.
+- 2.1 follow-up done: reset(), has_failed(), 24h seek clamp, format-level ResetRequired → recreate. 27 unit + 5 integration pass, clippy clean.
+- 2.3 done (sonnet): WINDOW 767x616, 7 PNGs @2x, paint order bodyBase, cassetteBase, cassetteMid, cassetteReel, bodyTopCover, bodyBottom, bodyButtons. Reels L(263.5,249,r36) R(512.5,249.5,r36). Button labels live in body-bottom; chrome/brand/HQA in top-cover. No tape layer. Orchestrator removed leftover empty dir "cassette player/" (rmdir, no file content).
+- W2 verifier (haiku): all checks pass, OUTSIDE-OWN none; PNG sizes 2x, even, body-* identical. Awaiting 2.3 review.
+- 2.3 review: no blockers; 3 minors → VERIFY fix 2.3 (3 lines): layout.ts REELS comment (clip radius), MANIFEST reel centres, ASSETS_TODO reel workaround wording. typecheck re-run.
