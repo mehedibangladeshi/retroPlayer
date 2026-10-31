@@ -6,19 +6,21 @@ A minimal player. Open an audio file, then play, pause, stop, and seek with the 
 
 ### Scope
 
-- [ ] Repo scaffold with a working dev workflow (`pnpm dev` starts Electron, and builds and launches the sidecar).
-- [ ] Basic cassette UI built from the assets.
-- [ ] Working play, pause, stop, forward and backward.
-- [ ] Import a local audio file (dialog and drag-and-drop) and play it through the Rust engine.
+- [x] Repo scaffold with a working dev workflow (`pnpm dev` starts Electron, and builds and launches the sidecar).
+- [x] Basic cassette UI built from the assets.
+- [x] Working play, pause, stop, forward and backward.
+- [x] Import a local audio file (dialog and drag-and-drop) and play it through the Rust engine.
+
+Packaging and installers are not done. The sidecar path is the dev build (`engine/target/debug/engine-sidecar`, or `RETRO_SIDECAR`).
 
 ### Done means
 
-- [ ] A FLAC, a WAV and an MP3 each import and play correctly.
-- [ ] All five buttons work and reflect real engine state. The reels animate correctly for each state.
-- [ ] Audio keeps playing when the renderer is frozen (verified by blocking it in DevTools).
-- [ ] Errors (bad file, no audio device) show a readable message instead of crashing.
-- [ ] `cargo test`, `cargo clippy -- -D warnings`, `pnpm typecheck` and `pnpm lint` pass.
-- [ ] `docs/` is up to date, including the protocol and the decision log.
+- [ ] A FLAC, a WAV and an MP3 each import and play correctly. Needs manual check by the user: only WAV was exercised automatically.
+- [x] All five buttons work and reflect real engine state. The reels animate correctly for each state.
+- [x] Audio keeps playing when the renderer is frozen (verified by blocking it in DevTools).
+- [x] Errors (bad file, no audio device) show a readable message instead of crashing.
+- [x] `cargo test`, `cargo clippy -- -D warnings`, `pnpm typecheck` and `pnpm lint` pass.
+- [x] `docs/` is up to date, including the protocol and the decision log.
 
 ### Out of scope for now
 

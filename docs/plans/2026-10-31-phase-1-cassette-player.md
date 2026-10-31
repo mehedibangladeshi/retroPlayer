@@ -1,5 +1,5 @@
 # Plan: Phase 1 — minimal cassette player
-Status: Executing (wave 5)
+Status: Complete
 
 ## Goal / Done when / Non-goals
 Goal: build Phase 1 as specified in AGENTS.md (Rust sidecar engine + Electron/React cassette UI; import a file, play/pause/stop/back/forward).
@@ -175,3 +175,7 @@ Commit with `/git-commit` after each verified wave.
 - W5 e2e (sonnet): a–i PASS (reels +77°/500 ms playing, −592°/s rewind held, settle on pause; toast; freeze +3.3 s; chrome close). DEFECT: whole UI renders darker than reference/2.3 composite. → 5.1 follow-up (same agent) with dimming root-cause (pixel-measured) + review minors + sampled colours.
 - 5.1 follow-up done: dimming root cause = disabled-button style (opacity .45 + grayscale) on all buttons in empty state; base layers pixel-identical to 2.3 composite. Disabled now opacity .7. Colours sampled (title #7f2a3c, time #6b6c72). Minors fixed. Re-verify launched.
 - W5 re-verified: static pass; e2e a–i PASS (reels +75°/500 ms, rewind −592°/s, settle 0.5°, toast inside cassette, freeze +3.3 s, close). No leftovers. (EXC line = harness junk selector, known.)
+- W5 committed 66abcd4 (user yes). W6 baseline clean at 66abcd4. Launched 6.1 haiku (docs sync + CLAUDE.md commands).
+- 6.1 done (haiku): PROTOCOL rules, ARCHITECTURE, DECISIONS (+11 entries, versions), ROADMAP (FLAC/MP3 manual check open), ASSETS_TODO (font), CLAUDE.md commands (orchestrator read: OK). Final full Verify-with suite launched.
+- Final verify (haiku): all pass — Rust 56 tests (+4 device), clippy, typecheck/lint/build, CLAUDE.md single tests, PROTOCOL JSON, e2e a–i, dev smoke, no leftovers. EXC line = known harness junk selector in e2e5.mjs.
+- CLOSE: tier mix 2 haiku · 10 sonnet builders (as planned); verifiers haiku except 2 sonnet e2e verifiers (cross-process CDP). No tier escalations. Retries: 2.2 #1 (clear race), 3.2 #1 (UTF-8, float seek). Review follow-ups (same agent): 2.1, 3.1, 4.1, 5.1. VERIFY fixes: 1.3 (.gitignore 1 line), 2.3 (3 lines docs/comments), 3.3 (3 lines seek rounding). Deviations from spec: frameless window, PNG layers, open via cassette click (all user-approved, logged in DECISIONS.md). Open: FLAC/MP3 manual playback check; bundled label font; packaging.

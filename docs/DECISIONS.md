@@ -50,19 +50,83 @@ Why: The label is the natural place for track information on a cassette, and it 
 
 Each dependency added to the project, with its reason. Later tasks append rows here when they add a dependency.
 
-| Crate / package | Used for | Why |
-|---|---|---|
-| `symphonia` (Rust) | Decoding FLAC, WAV, MP3, AAC/M4A (incl. ALAC), OGG Vorbis | One pure-Rust library covers all required formats. |
-| `cpal` (Rust) | Audio output at the device's native rate | Cross-platform output on Windows, macOS and Linux, and no resampling when the rates match. |
-| `rubato` (Rust) | Resampling when the file rate differs from the device rate | High-quality resampling, used only when needed. |
-| `rtrb` (Rust) | Lock-free single-producer, single-consumer ring buffer between decoder and audio callback | The audio callback can read without locking or blocking. |
-| `serde` (Rust) | Derive-based types for the protocol | Standard serialization for Rust. |
-| `serde_json` (Rust) | Encoding and decoding NDJSON protocol lines | Standard JSON for Rust, used with serde. |
-| `electron` (JS) | Desktop shell: window, native file dialog, process spawning in main | Cross-platform desktop app with the same UI on all three OSes. |
-| `electron-vite` (JS) | Dev server and build for main, preload and renderer | Standard build setup for Electron with Vite. |
-| `vite` (JS) | Bundler and dev server used by electron-vite | Used by electron-vite; fast dev reloads. |
-| `react` (JS) | Renderer UI | Component model for the cassette UI and the debug view. |
-| `react-dom` (JS) | Renders React into the renderer window | Required by React for the browser. |
-| `typescript` (JS) | Strict typing for the renderer, preload, main and shared protocol types | Catches protocol mismatches at compile time. |
-| `eslint` (JS) | Linting | Enforces code quality for `pnpm lint`. |
-| `typescript-eslint` (JS) | TypeScript rules for ESLint | Lints TypeScript sources with type-aware rules. |
+| Crate / package | Version | Used for | Why |
+|---|---|---|---|
+| `symphonia` (Rust) | 0.6.1 | Decoding FLAC, WAV, MP3, AAC/M4A (incl. ALAC), OGG Vorbis | One pure-Rust library covers all required formats. |
+| `cpal` (Rust) | 0.18.2 | Audio output at the device's native rate | Cross-platform output on Windows, macOS and Linux, and no resampling when the rates match. |
+| `rubato` (Rust) | 5.0.1 | Resampling when the file rate differs from the device rate | High-quality resampling, used only when needed. |
+| `rtrb` (Rust) | 0.4.1 | Lock-free single-producer, single-consumer ring buffer between decoder and audio callback | The audio callback can read without locking or blocking. |
+| `serde` (Rust) | 1.0.229 | Derive-based types for the protocol | Standard serialization for Rust. |
+| `serde_json` (Rust) | 1.0.154 | Encoding and decoding NDJSON protocol lines | Standard JSON for Rust, used with serde. |
+| `electron` (JS) | 45.2.1 | Desktop shell: window, native file dialog, process spawning in main | Cross-platform desktop app with the same UI on all three OSes. |
+| `electron-vite` (JS) | 6.0.0 | Dev server and build for main, preload and renderer | Standard build setup for Electron with Vite. |
+| `vite` (JS) | 8.3.5 | Bundler and dev server used by electron-vite | Used by electron-vite; fast dev reloads. |
+| `@vitejs/plugin-react` (JS) | 6.1.2 | React support (JSX transform and fast refresh) in the renderer build | Standard Vite plugin for React. |
+| `react` (JS) | 19.3.1 | Renderer UI | Component model for the cassette UI and the debug view. |
+| `react-dom` (JS) | 19.3.1 | Renders React into the renderer window | Required by React for the browser. |
+| `typescript` (JS) | ~6.0.3 (held below 6.1: typescript-eslint requires it) | Strict typing for the renderer, preload, main and shared protocol types | Catches protocol mismatches at compile time. |
+| `eslint` (JS) | 10.14.0 | Linting | Enforces code quality for `pnpm lint`. |
+| `typescript-eslint` (JS) | 8.72.1 | TypeScript rules for ESLint | Lints TypeScript sources with type-aware rules. |
+| `@eslint/js` (JS) | 10.0.1 | Base ESLint rule set for the flat config | Standard ESLint recommended rules. |
+| `eslint-plugin-react-hooks` (JS) | 7.1.1 | Lint rules for React hooks | Catches hook misuse in the renderer. |
+| `globals` (JS) | 17.13.0 | Global variable names for the browser and Node environments in the ESLint config | Lets lint know which globals exist in each part of the app. |
+
+## 2026-10-31 — Open a file by clicking the cassette
+
+Decision: The cassette artwork has no Open button. A file is opened by clicking the cassette, or with Ctrl/Cmd+O. Dropping a file on the window also works.
+
+Why: The user chose this. The artwork stays free of extra controls.
+
+## 2026-10-31 — Audio device opened lazily on first load
+
+Decision: The engine starts without opening an audio device. The device is opened on the first `load`. If none is available, `load` fails with `no_output_device` and nothing else changes.
+
+Why: The engine starts on machines without audio, and the missing device is reported as a readable error at the point it matters.
+
+## 2026-10-31 — Acknowledged ring clear for seek, stop and load
+
+Decision: `seek`, `stop` and `load` clear the ring buffer with an acknowledgement. The player requests the clear, waits until the audio callback confirms it drained the ring, then resets the frame counter and refills.
+
+Why: A plain clear flag raced with refilling. Samples written after the flag was set could be dropped, and the position drifted from what was heard.
+
+## 2026-10-31 — Ring size of 96,000 frames
+
+Decision: The output ring holds 96,000 device frames. That is about 0.5 s at 192 kHz and about 2 s at 48 kHz.
+
+Why: Seek latency is not affected by the size, because the acknowledged clear empties the ring on seek.
+
+## 2026-10-31 — Seek is packet-accurate, not sample-accurate
+
+Decision: A seek lands on the packet boundary at or before the target. The `state` event after a seek reports the actual position, and the player uses that position.
+
+Why: symphonia seeks to the packet containing the target, so exact sample positions are not available. Reporting the real position keeps the UI honest.
+
+## 2026-10-31 — Device-dependent player tests are ignored
+
+Decision: Player tests that need an audio device are marked `#[ignore]`. They run with `cargo test -p player-core -- --ignored`.
+
+Why: This keeps `cargo test` silent and safe to run in CI, where there is no audio device.
+
+## 2026-10-31 — Preload as CommonJS and a dev-only CSP relaxation
+
+Decision: The preload is built as CommonJS (`.cjs`), because sandboxed renderers cannot load ESM preloads. The renderer CSP is relaxed only under `electron-vite dev`, which needs an inline preamble and an HMR websocket. The production build keeps the strict CSP.
+
+Why: The sandbox requires a CommonJS preload, and the dev server needs its own inline script and websocket. Production should not carry either.
+
+## 2026-10-31 — Engine accepts and rounds fractional seek values
+
+Decision: `seek` and `seekRelative` accept any JSON number. The engine rounds to the nearest integer, halves away from zero, and treats a negative `positionMs` as 0. The Electron main process also rounds before sending.
+
+Why: A fractional value from the UI should not be rejected as `bad_message`. Rounding in main keeps what it sends to the engine as integers.
+
+## 2026-10-31 — Label text uses a system font stack; ink colours sampled from the artwork
+
+Decision: The title and time on the label use a system font stack for now, because no font file is bundled (see `docs/ASSETS_TODO.md`). The ink colours were sampled from the artwork: title `#7f2a3c`, time `#6b6c72`.
+
+Why: No font was provided, and matching the artwork's ink colours keeps the label looking like the design.
+
+## 2026-10-31 — Disabled buttons use opacity 0.7 and no grayscale
+
+Decision: Disabled buttons are shown with opacity 0.7 and no grayscale filter.
+
+Why: A stronger dimming (opacity 0.45 with grayscale) made the whole player look darker than the artwork, because the disabled style was applied to all buttons in the empty state.

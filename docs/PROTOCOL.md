@@ -156,6 +156,16 @@ Empty --load--> Stopped --play--> Playing <--pause/play--> Paused
 - `stop` resets `positionMs` to 0.
 - `play` while `Empty` produces an `error` with code `invalid_state`.
 - An unknown, malformed, or wrong-version line is logged to stderr and answered with an `error` with code `bad_message`. The engine never exits because of bad input.
+- `pause` while `Empty` or `Stopped` produces an `error` with code `invalid_state`.
+- `play` while `Playing` is a no-op. The engine re-emits `state`.
+- `stop` while `Empty` is a no-op. The engine emits `state` with `status` `"empty"`, and the player stays empty.
+- `seek` and `seekRelative` while `Empty` are ignored, and produce no event.
+- After `ended`, or after an asynchronous `error`, `play` starts from position 0. A `seek` made after `ended` is kept, and the next `play` starts from that position.
+- A seek lands on the nearest packet boundary at or before the target, so the position can be slightly earlier than requested. The `state` event after a seek carries the actual position.
+- `positionMs` and `deltaMs` accept any JSON number. The engine rounds to the nearest integer, halves away from zero. A negative `positionMs` is treated as 0. The Electron main process also rounds before sending.
+- A line that is not valid UTF-8, is longer than 1 MiB, is not JSON, has an unknown `type`, or has a `v` other than 1 is answered with `error` and code `bad_message`. The engine keeps running.
+- If the engine panics while handling a command, it emits `error` with code `internal` and a message starting with `engine panic:`. It then resets the player and emits a fresh `state` (empty).
+- The audio device is opened on the first `load`. With no device, `load` fails with `no_output_device` and nothing else changes.
 
 ## Changing the protocol
 
