@@ -46,9 +46,15 @@ Needs Rust with the MSVC toolchain (Visual Studio Build Tools, "Desktop developm
 ## Checks before committing
 
 ```sh
-pnpm typecheck && pnpm lint
+pnpm typecheck && pnpm lint && pnpm test
 cargo test --manifest-path engine/Cargo.toml --workspace
 cargo clippy --manifest-path engine/Cargo.toml --all-targets -- -D warnings
 ```
 
 `cargo test ... -p player-core -- --ignored` also runs the tests that play a short tone through the real audio device. These are worth running on each OS.
+
+## Releases
+
+Bump `version` in `app/package.json` and `engine/Cargo.toml`, then push a tag such as `v0.1.3-beta`. The `package` workflow's `check` job runs the checks above and stops the run if the tag (without `v` and the `-suffix`) differs from `app/package.json`'s version. Only then are the bundles built and a draft release created.
+
+Release builds of the sidecar use fat LTO, one codegen unit and stripping (`[profile.release]` in `engine/Cargo.toml`), so they take longer than debug builds. React is a dev dependency because Vite bundles it into `out/renderer`; anything the main process needs at runtime must stay in `dependencies`, or it won't be in `app.asar`.

@@ -6,7 +6,7 @@ Cassette Player: Retro is a desktop music player with a cassette-tape UI. Phase 
 
 Three kinds of process run while the app is open:
 
-- **Electron main process.** Creates the window, shows the native file dialog, spawns and supervises the engine sidecar, and forwards messages between the sidecar and the renderer.
+- **Electron main process.** Creates the window, shows the native file dialog, spawns and supervises the engine sidecar, and forwards messages between the sidecar and the renderer. It forwards only renderer commands that pass validation (`app/src/main/ndjson.ts`; see `docs/PROTOCOL.md`).
 - **Renderer process.** The React UI. It sends commands and renders the state it receives. It holds no authoritative state.
 - **Engine sidecar.** A separate Rust process (`engine-sidecar`). It decodes, processes, and outputs audio. It talks to the main process over stdin and stdout using newline-delimited JSON.
 
@@ -43,7 +43,7 @@ The engine is a Cargo workspace in `engine/`.
   - `output`: opens the default output device with `cpal`, reads from the ring buffer in the audio callback, and provides atomics for position. It also provides the acknowledged clear described below.
   - `sound`: short UI sounds (key clicks). Each is decoded fully into memory once, then converted to the device's rate and channels on first use.
   - `player`: ties the parts together. It accepts commands and emits events. Each opened output gets one `player-worker` thread.
-- **`engine-sidecar`** (binary). A thin wrapper. It reads commands from stdin, passes them to `player-core`, and writes events to stdout. It contains the protocol types and no audio logic. If a command panics inside the player, the sidecar reports `internal` and resets the player.
+- **`engine-sidecar`** (binary). A thin wrapper. It reads commands from stdin, passes them to `player-core`, and writes events to stdout. It contains the protocol types and no audio logic. If a command panics inside the player, the sidecar reports `internal`, resets the player, and loads the key sounds again on the new one.
 
 The sidecar binary is built to `engine/target/debug/engine-sidecar` in development. The Electron main process uses that path. The environment variable `RETRO_SIDECAR` overrides it.
 

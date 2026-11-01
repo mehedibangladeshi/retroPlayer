@@ -184,9 +184,10 @@ Empty --load--> Stopped --play--> Playing <--pause/play--> Paused
 - A seek lands on the nearest packet boundary at or before the target, so the position can be slightly earlier than requested. The `state` event after a seek carries the actual position.
 - `positionMs` and `deltaMs` accept any JSON number. The engine rounds to the nearest integer, halves away from zero. A negative `positionMs` is treated as 0. The Electron main process also rounds before sending.
 - A line that is not valid UTF-8, is longer than 1 MiB, is not JSON, has an unknown `type`, or has a `v` other than 1 is answered with `error` and code `bad_message`. The engine keeps running.
-- If the engine panics while handling a command, it emits `error` with code `internal` and a message starting with `engine panic:`. It then resets the player and emits a fresh `state` (empty).
+- If the engine panics while handling a command, it emits `error` with code `internal` and a message starting with `engine panic:`. It then resets the player, loads the key sounds again on the fresh player, and emits a fresh `state` (empty).
 - The audio device is opened on the first `load` or `playSound`. With no device, `load` fails with `no_output_device` and nothing else changes.
 - `loadSound` and `playSound` never produce events, including `error`: a missing file, an unknown name or no audio device is logged to stderr only, so a key sound can't put an error message in front of the user. A sound that can't play is skipped.
+- The Electron main process forwards a renderer command only if it passes validation: `load` needs a path with a supported audio extension (`flac`, `wav`, `mp3`, `m4a`, `aac`, `ogg`, `oga`, any case), and `playSound` needs a known sound name. `loadSound` is sent by main only. Main logs a dropped command and sends no reply.
 
 ## Changing the protocol
 
