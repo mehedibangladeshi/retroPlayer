@@ -51,3 +51,20 @@ Measured values in `layout.ts` come from the shipped PNGs: reels and button keys
 | `source/reference/full-player-view.jpeg` | 1600x1269 | Composed reference, visual reference only, never shipped |
 
 Reference geometry: player body at x 310-1077, y 329-945 in the JPEG; window origin = (310,329).
+
+## Playlist window
+
+Canvas 1874x1885 px at 2x, so the design size is 937x943 CSS px. Constants are in `PLAYLIST` in `app/src/shared/layout.ts`, measured with ImageMagick (alpha bounding boxes and connected components); text positions were estimated from `reference/preview.png` aligned to the base layer (preview = art + (32,-3) px at 2x).
+
+| File | What | Anchor (CSS px) |
+|------|------|-----------------|
+| `playlist/playlist-base.png` | Dark window frame and background (was "1st playlist base") | 0,0 937x943 |
+| `playlist/playlist-paper.png` | Paper sheet laid over the cover, cover shows around its border (was "3rd paper like texture") | 0,0 937x943; paper bbox 70.5,91.5 781.5x790.5 |
+| `playlist/playlist-top.png` | Minimize and close buttons, status dots, resize grip (was "4th top layers") | 0,0 937x943; minimize 862,20 30x30; close 895.5,20 30x30; grip 911,915 26x27 |
+| `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,81.5 810.5x811, drawn between base and paper |
+| `playlist/fonts/SueEllenFrancisco-Regular.ttf` | Handwriting font, OFL 1.1 (Kimberly Geswein) | text in `TITLE`, `HEADING`, `ROW`, `FOOTER` |
+| `playlist/fonts/OFL.txt` | Licence of the font | n/a |
+| `playlist/reference/cover-example.png` | Example cover from the artist, reference only, not shipped | n/a |
+| `playlist/reference/preview.png` | Composed reference of the window, reference only, not shipped | n/a |
+
+Font choice: Sue Ellen Francisco was picked over Covered By Your Grace, Reenie Beanie, Gochi Hand and Shadows Into Light Two by rendering "Track list" and "01. The Hunna - Fugazi" next to the preview. It is the only one that is as tall and condensed as the artist's lettering; it is a bit wider and rounder. Font sizes in `PLAYLIST` are estimates (cap height about 0.9 em) and need a visual check.

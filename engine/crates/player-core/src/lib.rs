@@ -1,6 +1,7 @@
 //! Pure audio engine library: decode, DSP chain, output and transport state.
 //! No stdio and no UI concepts live here.
 
+pub mod album;
 pub mod decode;
 pub mod dsp;
 pub mod error;
@@ -10,6 +11,7 @@ pub mod resample;
 pub mod sound;
 pub mod state;
 
+pub use album::{Album, AlbumTrack, Cover, Playlist, scan_album, track_cover};
 pub use decode::Decoder;
 pub use dsp::{DspChain, DspStage};
 pub use error::{ErrorCode, PlayerError};

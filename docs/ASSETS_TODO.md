@@ -19,3 +19,10 @@ Missing or broken assets. Each item: what is missing, current workaround, what t
 ## App icon
 
 No application icon exists, so bundles use the default Electron icon. Needed: a 1024×1024 PNG (electron-builder derives `.ico` and `.icns` from it), placed at `app/build/icon.png`.
+
+## Playlist window
+
+14. **`assets/ui/playlist/default-cover.svg` is a placeholder drawn by us** (abstract gradient with soft blobs and grain), shown when an album has no cover. Provide: a default cover if one is wanted.
+15. **Playlist font is an approximation.** `assets/ui/playlist/fonts/SueEllenFrancisco-Regular.ttf` (OFL) stands in for the designer's condensed handwriting in "Track list", the album heading, rows and footer. Provide: the real font file, licensed for bundling, and swap `PLAYLIST.FONT_FAMILY`.
+16. **Playlist chrome has no hover or pressed states**; minimize, close, the status dots and the resize grip are baked into `playlist-top.png`. Workaround: transparent hit areas at `PLAYLIST.MINIMIZE`, `CLOSE`, `GRIP` with a CSS highlight.
+17. **Album-art window frame is a CSS placeholder** (`AlbumView.css`: dark rounded frame, top bar, inset panel); its minimize and close buttons are cropped from `playlist/playlist-top.png`. Provide: real layered art for the album-art window, then replace the CSS frame and the cropped buttons.

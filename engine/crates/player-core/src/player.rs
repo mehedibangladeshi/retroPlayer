@@ -55,7 +55,8 @@ pub struct Snapshot {
 pub enum PlayerEvent {
     State(Snapshot),
     Position { position_ms: u64 },
-    Ended,
+    /// `generation` is the `Player::generation` of the track that ended.
+    Ended { generation: u64 },
     Error(PlayerError),
 }
 
@@ -70,6 +71,8 @@ struct Inner {
     device_rate: u32,
     /// The decoder sits at EOF or after an error: `play` must rewind first.
     needs_rewind: bool,
+    /// Bumped on every successful `load`; lets consumers discard a stale `Ended`.
+    generation: u64,
 }
 
 impl Inner {
@@ -178,6 +181,7 @@ impl Player {
             base_ms: 0,
             device_rate: 0,
             needs_rewind: false,
+            generation: 0,
         };
         let player = Player {
             inner: Arc::new(Mutex::new(inner)),
@@ -191,6 +195,10 @@ impl Player {
             retired: Vec::new(),
         };
         (player, rx)
+    }
+
+    pub fn generation(&self) -> u64 {
+        lock(&self.inner).generation
     }
 
     pub fn load(&mut self, path: &Path) -> Result<(), PlayerError> {
@@ -540,6 +548,10 @@ impl WorkerState {
                 let mut g = lock(&self.inner);
                 let dur = g.transport.duration_ms;
                 g.transport.on_loaded(dur);
+                // Bumped here, not in `Player::load`: `tick` reads track state and
+                // generation under this same lock, so an Ended from the old track
+                // can never be tagged with the new generation.
+                g.generation += 1;
                 drop(g);
                 let _ = reply.send(());
             }
@@ -692,8 +704,9 @@ impl WorkerState {
             g.transport.on_ended();
             g.needs_rewind = true;
             let snap = g.snapshot();
+            let generation = g.generation;
             drop(g);
-            let _ = self.events.send(PlayerEvent::Ended);
+            let _ = self.events.send(PlayerEvent::Ended { generation });
             let _ = self.events.send(PlayerEvent::State(snap));
         } else if self.last_position.elapsed() >= POSITION_INTERVAL {
             drop(g);

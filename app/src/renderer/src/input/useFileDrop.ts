@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { SUPPORTED_EXTENSIONS } from '@shared/protocol'
-import { loadAndPlay } from '../engine/commands'
+import { loadAlbum, loadAndPlay } from '../engine/commands'
 import { setError } from '../engine/store'
 
 const hasFiles = (e: DragEvent): boolean => e.dataTransfer?.types.includes('Files') ?? false
@@ -30,6 +30,13 @@ export function useFileDrop(): boolean {
       setDragging(false)
       const file = e.dataTransfer?.files[0]
       if (!file) return
+      // Check the entry before reading the file: a folder has no usable extension.
+      if (e.dataTransfer?.items[0]?.webkitGetAsEntry()?.isDirectory) {
+        const dir = window.retro.pathForFile(file)
+        if (dir) loadAlbum(dir)
+        else setError('internal', "Couldn't read the dropped folder's location.")
+        return
+      }
       const dot = file.name.lastIndexOf('.')
       const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : ''
       if (!ext) {

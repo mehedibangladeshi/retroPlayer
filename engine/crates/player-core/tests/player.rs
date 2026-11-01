@@ -47,6 +47,25 @@ fn load_fixture_or_no_device() {
     }
 }
 
+#[test]
+fn generation_counts_successful_loads_only() {
+    let (mut p, _rx) = Player::new();
+    assert_eq!(p.generation(), 0);
+    assert!(p.load(std::path::Path::new("/nonexistent/x.wav")).is_err());
+    assert_eq!(p.generation(), 0);
+    match p.load(&fixture()) {
+        Ok(()) => {
+            assert_eq!(p.generation(), 1);
+            p.load(&fixture()).unwrap();
+            assert_eq!(p.generation(), 2);
+        }
+        Err(e) => {
+            assert_eq!(e.code, ErrorCode::NoOutputDevice);
+            assert_eq!(p.generation(), 0);
+        }
+    }
+}
+
 // ---- device-dependent tests (run with --ignored) ----
 
 use std::sync::mpsc::Receiver;
@@ -72,7 +91,10 @@ fn play_to_end(p: &mut Player, rx: &Receiver<PlayerEvent>) -> (bool, bool, bool)
     while Instant::now() < deadline && !(ended && stopped) {
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(PlayerEvent::Position { .. }) => pos = true,
-            Ok(PlayerEvent::Ended) => ended = true,
+            Ok(PlayerEvent::Ended { generation }) => {
+                assert_eq!(generation, p.generation());
+                ended = true
+            },
             Ok(PlayerEvent::State(s)) if ended => {
                 stopped = s.status == Status::Stopped && s.position_ms == 0;
             }

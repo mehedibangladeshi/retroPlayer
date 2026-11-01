@@ -1,0 +1,11 @@
+html, body, #root { margin: 0; height: 100%; }
+body { background: transparent; overflow: hidden; }
+.al-stage { position: fixed; inset: 0; overflow: hidden; -webkit-app-region: drag; }
+/* Placeholder frame: playlist base colour, rounded, with a top bar strip above the inset. */
+.al { position: absolute; transform-origin: 0 0; box-sizing: border-box; background: #2f3138; border-radius: 11px; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-app-region: drag; }
+.al-inset { position: absolute; left: 20px; top: 70px; width: 560px; height: 510px; box-sizing: border-box; border: 2px solid rgba(255, 255, 255, 0.12); border-radius: 12px; background: #1d1f25; overflow: hidden; }
+.al-inset img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
+.al .al-chrome { position: absolute; margin: 0; padding: 0; border: 0; border-radius: 4px; background-color: transparent; background-repeat: no-repeat; cursor: pointer; -webkit-app-region: no-drag; }
+.al .al-chrome:hover { background-color: rgba(255, 255, 255, 0.12); }
+.al .al-chrome:active { background-color: rgba(0, 0, 0, 0.25); transform: translateY(1px); }
+.al .al-chrome:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); }

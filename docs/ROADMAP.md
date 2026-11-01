@@ -27,14 +27,21 @@ Packaging and installers are not done. The sidecar path is the dev build (`engin
 Not built in Phase 1, and no dependencies are added for these:
 
 - Equalizer or tone controls
-- Playlist
 - Library
-- Multiple windows
 - Mobile
 - Streaming
-- Cover-art extraction
 - Settings
 - Bit-perfect or exclusive mode
+
+The playlist, the second window and cover-art extraction were added later at the owner's request. See the next section.
+
+## Added after Phase 1: album import and playlist window (done)
+
+- [x] Import a whole album folder (Open popover, folder drop, Ctrl/Cmd+Shift+O). Tracks play in order, and playback advances to the next track when one ends.
+- [x] Playlist window: a second, frameless window styled from the playlist artwork. It shows the album's title, artist, cover and tracks. Clicking a track plays it. Ctrl/Cmd+L shows it again.
+- [x] Tags and cover art are read by the engine. The cover is the embedded or folder image, or a default cover.
+
+Limits: one album at a time, read-only (no editing), and folders are not scanned recursively. The Open file action replaces the album.
 
 ## Later phases (not started)
 
@@ -48,9 +55,9 @@ Output the file's native sample rate and bit depth without resampling, with an o
 
 Add an equalizer to the DSP chain. The chain is already an explicit, empty stage list in Phase 1.
 
-### Playlist
+### Playlist editing and transport
 
-Queue and play several tracks.
+Add, remove and reorder tracks, and queue more than one album. Add next and previous buttons, and gapless playback between tracks.
 
 ### Library
 
@@ -58,7 +65,7 @@ Browse and manage a collection of audio files.
 
 ### Multi-window floating and snappable windows
 
-Separate floating windows for the player, equalizer, playlist and library. The windows can snap to each other. Each window shows the same engine state.
+The player and playlist windows exist already, as separate windows that show the same engine state. Still to do: floating windows for the equalizer and library, which can snap to each other and to the player.
 
 ### Mobile (iOS and Android)
 

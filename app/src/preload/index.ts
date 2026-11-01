@@ -12,10 +12,13 @@ const api: RetroApi = {
     }
   },
   openFileDialog: () => ipcRenderer.invoke(IPC.openDialog) as Promise<string | null>,
+  openFolderDialog: () => ipcRenderer.invoke(IPC.openFolderDialog) as Promise<string | null>,
   pathForFile: (file) => webUtils.getPathForFile(file),
   minimizeWindow: () => ipcRenderer.send(IPC.minimize),
   closeWindow: () => ipcRenderer.send(IPC.close),
-  toggleFullScreen: () => ipcRenderer.send(IPC.toggleFullScreen)
+  toggleFullScreen: () => ipcRenderer.send(IPC.toggleFullScreen),
+  showPlaylist: () => ipcRenderer.send(IPC.showPlaylist),
+  resizeWindow: (width, height) => ipcRenderer.send(IPC.resizeWindow, width, height)
 }
 
 contextBridge.exposeInMainWorld('retro', api)

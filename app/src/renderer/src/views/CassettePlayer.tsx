@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BUTTONS, CASSETTE, CHROME, CHROME_ART, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
 import { pressPause, pressPlay, pressStop } from '../engine/commands'
 import { clearError } from '../engine/store'
 import { useDisplayPosition, useEngine } from '../engine/useEngine'
 import { ERROR_MESSAGES, formatTime } from '../format'
-import { openFile } from '../input/openFile'
+import { openAlbum, openFile } from '../input/openFile'
 import { useFileDrop } from '../input/useFileDrop'
 import { useKeyboard } from '../input/useKeyboard'
 import { useSeekHold } from '../input/useSeekHold'
@@ -43,25 +43,12 @@ function useFitScale(): { scale: number; left: number; top: number } {
 
 const rectStyle = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h })
 const TOAST_INSET = 40
+// Popover sits at the bottom centre of the cassette window, above the "click to open" hint.
+const MENU = { x: CASSETTE.x + CASSETTE.w / 2 - 70, y: CASSETTE.y + CASSETTE.h - 96 }
 const PROMPT = 'CLICK OR DROP A FILE'
 const STATIC_LAYERS: LayerId[] = ['bodyBase', 'cassetteBase', 'cassetteMid']
 const TOP_LAYERS: LayerId[] = ['bodyTopCover', 'bodyBottom']
 const layerRect = (id: LayerId): Rect => LAYERS.find((l) => l.id === id)!.rect
-
-let dialogOpen = false
-/** Only one native open dialog at a time. */
-async function openOnce(): Promise<void> {
-  if (dialogOpen) return
-  dialogOpen = true
-  try {
-    await openFile()
-  } finally {
-    dialogOpen = false
-  }
-}
-
-/** Stable callback so useKeyboard's listener is not re-attached on every render. */
-const requestOpen = (): void => void openOnce()
 
 function Layer({ id }: { id: LayerId }) {
   return <img className="layer" src={layerUrl(id)} alt="" draggable={false} style={rectStyle(layerRect(id))} />
@@ -83,6 +70,13 @@ function Reel({ circle, reelRef }: { circle: { cx: number; cy: number; r: number
 }
 
 export default function CassettePlayer() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const openBtn = useRef<HTMLButtonElement>(null)
+  // Ctrl/Cmd+O also closes the menu. Stable so useKeyboard's listener is not re-attached on every render.
+  const requestOpen = useCallback((): void => {
+    setMenuOpen(false)
+    void openFile()
+  }, [])
   const { status, durationMs, trackInfo, error } = useEngine()
   const position = useDisplayPosition()
   const seek = useSeekHold()
@@ -92,6 +86,41 @@ export default function CassettePlayer() {
   const fit = useFitScale()
   const loaded = status !== 'empty'
   const title = trackInfo?.title || PROMPT
+
+  // Close on any press outside the menu (the Open button toggles it itself) or Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    const away = (e: MouseEvent): void => {
+      if (!(e.target as Element).closest('.cp-menu, .cp-open')) setMenuOpen(false)
+    }
+    const esc = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      setMenuOpen(false)
+      openBtn.current?.focus()
+    }
+    window.addEventListener('mousedown', away)
+    window.addEventListener('keydown', esc)
+    return () => {
+      window.removeEventListener('mousedown', away)
+      window.removeEventListener('keydown', esc)
+    }
+  }, [menuOpen])
+
+  const choose = (run: () => Promise<void>): void => {
+    setMenuOpen(false)
+    openBtn.current?.focus()
+    void run()
+  }
+
+  // ArrowUp/ArrowDown move focus between the menu items (wraps at both ends).
+  const menuKeys = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+    const i = items.indexOf(document.activeElement as HTMLButtonElement)
+    const step = e.key === 'ArrowDown' ? 1 : -1
+    items[i < 0 ? 0 : (i + step + items.length) % items.length].focus()
+  }
 
   const reels = useReels(status, seek.held)
 
@@ -143,9 +172,15 @@ export default function CassettePlayer() {
         </div>
       )}
 
-      <button type="button" className={`cp-open${dragging ? ' dragging' : ''}`} aria-label="Open audio file" style={rectStyle(CASSETTE)} onClick={() => void openOnce()}>
+      <button ref={openBtn} type="button" className={`cp-open${dragging ? ' dragging' : ''}`} aria-label="Open audio file" aria-haspopup="menu" aria-expanded={menuOpen} style={rectStyle(CASSETTE)} onClick={() => setMenuOpen((o) => !o)}>
         <span className="cp-hint">Click to open</span>
       </button>
+      {menuOpen && (
+        <div className="cp-menu" role="menu" style={{ left: MENU.x, top: MENU.y }} onKeyDown={menuKeys}>
+          <button type="button" role="menuitem" autoFocus onClick={() => choose(openFile)}>Open file…</button>
+          <button type="button" role="menuitem" onClick={() => choose(openAlbum)}>Open album…</button>
+        </div>
+      )}
 
       {error && (
         <button type="button" className="cp-toast" role="alert" style={{ left: CASSETTE.x + TOAST_INSET, width: CASSETTE.w - 2 * TOAST_INSET, bottom: WINDOW.height - (CASSETTE.y + CASSETTE.h) + 52 }} onClick={clearError}>
