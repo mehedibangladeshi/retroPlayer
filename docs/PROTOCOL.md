@@ -94,6 +94,30 @@ Fields: `name` (string).
 {"v":1,"type":"playSound","name":"stop"}
 ```
 
+### loadAlbum
+
+Loads a folder as an album. The engine scans the folder (sub-folders are not read) for files with the extensions `flac`, `wav`, `mp3`, `m4a`, `aac`, `ogg` and `oga` (any case). It orders the tracks by disc number, then track number, then file name, and reads their tags and cover art.
+
+On success it emits `playlist` with the album, then loads track 0 and starts playing, so the usual `state` events follow. The UI does not send `play`.
+
+On failure it emits `error`: `file_not_found` if the folder is missing or cannot be read, `unsupported_format` if it has no playable tracks. Any current album stays unchanged.
+
+Fields: `path` (string, absolute path to the folder).
+
+```json
+{"v":1,"type":"loadAlbum","path":"/music/The Hunna - The Hunna (2022)"}
+```
+
+### playIndex
+
+Loads and plays track `index` of the current album. `index` is zero-based. If there is no album, or `index` is out of range, the engine emits `error` with code `invalid_state`.
+
+Fields: `index` (integer, zero-based position in the album's `tracks`).
+
+```json
+{"v":1,"type":"playIndex","index":2}
+```
+
 ## Events (engine to UI)
 
 ### state
@@ -130,6 +154,8 @@ Sent when the track reaches its end. It is followed by a `state` event with `sta
 {"v":1,"type":"ended"}
 ```
 
+When a track ends and an album is active, the engine emits `ended`, then loads and plays the next track (its `state` and `position` events follow). After the last track it stays `stopped`, as above.
+
 ### error
 
 Reports a failure. Errors are events, never crashes. The engine keeps running after sending one.
@@ -138,6 +164,39 @@ Fields: `code` (one of the error codes below), `message` (string, human-readable
 
 ```json
 {"v":1,"type":"error","code":"file_not_found","message":"File not found: /home/user/Music/missing.mp3"}
+```
+
+### playlist
+
+Carries the current album. It is sent after a successful `loadAlbum`. It is also sent with `album` `null` when a single-file `load` replaces an active album. The Electron main process forwards it to every window and re-sends the latest one to a window that (re)loads.
+
+Fields: `album` (object or `null`):
+- `dir` (string, absolute folder path), `title` (string or `null`), `artist` (string or `null`), `year` (string or `null`).
+- `cover` (string or `null`): a `data:` URL of the cover art (`data:<mime>;base64,...`), or `null` when no art was found or it is larger than 8 MiB.
+- `tracks` (array, in play order). Each track has `path` (string, absolute), `title` (string), `artist` (string or `null`), `trackNo` (integer or `null`) and `durationMs` (integer or `null`).
+
+There is no "current track" field. The current track is the one whose `path` equals `state.trackInfo.path`.
+
+```json
+{"v":1,"type":"playlist","album":{"dir":"/music/Album","title":"The Hunna","artist":"The Hunna","year":"2022","cover":null,"tracks":[{"path":"/music/Album/01 Fugazi.flac","title":"Fugazi","artist":"The Hunna","trackNo":1,"durationMs":201000}]}}
+```
+
+```json
+{"v":1,"type":"playlist","album":null}
+```
+
+### artwork
+
+Carries the cover art of the current track. It is sent right after every successful track load (single `load`, `loadAlbum`, `playIndex`, auto-advance), before playback starts, and only when the art differs from the last one sent. The art is the file's embedded picture, else a folder image next to it, else the active album's cover, else `null`. A failed load counts as no art. The engine sends nothing at startup. The Electron main process caches the latest `artwork`, re-sends it to a window that (re)loads, and sends `null` if the engine restarts. The UI shows an album-art window only when `cover` is not `null`.
+
+Fields: `cover` (string or `null`, always present): a `data:` URL (`data:<mime>;base64,...`), or `null` when there is no art.
+
+```json
+{"v":1,"type":"artwork","cover":"data:image/jpeg;base64,/9j/4AAQ"}
+```
+
+```json
+{"v":1,"type":"artwork","cover":null}
 ```
 
 ## Error codes

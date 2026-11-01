@@ -1,6 +1,6 @@
 //! Wire types for the NDJSON protocol described in docs/PROTOCOL.md.
 
-use player_core::{ErrorCode, PlayerError, PlayerEvent, Snapshot, Status, TrackInfo};
+use player_core::{Album, Cover, ErrorCode, PlayerError, PlayerEvent, Snapshot, Status, TrackInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -26,6 +26,11 @@ pub enum Command {
     },
     LoadSound { name: String, path: String },
     PlaySound { name: String },
+    #[serde(rename_all = "camelCase")]
+    LoadAlbum { path: String },
+    /// `usize` makes serde reject negatives and non-integers.
+    #[serde(rename_all = "camelCase")]
+    PlayIndex { index: usize },
 }
 
 /// Commands accept any JSON number for millisecond fields and round to the
@@ -87,6 +92,76 @@ pub enum Event {
     Position { position_ms: u64 },
     Ended,
     Error { code: WireErrorCode, message: String },
+    Playlist { album: Option<WireAlbum> },
+    /// `data:<mime>;base64,...` URL of the current track's art, or `null`.
+    Artwork { cover: Option<String> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WireAlbum {
+    pub dir: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub year: Option<String>,
+    /// `data:<mime>;base64,...` URL.
+    pub cover: Option<String>,
+    pub tracks: Vec<WireAlbumTrack>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WireAlbumTrack {
+    pub path: String,
+    pub title: String,
+    pub artist: Option<String>,
+    pub track_no: Option<u32>,
+    pub duration_ms: Option<u64>,
+}
+
+/// `data:<mime>;base64,...` URL for a cover.
+pub fn cover_url(c: &Cover) -> String {
+    format!("data:{};base64,{}", c.mime, base64(&c.data))
+}
+
+impl From<&Album> for WireAlbum {
+    fn from(a: &Album) -> Self {
+        WireAlbum {
+            dir: a.dir.to_string_lossy().into_owned(),
+            title: a.title.clone(),
+            artist: a.artist.clone(),
+            year: a.year.clone(),
+            cover: a.cover.as_ref().map(cover_url),
+            tracks: a
+                .tracks
+                .iter()
+                .map(|t| WireAlbumTrack {
+                    path: t.path.to_string_lossy().into_owned(),
+                    title: t.title.clone(),
+                    artist: t.artist.clone(),
+                    track_no: t.track_no,
+                    duration_ms: t.duration_ms,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Standard base64 with padding (tiny encoder so we need no extra crate).
+fn base64(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for c in data.chunks(3) {
+        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        for i in 0..4 {
+            if i <= c.len() {
+                out.push(T[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 impl Event {
@@ -184,7 +259,7 @@ impl From<PlayerEvent> for Event {
         match e {
             PlayerEvent::State(s) => s.into(),
             PlayerEvent::Position { position_ms } => Event::Position { position_ms },
-            PlayerEvent::Ended => Event::Ended,
+            PlayerEvent::Ended { .. } => Event::Ended,
             PlayerEvent::Error(e) => e.into(),
         }
     }
@@ -231,6 +306,29 @@ mod tests {
             };
             assert_eq!(original, again, "round trip mismatch for {block}");
         }
+    }
+
+    #[test]
+    fn base64_known_vectors() {
+        for (i, o) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg==")] {
+            assert_eq!(base64(i.as_bytes()), o);
+        }
+    }
+
+    #[test]
+    fn album_messages_round_trip() {
+        assert_eq!(
+            parse_command(r#"{"v":1,"type":"loadAlbum","path":"/a"}"#).unwrap(),
+            Command::LoadAlbum { path: "/a".into() }
+        );
+        assert_eq!(parse_command(r#"{"v":1,"type":"playIndex","index":2}"#).unwrap(), Command::PlayIndex { index: 2 });
+        assert_eq!(Event::Playlist { album: None }.to_line(), r#"{"v":1,"type":"playlist","album":null}"#);
+    }
+
+    #[test]
+    fn play_index_rejects_negative_and_fractional() {
+        assert!(parse_command(r#"{"v":1,"type":"playIndex","index":-1}"#).is_err());
+        assert!(parse_command(r#"{"v":1,"type":"playIndex","index":1.5}"#).is_err());
     }
 
     #[test]

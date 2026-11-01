@@ -222,3 +222,105 @@ Why: About 94% of each ~120 MB bundle is the Electron runtime, which cannot be c
 Decision: `nsis.differentialPackage: false` in `app/electron-builder.yml`.
 
 Why: electron-builder makes NSIS installers differential-aware by default, for electron-updater's block-level downloads. That forces a 1 MB dictionary, non-solid 7z and normal compression, so `compression: maximum` had no effect: the 0.1.3 installer was 116 MB against 117 MB for 0.1.2. The app has no auto-updater, so the differential payload gains nothing. Measured on the Linux build tree with 7-Zip, solid maximum compression is about 10% smaller (81 MB against 90 MB). Revisit this if electron-updater is added.
+
+## 2026-11-01 — Album import and a second playlist window
+
+Decision: At the owner's request, the app can import a whole album folder and show it in a second window, the playlist window. This overrides locked decision 7 in AGENTS.md ("do not implement multiple windows now") and the ROADMAP out-of-scope items for playlist, multiple windows and cover-art extraction. The windows still hold no authoritative state. Both windows render the same engine events, and main forwards every event to each live window.
+
+Why: The user wants an album to play as a playlist beside the player, with its cover. Decision 7 existed so a second window could later show the same state without changes to the engine. This keeps that design.
+
+## 2026-11-01 — The playlist lives in the Rust engine
+
+Decision: The queue is a `Playlist` in `player-core`, and the folder is read by `scan_album`. Electron does not hold the queue. When a track ends, the sidecar advances to the next track and plays it. The advance is guarded, so an `Ended` that was already queued when the user picked a track cannot skip that track. After the last track the engine stops.
+
+Why: Auto-advance keeps working when a renderer freezes, just as playback does. The core stays reusable on mobile, and no playlist logic is duplicated in JavaScript.
+
+## 2026-11-01 — Tags and cover art are read by the engine
+
+Decision: `symphonia` reads the tags (title, artist, album, year, track and disc numbers) and the embedded pictures. The `id3v1` and `id3v2` features are enabled for MP3 tags. The cover is the embedded front cover of any track, or else the first embedded picture. If there is none, the cover is a `cover`, `folder`, `front` or `album` .jpg or .png in the folder. If there is none of those either, the renderer draws `default-cover.svg`. Covers over 8 MiB are skipped. The cover is sent once, as a data URL, in the `playlist` event. The current track is not a separate event. The renderer matches `state.trackInfo.path` against the playlist's track paths.
+
+Why: The engine already decodes the files, so reading tags needs no new crate. Sending the cover once keeps the `state` and `position` events small.
+
+## 2026-11-01 — Import entry points
+
+Decision: The Open button opens a small popover with "Open file…" and "Open album…". The popover is drawn in CSS, because one native dialog cannot pick both files and folders on Windows and Linux. Dropping a folder on the player imports it as an album. Ctrl/Cmd+Shift+O opens the folder dialog, and Ctrl/Cmd+L shows the playlist window again. An album import plays track 1 automatically, as a single file does. Opening a single file clears the album and hides the playlist window.
+
+Why: A CSS popover looks the same on every OS, as AGENTS.md decision 6 requires. The OS dialogs cannot do both picks in one dialog.
+
+## 2026-11-01 — The playlist window has its own frame
+
+Decision: The playlist window is frameless and draws its own minimise and close controls from `assets/ui/playlist`. Its aspect ratio is locked to the artwork (1874:1885). Close hides the window, and a new album import or Ctrl/Cmd+L shows it again. Its bounds are saved in `settings.json` as `playlistWindow`, in the same shape as the player's window state. The window resizes from its edges. The resize grip in the artwork is decorative, and a draggable grip is a later follow-up.
+
+Why: The artwork has its own chrome, so an OS frame would clash with it and look different on each OS. Hiding instead of closing keeps the playlist where the user left it.
+
+## 2026-11-01 — The playlist uses a bundled handwriting font
+
+Decision: The playlist text uses "Sue Ellen Francisco", a font under the SIL Open Font License. It is bundled as a WOFF2 file with its licence. It is an approximation of the designer's lettering, and it can be swapped through `FONT_FAMILY` in `app/src/shared/layout.ts`.
+
+Why: A bundled font looks the same on every OS. A system font would not.
+
+## 2026-11-01 — No new dependencies for album import
+
+Decision: No crate or npm package is added. The album feature only turns on two `symphonia` feature flags, `id3v1` and `id3v2`.
+
+Why: The existing decoder and the standard library cover tags, covers and folder scans.
+
+## 2026-11-01 — Album-art window
+
+Decision: A third window shows the cover of the current track, for albums and single songs. It is frameless. Its frame is a CSS placeholder for now, with the minimise and close buttons cropped from the top layer of the playlist artwork. The engine sends a new `artwork` event after each successful track load. The cover is the track's embedded art, else a folder image, else the album cover, else `null`. The event is sent only when the cover changes, so an album with one shared cover is sent once. The window shows when the cover is not `null` and hides when it is `null`. Close hides the window. Its bounds are saved in `settings.json` as `albumWindow`.
+
+Why: The user wants the cover visible beside the player, including for single songs that have art. Sending only on change keeps the events small and the window steady across tracks that share a cover. The frame is a placeholder because the final artwork is not drawn yet (see `docs/ASSETS_TODO.md`).
+
+## 2026-11-01 — Window placement on first appearance only
+
+Decision: On first appearance (no saved bounds), the playlist window sits flush against the player's right edge and the album-art window flush against its left edge, both at the player's top. The album-art window is square, sized to the player's content height. Both are clamped to the screen. After that the saved bounds win. The windows do not dock to each other and do not follow the player when it moves.
+
+Why: Flush placement shows the windows as one unit the first time, without fixing their positions for good. Once the user moves a window, that position is kept.
+
+## 2026-11-01 — Playlist selection, durations and track keys
+
+Decision: In the playlist, a single click selects a track, and a double-click or Enter plays it. Each row shows its duration, right-aligned as m:ss, or blank when unknown. N and P play the next and previous album track from the player and the playlist windows. The renderer works out the target from the album and the current track path, and sends it as `playIndex`, so no new engine command is needed. N and P do nothing at either end of the album, or when no album is loaded.
+
+Why: Selecting before playing is how track lists normally work, and the duration helps the user choose. Computing the target in the renderer reuses `playIndex`, so the engine gets no new command.
+
+## 2026-11-01 — Docking supersedes "first placement only"
+
+Decision: This supersedes the "Window placement on first appearance only" entry above, which said the windows neither dock nor follow the player. The cover window attaches to the player's left and the playlist window to its right, flush. Attached windows follow the player's moves and resizes. Dragging a window more than 12 px away detaches it, and dropping it within 12 px of the player's edge re-attaches it. A side window never overlaps the player. When it opens at a saved spot that would overlap, it is re-attached. If there is no room on a side, the player is nudged inward. If the screen is too narrow for all three windows, the side windows may go partly off-screen, but never over the player. The geometry lives in the pure, unit-tested `app/src/main/dock.ts`.
+
+Why: The user wants the windows to read as one unit beside the player, and a window that drifts over the player hides it. A 12 px snap tolerance lets a window be attached by a near miss. Keeping the geometry in a pure module lets it be tested without Electron.
+
+## 2026-11-01 — Window positions are decided by the compositor on Wayland
+
+Decision: Wayland does not let apps place windows, so docking and placement only work on Windows, macOS and X11. On Wayland the compositor decides where each window appears. The owner chose to keep native Wayland rather than force XWayland.
+
+Why: Forcing XWayland would fix placement but make the app look different on Linux, against the cross-OS rule in `AGENTS.md`. The limit is accepted and documented, not worked around.
+
+## 2026-11-01 — Only the player goes full screen
+
+Decision: Only the player goes full screen, with F11, Ctrl+Cmd+F on macOS, or its button. Escape exits. Double-clicking never maximises or full-screens any window. Maximize is undone as soon as it happens, because Linux ignores `maximizable: false`. The side windows are not full-screenable. This supersedes the "Full screen with F11, Esc and the drag region" entry above, which made a double-click on the drag region toggle full screen.
+
+Why: A player that jumps to full screen on a stray double-click is a surprise, and the side windows have no sensible full-screen layout beside the player.
+
+## 2026-11-01 — Transparent windows with clipped rounded corners
+
+Decision: All windows are transparent (`backgroundColor` `#00000000`). Each view clips itself to the corner radius of its artwork, so the artwork's corners show through the window.
+
+Why: The artwork has rounded corners, and an opaque window would show square corners behind them.
+
+## 2026-11-01 — Playlist resize grip uses a sender-checked IPC
+
+Decision: The playlist's corner grip resizes its window through a `window:resize` IPC. Main accepts it only from a side window, never from the player, and checks that both values are finite. Main clamps the size to the window's aspect ratio and minimum size, keeps the top-left corner fixed, and re-snaps the window if it is attached.
+
+Why: The renderer cannot resize its own window, so the request must go through main. Checking the sender and clamping in main means a renderer cannot resize a window to an arbitrary size.
+
+## 2026-11-01 — The engine tags Ended with a load generation
+
+Decision: The engine tags each `Ended` event with a load generation. The generation increases inside the audio worker's load handling, under the same lock as the track switch. The sidecar advances the playlist only when the `Ended` generation is current, so a stale `Ended` cannot skip a track the user just picked. The wire protocol is unchanged, so `docs/PROTOCOL.md` does not change.
+
+Why: Without the tag, an `Ended` from the old track could arrive just after a manual pick and skip the new one. Doing the increment under the track-switch lock makes the check race-free. Keeping the wire format unchanged avoids a protocol version bump for an internal fix.
+
+## 2026-11-01 — Test-first is mandatory, enforced by a pre-commit hook
+
+Decision: `AGENTS.md` "How to work" items 8 and 9 make test-driven development mandatory. Every behaviour change or bug fix starts with a failing test. A versioned pre-commit hook, `scripts/git-hooks/pre-commit`, runs typecheck, lint, the JS tests, the cargo tests and clippy, and blocks a failing commit. `pnpm install` enables the hook through the `prepare` script, which sets `core.hooksPath`. CI on push and a Claude Code hook were considered and not chosen.
+
+Why: A hook that runs on every commit catches a failing test before it is shared, and it works the same for any contributor and any agent. CI on push would catch the same failures later, and a Claude Code hook would only cover Claude's commits.

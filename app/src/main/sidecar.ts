@@ -32,7 +32,13 @@ export class Sidecar {
   private restartTimer: NodeJS.Timeout | null = null
   private lastState: EngineEvent | null = null
 
-  constructor(private readonly getWindow: () => BrowserWindow | null) {}
+  private lastPlaylist: EngineEvent | null = null
+  private lastArtwork: EngineEvent | null = null
+
+  constructor(
+    private readonly getWindows: () => BrowserWindow[],
+    private readonly onEvent?: (evt: EngineEvent) => void
+  ) {}
 
   start(): void {
     if (this.quitting || this.child) return
@@ -47,6 +53,14 @@ export class Sidecar {
       if (Date.now() - startedAt >= STABLE_UPTIME_MS) this.backoff = BACKOFF_MIN_MS
       this.emit({ v: PROTOCOL_VERSION, type: 'error', code: 'engine_crashed', message })
       this.lastState = null
+      // The restarted engine has no album, so tell the windows to drop theirs.
+      if (this.lastPlaylist) {
+        this.lastPlaylist = null
+        this.emit({ v: PROTOCOL_VERSION, type: 'playlist', album: null })
+      }
+      // The restarted engine has sent no art, so clear a cover the windows still show.
+      if (this.lastArtwork?.type === 'artwork' && this.lastArtwork.cover !== null) this.emit({ v: PROTOCOL_VERSION, type: 'artwork', cover: null })
+      this.lastArtwork = null
       this.restartTimer = setTimeout(() => {
         this.restartTimer = null
         this.start()
@@ -70,6 +84,8 @@ export class Sidecar {
         const evt = parseEvent(line)
         if (!evt) continue
         if (evt.type === 'state') this.lastState = evt
+        if (evt.type === 'playlist') this.lastPlaylist = evt
+        if (evt.type === 'artwork') this.lastArtwork = evt
         this.emit(evt)
       }
     })
@@ -104,9 +120,9 @@ export class Sidecar {
     this.child.stdin.write(JSON.stringify(c) + '\n')
   }
 
-  /** Re-send the cached state (e.g. after a renderer reload). */
-  resendState(): void {
-    if (this.lastState) this.emit(this.lastState)
+  /** Re-send the cached state and playlist to one window (e.g. after a renderer reload). */
+  resendState(win: BrowserWindow): void {
+    for (const evt of [this.lastState, this.lastPlaylist, this.lastArtwork]) if (evt) this.sendTo(win, evt)
   }
 
   stop(): void {
@@ -122,7 +138,11 @@ export class Sidecar {
   }
 
   private emit(evt: EngineEvent): void {
-    const win = this.getWindow()
-    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(IPC.event, evt)
+    this.onEvent?.(evt)
+    for (const win of this.getWindows()) this.sendTo(win, evt)
+  }
+
+  private sendTo(win: BrowserWindow, evt: EngineEvent): void {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(IPC.event, evt)
   }
 }

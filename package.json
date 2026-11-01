@@ -11,6 +11,7 @@
     "lint": "pnpm --filter app lint",
     "test": "pnpm --filter app test",
     "build": "pnpm --filter app build",
-    "package": "node scripts/stage-sidecar.mjs && pnpm --filter app package"
+    "package": "node scripts/stage-sidecar.mjs && pnpm --filter app package",
+    "prepare": "git config core.hooksPath scripts/git-hooks"
   }
 }

@@ -1,7 +1,7 @@
 html, body, #root { margin: 0; height: 100%; }
-body { background: #2c2f38; overflow: hidden; }
-.cp-stage { position: fixed; inset: 0; overflow: hidden; background: #2c2f38; -webkit-app-region: drag; }
-.cp { position: absolute; transform-origin: 0 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-app-region: drag; background: #2c2f38; font-family: 'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif; }
+body { background: transparent; overflow: hidden; }
+.cp-stage { position: fixed; inset: 0; overflow: hidden; background: transparent; -webkit-app-region: drag; }
+.cp { position: absolute; transform-origin: 0 0; overflow: hidden; border-radius: 8px; user-select: none; -webkit-user-select: none; -webkit-app-region: drag; background: #2c2f38; font-family: 'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif; }
 .cp .layer { position: absolute; pointer-events: none; user-select: none; -webkit-user-drag: none; }
 .cp .reel { will-change: transform; }
 .cp button { -webkit-app-region: no-drag; position: absolute; margin: 0; padding: 0; border: 0; font: inherit; color: inherit; cursor: pointer; }
@@ -32,3 +32,7 @@ body { background: #2c2f38; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .cp-btn, .cp-open, .cp-hint { transition: none; } }
 
 .cp-fullscreen { background-size: 100% 100%; background-repeat: no-repeat; }
+
+.cp-menu { position: absolute; width: 140px; box-sizing: border-box; padding: 4px; border-radius: 6px; background: #2c2f38; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5); font-family: system-ui, sans-serif; -webkit-app-region: no-drag; z-index: 20; }
+.cp .cp-menu button { position: static; display: block; width: 100%; padding: 6px 10px; border-radius: 4px; background: transparent; color: #e8e8ec; font-size: 13px; text-align: left; }
+.cp .cp-menu button:hover, .cp .cp-menu button:focus-visible { background: rgba(255, 255, 255, 0.12); outline: none; }

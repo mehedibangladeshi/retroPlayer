@@ -74,3 +74,24 @@ test('LineSplitter splits across chunk boundaries and ignores empty lines', () =
   assert.deepEqual(s.push(':3}\r\n'), ['{"c":3}'])
   assert.deepEqual(s.push(''), [])
 })
+
+test('loadAlbum needs a non-empty string path', () => {
+  assert.equal(isValidCommand({ v, type: 'loadAlbum', path: '/music/album' }), true)
+  assert.equal(isValidCommand({ v, type: 'loadAlbum', path: '' }), false)
+  assert.equal(isValidCommand({ v, type: 'loadAlbum', path: 3 }), false)
+})
+
+test('playIndex needs a non-negative integer', () => {
+  for (const index of [0, 3]) assert.equal(isValidCommand({ v, type: 'playIndex', index }), true)
+  for (const index of [-1, 1.5, '2', NaN]) assert.equal(isValidCommand({ v, type: 'playIndex', index }), false)
+})
+
+test('parseEvent accepts playlist events', () => {
+  assert.equal(parseEvent(JSON.stringify({ v, type: 'playlist', album: null }))?.type, 'playlist')
+  assert.equal(parseEvent(JSON.stringify({ v, type: 'playlist', album: { tracks: [] } }))?.type, 'playlist')
+})
+
+test('parseEvent accepts artwork events', () => {
+  assert.deepEqual(parseEvent('{"v":1,"type":"artwork","cover":null}'), { v, type: 'artwork', cover: null })
+  assert.deepEqual(parseEvent('{"v":1,"type":"artwork","cover":"data:image/png;base64,AAAA"}'), { v, type: 'artwork', cover: 'data:image/png;base64,AAAA' })
+})

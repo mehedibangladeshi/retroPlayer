@@ -1,4 +1,4 @@
-import type { ErrorCode, EngineEvent, Status, TrackInfo } from '@shared/protocol'
+import type { Album, ErrorCode, EngineEvent, Status, TrackInfo } from '@shared/protocol'
 
 export interface EngineState {
   status: Status
@@ -6,6 +6,8 @@ export interface EngineState {
   durationMs: number | null
   trackInfo: TrackInfo | null
   error: { code: ErrorCode; message: string } | null
+  album: Album | null
+  artwork: string | null
   /** performance.now() when positionMs was last set by the engine. */
   lastPositionAt: number
 }
@@ -18,6 +20,8 @@ let state: EngineState = {
   durationMs: null,
   trackInfo: null,
   error: null,
+  album: null,
+  artwork: null,
   lastPositionAt: 0
 }
 const listeners = new Set<() => void>()
@@ -74,6 +78,12 @@ function handle(e: EngineEvent): void {
       set({ positionMs: e.positionMs, lastPositionAt: performance.now() })
       break
     case 'ended':
+      break
+    case 'playlist':
+      set({ album: e.album })
+      break
+    case 'artwork':
+      set({ artwork: e.cover })
       break
     case 'error':
       pendingAutoPlay = null
