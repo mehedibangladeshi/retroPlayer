@@ -72,7 +72,7 @@ This prevents stale audio after a seek and keeps the reported position in step w
 
 The keys' click sounds go through the engine too, never through Web Audio or `<audio>`. The main process sends `loadSound` once per sound after the engine starts (the files are `assets/audio/` in dev and `resources/sounds/` in a packaged build). The renderer sends `playSound` by name when a key is pressed.
 
-A key sound is a `Clip`: an `Arc<[f32]>` already in the device's format. `Output::play_clip` hands it to the audio callback through a second small `rtrb` ring. After writing the music (or silence), the callback adds up to 4 clips on top and clamps the sum. Sounds play in every state, also while paused, stopped or empty, and they don't move the frame counter, so the position stays exact. The player keeps its own reference to every clip until the stream is gone, so the callback dropping a finished clip never frees memory.
+A key sound is a `Clip`: an `Arc<[f32]>` already in the device's format. `Output::play_clip` hands it to the audio callback through a second small `rtrb` ring. After writing the music (or silence), the callback adds up to 4 clips on top and clamps the sum. Sounds play in every state, also while paused, stopped or empty, and they don't move the frame counter, so the position stays exact. The player keeps its own reference to every clip until the stream is gone, so the callback dropping a finished clip never frees memory. Clips are converted to the device format when the output opens, or when a sound is loaded after that, so the first key press does no resampling. A clip replaced by a new `loadSound` is kept in a retired list until the stream is gone.
 
 ## Threads
 

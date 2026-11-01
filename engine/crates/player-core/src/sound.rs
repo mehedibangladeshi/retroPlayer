@@ -37,6 +37,11 @@ impl Sound {
         Ok(Sound { rate, channels, samples, cached: None })
     }
 
+    /// Give up the cached clip so the caller can retire it safely.
+    pub(crate) fn into_clip(self) -> Option<Clip> {
+        self.cached.map(|(_, clip)| clip)
+    }
+
     /// The sound in `cfg`'s format, converted once per device format.
     pub(crate) fn clip_for(&mut self, cfg: OutputConfig) -> Result<Clip, PlayerError> {
         if let Some((c, clip)) = &self.cached

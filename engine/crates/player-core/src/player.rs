@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use crate::decode::Decoder;
 use crate::dsp::DspChain;
 use crate::error::{ErrorCode, PlayerError};
-use crate::output::{Output, OutputConfig, OutputHandle};
+use crate::output::{Clip, Output, OutputConfig, OutputHandle};
 use crate::resample::Resampler;
 use crate::sound::Sound;
 use crate::state::{Status, Transport, clamp_seek};
@@ -161,6 +161,11 @@ pub struct Player {
     /// UI sounds by name. Declared after `output` so it drops after the stream:
     /// the audio callback must never hold the last reference to a clip.
     sounds: HashMap<String, Sound>,
+    /// Clips replaced by `load_sound` that the stream may still be playing.
+    /// Declared after `output` so it drops after the stream; emptied only once
+    /// the stream is gone. Never drop a clip handed to a live output elsewhere:
+    /// the audio callback would then free it.
+    retired: Vec<Clip>,
 }
 
 impl Player {
@@ -183,6 +188,7 @@ impl Player {
             device_rate: 0,
             device_config: None,
             sounds: HashMap::new(),
+            retired: Vec::new(),
         };
         (player, rx)
     }
@@ -299,7 +305,17 @@ impl Player {
     /// already there. Does not touch the audio device or the transport.
     pub fn load_sound(&mut self, name: &str, path: &Path) -> Result<(), PlayerError> {
         let sound = Sound::open(path)?;
-        self.sounds.insert(name.to_owned(), sound);
+        let mut sound = sound;
+        // Convert now so the first key press does no resampling.
+        if let Some(cfg) = self.device_config {
+            let _ = sound.clip_for(cfg);
+        }
+        if let Some(old) = self.sounds.insert(name.to_owned(), sound)
+            && let Some(clip) = old.into_clip()
+        {
+            // The old clip may still be playing; keep it until the stream is gone.
+            self.retired.push(clip);
+        }
         Ok(())
     }
 
@@ -309,9 +325,15 @@ impl Player {
         if !self.sounds.contains_key(name) {
             return Err(PlayerError::new(ErrorCode::InvalidState, format!("no sound named {name:?}")));
         }
-        // A failed output is reopened only by `load` (that resets the track); skip quietly.
-        if self.handle.is_none() {
-            self.ensure_output()?;
+        // With no track loaded a failed output can be reopened safely. Otherwise
+        // only `load` reopens it (that resets the track); skip quietly.
+        let empty = lock(&self.inner).transport.status == Status::Empty;
+        if self.handle.is_none() || (empty && self.handle.as_ref().is_some_and(OutputHandle::has_failed)) {
+            if self.handle.is_none() {
+                self.ensure_output()?;
+            } else {
+                let _ = self.ensure_output();
+            }
         }
         let (Some(output), Some(cfg)) = (self.output.as_mut(), self.device_config) else {
             return Ok(());
@@ -347,7 +369,15 @@ impl Player {
         }
         let (reply, wait) = mpsc::channel();
         self.send(Command::Stop { reply })?;
-        wait.recv().map_err(|_| worker_gone())?
+        let result = wait.recv().map_err(|_| worker_gone())?;
+        if result.is_err() && lock(&self.inner).transport.status == Status::Playing {
+            // The seek failed and the transport stayed Playing: un-silence the
+            // output so the device matches the state.
+            if let Some(h) = &self.handle {
+                h.set_playing(true);
+            }
+        }
+        result
     }
 
     fn send(&self, cmd: Command) -> Result<(), PlayerError> {
@@ -372,12 +402,19 @@ impl Player {
         }
         self.handle = None;
         self.output = None;
+        // The old stream is gone, so these clips can be freed here.
+        self.retired.clear();
         // Rate unknown before open: 96_000 frames is ~0.5 s at 192 kHz (more at lower rates); seek/stop use clear() so latency is unaffected.
         let (output, producer, cfg) = Output::open_default(96_000)?;
         let handle = output.handle();
         lock(&self.inner).device_rate = cfg.sample_rate;
         self.device_rate = cfg.sample_rate;
         self.device_config = Some(cfg);
+        // Convert every sound to the new format now (the old stream is gone, so
+        // replacing the old cached clips is safe) instead of on first key press.
+        for sound in self.sounds.values_mut() {
+            let _ = sound.clip_for(cfg);
+        }
         let (tx, rx) = mpsc::channel();
         let mut worker = WorkerState {
             rx,

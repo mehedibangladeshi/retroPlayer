@@ -173,6 +173,21 @@ impl Output {
         OutputHandle { shared: Arc::clone(&self.shared) }
     }
 
+    /// True once the stream's error callback reported a fatal device error.
+    pub fn has_failed(&self) -> bool {
+        self.shared.failed.load(Ordering::Acquire)
+    }
+}
+
+/// Cloneable, `Send + Sync` view of an `Output`'s shared atomics, so a worker
+/// thread can run the clear protocol and read the frame counter while `Output`
+/// (which owns the possibly `!Sync` stream) stays with its creator.
+#[derive(Debug, Clone)]
+pub struct OutputHandle {
+    shared: Arc<Shared>,
+}
+
+impl OutputHandle {
     /// `false`: the callback outputs silence and does not consume the ring.
     pub fn set_playing(&self, playing: bool) {
         // Relaxed: independent flag, no other data is published through it.
@@ -210,42 +225,6 @@ impl Output {
     }
 
     /// True once the stream's error callback reported a fatal device error.
-    pub fn has_failed(&self) -> bool {
-        self.shared.failed.load(Ordering::Acquire)
-    }
-}
-
-/// Cloneable, `Send + Sync` view of an `Output`'s shared atomics, so a worker
-/// thread can run the clear protocol and read the frame counter while `Output`
-/// (which owns the possibly `!Sync` stream) stays with its creator.
-#[derive(Debug, Clone)]
-pub struct OutputHandle {
-    shared: Arc<Shared>,
-}
-
-impl OutputHandle {
-    /// See [`Output::set_playing`].
-    pub fn set_playing(&self, playing: bool) {
-        self.shared.playing.store(playing, Ordering::Relaxed);
-    }
-    /// See [`Output::clear`].
-    pub fn clear(&self) {
-        self.shared.clear_gen.fetch_add(1, Ordering::Release);
-    }
-    /// See [`Output::clear_pending`].
-    pub fn clear_pending(&self) -> bool {
-        self.shared.clear_ack.load(Ordering::Acquire)
-            != self.shared.clear_gen.load(Ordering::Acquire)
-    }
-    /// See [`Output::frames_played`].
-    pub fn frames_played(&self) -> u64 {
-        self.shared.frames_played.load(Ordering::Relaxed)
-    }
-    /// See [`Output::reset_frames`].
-    pub fn reset_frames(&self, frames: u64) {
-        self.shared.frames_played.store(frames, Ordering::Relaxed);
-    }
-    /// See [`Output::has_failed`].
     pub fn has_failed(&self) -> bool {
         self.shared.failed.load(Ordering::Acquire)
     }

@@ -63,19 +63,6 @@ impl Transport {
         }
     }
 
-    pub fn seek(&mut self, position_ms: u64) -> u64 {
-        if self.status == Status::Empty {
-            return 0;
-        }
-        self.set_position(position_ms);
-        self.position_ms
-    }
-
-    pub fn seek_relative(&mut self, delta_ms: i64) -> u64 {
-        let target = (self.position_ms as i64).saturating_add(delta_ms);
-        self.seek(clamp_seek(target, self.duration_ms))
-    }
-
     pub fn set_position(&mut self, position_ms: u64) {
         self.position_ms = match self.duration_ms {
             Some(d) => position_ms.min(d),
@@ -207,49 +194,26 @@ mod tests {
     }
 
     #[test]
-    fn seek_clamps_and_keeps_status() {
-        let mut t = loaded(Some(1000));
-        t.play().unwrap();
-        assert_eq!(t.seek(400), 400);
-        assert_eq!(t.seek(5000), 1000);
-        assert_eq!(t.position_ms, 1000);
-        assert_eq!(t.status, Status::Playing);
-        t.pause().unwrap();
-        t.seek(10);
-        assert_eq!(t.status, Status::Paused);
-    }
-
-    #[test]
-    fn seek_on_empty_returns_zero() {
-        let mut t = Transport::new();
-        assert_eq!(t.seek(300), 0);
-        assert_eq!(t.seek_relative(300), 0);
-        assert_eq!(t.position_ms, 0);
-        assert_eq!(t.status, Status::Empty);
-    }
-
-    #[test]
-    fn seek_relative_clamps_both_ends() {
-        let mut t = loaded(Some(1000));
-        t.seek(500);
-        assert_eq!(t.seek_relative(200), 700);
-        assert_eq!(t.seek_relative(-300), 400);
-        assert_eq!(t.seek_relative(10_000), 1000);
-        assert_eq!(t.seek_relative(-10_000), 0);
-        assert_eq!(t.seek_relative(i64::MIN), 0);
-    }
-
-    #[test]
-    fn seek_relative_unknown_duration() {
-        let mut t = loaded(None);
-        assert_eq!(t.seek_relative(5000), 5000);
-        assert_eq!(t.seek_relative(-9000), 0);
-    }
-
-    #[test]
     fn set_position_clamps() {
         let mut t = loaded(Some(100));
         t.set_position(250);
         assert_eq!(t.position_ms, 100);
+    }
+
+    #[test]
+    fn set_position_keeps_status_and_unknown_duration_is_unbounded() {
+        let mut t = loaded(Some(1000));
+        t.play().unwrap();
+        t.set_position(400);
+        assert_eq!((t.status, t.position_ms), (Status::Playing, 400));
+        t.set_position(5000);
+        assert_eq!((t.status, t.position_ms), (Status::Playing, 1000));
+        t.pause().unwrap();
+        t.set_position(10);
+        assert_eq!((t.status, t.position_ms), (Status::Paused, 10));
+
+        let mut unknown = loaded(None);
+        unknown.set_position(5000);
+        assert_eq!(unknown.position_ms, 5000);
     }
 }

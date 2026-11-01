@@ -136,3 +136,26 @@ fn device_seek_after_ended_resumes_from_target() {
     let s = p.snapshot();
     assert!(s.position_ms >= 100, "play restarted from 0: {}", s.position_ms);
 }
+
+#[test]
+fn play_sound_unknown_name_is_an_error() {
+    let (mut p, _rx) = Player::new();
+    assert!(p.play_sound("nope").is_err());
+}
+
+#[test]
+fn load_sound_missing_file_is_an_error() {
+    let (mut p, _rx) = Player::new();
+    assert!(p.load_sound("click", std::path::Path::new("/nonexistent/click.wav")).is_err());
+}
+
+#[test]
+#[ignore = "needs an audio device"]
+fn load_then_play_sound_and_reload_while_playing() {
+    let (mut p, _rx) = Player::new();
+    p.load_sound("click", &fixture()).unwrap();
+    p.play_sound("click").unwrap();
+    // Replacing a sound whose clip is still playing must not panic or free it in the callback.
+    p.load_sound("click", &fixture()).unwrap();
+    p.play_sound("click").unwrap();
+}

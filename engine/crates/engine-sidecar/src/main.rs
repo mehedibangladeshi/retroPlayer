@@ -13,6 +13,7 @@
 
 mod protocol;
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
@@ -96,7 +97,9 @@ fn panic_message(p: &(dyn std::any::Any + Send)) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-fn dispatch(player: &mut Player, cmd: Command) -> Result<(), PlayerError> {
+/// `sounds` remembers every key sound loaded successfully (name -> path) so the
+/// main loop can reload them into a fresh Player after a panic reset.
+fn dispatch(player: &mut Player, sounds: &mut HashMap<String, String>, cmd: Command) -> Result<(), PlayerError> {
     match cmd {
         Command::Load { path } => player.load(Path::new(&path)),
         Command::Play => player.play(),
@@ -112,8 +115,11 @@ fn dispatch(player: &mut Player, cmd: Command) -> Result<(), PlayerError> {
         }
         // Key sounds are cosmetic: failures are logged, never sent as error events.
         Command::LoadSound { name, path } => {
-            if let Err(e) = player.load_sound(&name, Path::new(&path)) {
-                eprintln!("engine-sidecar: sound {name:?} not loaded: {}", e.message);
+            match player.load_sound(&name, Path::new(&path)) {
+                Ok(()) => {
+                    sounds.insert(name, path);
+                }
+                Err(e) => eprintln!("engine-sidecar: sound {name:?} not loaded: {}", e.message),
             }
             Ok(())
         }
@@ -129,6 +135,7 @@ fn dispatch(player: &mut Player, cmd: Command) -> Result<(), PlayerError> {
 fn main() {
     let (mut player, player_events) = Player::new();
     let (tx, rx) = mpsc::channel::<Out>();
+    let mut sounds: HashMap<String, String> = HashMap::new();
 
     let writer = thread::spawn(move || {
         let stdout = io::stdout();
@@ -180,7 +187,7 @@ fn main() {
                 continue;
             }
         };
-        match catch_unwind(AssertUnwindSafe(|| dispatch(&mut player, cmd))) {
+        match catch_unwind(AssertUnwindSafe(|| dispatch(&mut player, &mut sounds, cmd))) {
             Ok(Ok(())) => {}
             Ok(Err(e)) => send(e.into()),
             Err(p) => {
@@ -196,6 +203,16 @@ fn main() {
                     p
                 });
                 let _ = catch_unwind(AssertUnwindSafe(move || drop(old)));
+                // main sends loadSound only once per process start, so the fresh player
+                // must get the remembered key sounds back here. Logged only, never sent
+                // as events; wrapped so a panic here cannot kill the sidecar.
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    for (name, path) in &sounds {
+                        if let Err(e) = player.load_sound(name, Path::new(path)) {
+                            eprintln!("engine-sidecar: sound {name:?} not loaded: {}", e.message);
+                        }
+                    }
+                }));
                 send(player.snapshot().into());
             }
         }
