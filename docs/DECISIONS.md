@@ -216,3 +216,9 @@ Why: The main process has security-relevant logic (which commands the renderer m
 Decision: Three changes make the release bundles smaller. (1) `react` and `react-dom` moved from `dependencies` to `devDependencies` in `app/package.json`. Vite already bundles React into `out/renderer`, and the main and preload bundles do not load React, so electron-builder no longer copies `node_modules/react*` into `app.asar` (about 8.3 MB). (2) The sidecar release profile in `engine/Cargo.toml` uses `lto = "fat"`, `codegen-units = 1` and `strip = "symbols"`. `opt-level` stays at 3 for real-time headroom, and `panic` stays at `unwind` because the sidecar recovers from panics with `catch_unwind`. (3) `app/electron-builder.yml` sets `compression: maximum`.
 
 Why: About 94% of each ~120 MB bundle is the Electron runtime, which cannot be cut safely. These changes remove our own waste. Rejected: pruning Chromium locales (the user declined), deleting swiftshader (the window goes blank without a GPU) or the Chromium licence files (licence compliance), and `panic = "abort"` (it would break the sidecar's `catch_unwind` recovery).
+
+## 2026-11-01 — Windows installer without the differential-update payload
+
+Decision: `nsis.differentialPackage: false` in `app/electron-builder.yml`.
+
+Why: electron-builder makes NSIS installers differential-aware by default, for electron-updater's block-level downloads. That forces a 1 MB dictionary, non-solid 7z and normal compression, so `compression: maximum` had no effect: the 0.1.3 installer was 116 MB against 117 MB for 0.1.2. The app has no auto-updater, so the differential payload gains nothing. Measured on the Linux build tree with 7-Zip, solid maximum compression is about 10% smaller (81 MB against 90 MB). Revisit this if electron-updater is added.

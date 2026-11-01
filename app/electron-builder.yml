@@ -31,6 +31,9 @@ win:
   target: [nsis, zip]
 nsis:
   oneClick: false
+  # No auto-updater, so skip the differential-update payload: it forces a 1 MB dictionary,
+  # non-solid 7z and normal compression, ignoring `compression: maximum` (~10% bigger installer).
+  differentialPackage: false
   allowToChangeInstallationDirectory: true
 mac:
   target: [dmg, zip]
