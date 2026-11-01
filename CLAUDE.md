@@ -14,7 +14,7 @@ Run all commands from the repo root. Per-OS setup (macOS, Linux, Windows) is in 
 - `pnpm dev`: builds the engine sidecar (cargo, debug), then starts electron-vite dev. The app spawns `engine/target/debug/engine-sidecar`. Override the path with `RETRO_SIDECAR=/path`.
 - `pnpm build`: production build of the Electron app into `app/out`. Run it with `cd app && pnpm exec electron .`.
 - `pnpm package`: release-builds the sidecar, stages it into `app/build/sidecar/`, and bundles the app for the host OS into `app/dist/`. Windows and macOS bundles come from the `package` GitHub Actions workflow (run it by hand, or push a `v*` tag to get a draft release). Tester install notes: `docs/TESTING.md`.
-- `pnpm typecheck`, `pnpm lint`.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test` (Node's `node:test` over `app/test/`, TypeScript run natively by Node 26).
 - `cargo test --manifest-path engine/Cargo.toml --workspace`: all Rust tests (no audio device needed).
 - `cargo test --manifest-path engine/Cargo.toml -p player-core -- --ignored`: playback tests that need an audio device (they play a short quiet tone).
 - `cargo clippy --manifest-path engine/Cargo.toml --all-targets -- -D warnings`.
@@ -25,7 +25,7 @@ Single tests:
 - `cargo test --manifest-path engine/Cargo.toml -p player-core state::tests`: unit tests by module path.
 - `cargo test --manifest-path engine/Cargo.toml -p engine-sidecar --test stdio`: the stdio integration tests.
 
-No JS test runner is set up. Renderer behaviour was verified by driving the built app over the Chrome DevTools Protocol (`electron . --remote-debugging-port=<port>`).
+JS unit tests use Node's built-in `node:test` (no dependency); they live in `app/test/` and run with `pnpm test`. Renderer behaviour was verified by driving the built app over the Chrome DevTools Protocol (`electron . --remote-debugging-port=<port>`).
 
 ## Layout notes
 

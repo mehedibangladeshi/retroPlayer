@@ -8,10 +8,16 @@ function isTextInput(t: EventTarget | null): boolean {
   return t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
 }
 
-export function useKeyboard(seek: Pick<SeekHold, 'start' | 'stop'>): void {
+/** `onOpen` (optional) is bound to Ctrl/Cmd+O. */
+export function useKeyboard(seek: Pick<SeekHold, 'start' | 'stop'>, onOpen?: () => void): void {
   const { start, stop } = seek
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
+      if (onOpen && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+        e.preventDefault()
+        if (!e.repeat) onOpen()
+        return
+      }
       if (isTextInput(e.target) || e.ctrlKey || e.altKey || e.metaKey) return
       if (e.code === 'Space') {
         e.preventDefault()
@@ -32,5 +38,5 @@ export function useKeyboard(seek: Pick<SeekHold, 'start' | 'stop'>): void {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
-  }, [start, stop])
+  }, [start, stop, onOpen])
 }

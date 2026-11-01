@@ -13,7 +13,8 @@
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --import ./test/alias-hooks.mjs --test test/"
   },
   "dependencies": {
     "react": "^19.3.1",

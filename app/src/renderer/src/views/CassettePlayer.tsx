@@ -60,6 +60,9 @@ async function openOnce(): Promise<void> {
   }
 }
 
+/** Stable callback so useKeyboard's listener is not re-attached on every render. */
+const requestOpen = (): void => void openOnce()
+
 function Layer({ id }: { id: LayerId }) {
   return <img className="layer" src={layerUrl(id)} alt="" draggable={false} style={rectStyle(layerRect(id))} />
 }
@@ -83,7 +86,7 @@ export default function CassettePlayer() {
   const { status, durationMs, trackInfo, error } = useEngine()
   const position = useDisplayPosition()
   const seek = useSeekHold()
-  useKeyboard(seek)
+  useKeyboard(seek, requestOpen)
   const dragging = useFileDrop()
   const off = transportDisabled(status)
   const fit = useFitScale()
@@ -91,17 +94,6 @@ export default function CassettePlayer() {
   const title = trackInfo?.title || PROMPT
 
   const reels = useReels(status, seek.held)
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
-        e.preventDefault()
-        if (!e.repeat) void openOnce()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
 
   const buttonProps: Record<ButtonId, React.ButtonHTMLAttributes<HTMLButtonElement>> = {
     // Like a real deck: Pause while paused releases and resumes.

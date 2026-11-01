@@ -204,3 +204,9 @@ Why: The user asked for a thinner seam that looks grooved, with the panels sitti
 Decision: The transport keys play sounds: Play and Pause play `button_click.mp3`, Stop plays `stop_button.mp3`, and Rewind and Forward play `rewind_forward.mp3` once per press (not again while held). The keyboard shortcuts play the same sounds as the keys. A disabled key, or a shortcut that does nothing, is silent. The engine decodes the sounds and mixes them into its output on top of the music, through two new commands, `loadSound` (main process only) and `playSound`. A failed sound is logged to stderr and never shown to the user. Adding these commands doesn't change the protocol version. The sound files live in `assets/audio/` and are bundled into `resources/sounds/`. The name-to-file map is `app/src/shared/sounds.ts`, so other keys can get sounds later.
 
 Why: AGENTS.md locks all audio to Rust and forbids Web Audio and `<audio>`, so the renderer can't play the sounds itself. The user chose the engine path over an exception to that rule. Mixing in the existing callback needs no new dependency (`symphonia` already decodes MP3) and no second audio stream.
+
+## 2026-11-01 — JS unit tests use node:test
+
+Decision: JS unit tests use Node's built-in `node:test` runner with `node:assert/strict`, run by `pnpm test` over `app/test/`. Node 26 runs the `.ts` files directly (native type stripping), and `app/test/alias-hooks.mjs` maps the `@shared/*` path alias for it. No new dependency was added. The first suite covers the main-process NDJSON parsing and renderer command validation (`app/src/main/ndjson.ts`).
+
+Why: The main process has security-relevant logic (which commands the renderer may send) that was untested. Node is already pinned to 26 by `.nvmrc`, so a runner such as Vitest or Jest would add a dependency for no gain.

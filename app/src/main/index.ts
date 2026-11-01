@@ -31,7 +31,11 @@ function initialBounds(): { x?: number; y?: number; width: number; height: numbe
       return ow >= 100 && oh >= 50
     })
     if (visible) {
-      const width = Math.max(MIN_WIDTH, Math.round(saved.width))
+      // Clamp to the work area of the display the window lands on, keeping the aspect ratio:
+      // a corrupt or hand-edited settings.json must not open a window larger than the screen.
+      const a = screen.getDisplayMatching({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }).workArea
+      const maxWidth = Math.max(MIN_WIDTH, Math.min(a.width, Math.floor(a.height * ASPECT)))
+      const width = Math.min(maxWidth, Math.max(MIN_WIDTH, Math.round(saved.width)))
       return { x: Math.round(saved.x), y: Math.round(saved.y), width, height: Math.round(width / ASPECT), fullScreen: saved.fullScreen }
     }
   }
