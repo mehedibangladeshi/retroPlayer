@@ -150,3 +150,39 @@ Why: Without this, an installed build and a running `pnpm dev` session shared on
 Decision: The project targets Node 26 (LTS "Lithium" since 2026-10-28). `.nvmrc` holds `26`, the root `package.json` has `engines.node >=26`, and CI reads its Node version from `.nvmrc`. The GitHub Actions used in CI were moved to their current majors, which run on the Node 24 actions runtime.
 
 Why: AGENTS.md asks for the current Node LTS, and Node 26 became LTS this week. The old action versions ran on the deprecated Node 20 runtime and printed warnings on every run.
+
+## 2026-11-01 — App name "Cassette Player: Retro"
+
+Decision: The display name is "Cassette Player: Retro". The window title and the UI use it, with the colon. The `productName` is `Cassette Player Retro`. Release files are named `Cassette-Player-Retro-<version>-<os>-<arch>`, and the Linux executable is `cassette-player-retro`. The appId `dev.mehedibangladeshi.retroplayer` and the repository name are unchanged. The user-data folder is now `Cassette Player Retro`.
+
+Why: The name is the user's choice. A colon is not allowed in Windows file and folder names, and macOS Finder shows it as "/". Nothing was saved in the old user-data folder yet, so no migration is needed. This supersedes the `productName` `RetroPlayer` from the entry above.
+
+## 2026-11-01 — Resizable, aspect-locked window that scales the player as one picture
+
+Decision: The window can be resized, and it keeps the composition's 767:616 aspect ratio (`setAspectRatio`). The renderer scales the fixed 767x616 composition with `transform: scale(min(w/767, h/616))`, centred. Spare space is letterboxed in the dark body colour. The minimum content size is 575x462 (75%). On first launch the window is 55% of the primary work-area width, capped at 80% of its height, and centred. Saved size, position and full-screen state are restored only if the saved rectangle is on a connected display.
+
+Why: The user asked for a responsive default size, a remembered size and a minimum size. Scaling the whole picture keeps the artwork looking the same on every OS. Above 2x scale the 2x PNGs soften. We accept that.
+
+## 2026-11-01 — Full screen with F11, Esc and the drag region
+
+Decision: F11 (Ctrl+Cmd+F on macOS) toggles full screen, and Esc leaves it. Double-clicking the drag region toggles it too, so the OS "maximize" action becomes full screen. A full-screen box sits next to minimize and close.
+
+Why: The window is frameless, so it has no OS title bar with its own maximize control and shortcuts. The app supplies them.
+
+## 2026-11-01 — Settings in a main-process settings.json
+
+Decision: The main process keeps a `settings.json` file in the user-data folder (`app/src/main/settings.ts`). It holds the window state and `lastOpenDir`. Writes go to a temporary file that is then renamed over the old one. If the file is missing or invalid, the defaults are used. The Open dialog starts in `lastOpenDir` if that folder still exists. No dependency is added.
+
+Why: This is the smallest way to save a few values. Storing them in the renderer would put file paths in the UI process, and the renderer should not read or write files.
+
+## 2026-11-01 — Solid keys with elevation and latching
+
+Decision: Keys are always opaque. The disabled state is brightness 0.8, with no opacity change. Raised keys get a shape-following `filter: drop-shadow`. A pressed key moves down 3 px, and its shadow gets smaller (80 ms). Play stays latched down while playing, and Pause stays latched down while paused. Clicking a latched Pause resumes playback, as on a tape deck. This supersedes the 2026-10-31 entry "Disabled buttons use opacity 0.7 and no grayscale".
+
+Why: The user asked for solid keys that look physically pressed. Opacity made the keys look see-through.
+
+## 2026-11-01 — Artwork edits: moved pill and a drawn full-screen box
+
+Decision: The right pill in `body-bottom` moved 15.5 CSS px outward, so both pills sit 24 px from their side edge. The source (`source/player-body-bottom-part-with-boltu.png`) was edited and the PNG regenerated. The full-screen box `png/chrome-fullscreen.png` was drawn for this project from the minimize box, with four corner brackets as the glyph.
+
+Why: The user asked for both. This is an exception to the rule not to invent artwork, made at the user's request. See `docs/ASSETS_TODO.md` items 12 and 13.

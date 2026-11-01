@@ -1,15 +1,18 @@
 html, body, #root { margin: 0; height: 100%; }
 body { background: #2c2f38; overflow: hidden; }
-.cp { position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-app-region: drag; background: #2c2f38; font-family: 'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif; }
+.cp-stage { position: fixed; inset: 0; overflow: hidden; background: #2c2f38; -webkit-app-region: drag; }
+.cp { position: absolute; transform-origin: 0 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-app-region: drag; background: #2c2f38; font-family: 'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif; }
 .cp .layer { position: absolute; pointer-events: none; user-select: none; -webkit-user-drag: none; }
 .cp .reel { will-change: transform; }
 .cp button { -webkit-app-region: no-drag; position: absolute; margin: 0; padding: 0; border: 0; font: inherit; color: inherit; cursor: pointer; }
 .cp button:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); outline-offset: 1px; }
 
-.cp-btn { background-color: transparent; background-repeat: no-repeat; border-radius: 10px; transition: filter 80ms, transform 60ms; touch-action: none; }
-.cp-btn:not(:disabled):hover { filter: brightness(1.18); }
-.cp-btn:not(:disabled):active, .cp-btn.pressed:not(:disabled) { transform: translateY(2px); filter: brightness(0.85); box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.55); }
-.cp-btn:disabled { opacity: 0.7; cursor: default; }
+.cp-btn { background-color: transparent; background-repeat: no-repeat; border-radius: 10px; touch-action: none; filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.55)); transition: filter 80ms ease-out, transform 80ms ease-out; }
+.cp-btn:not(:disabled):hover { filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.55)) brightness(1.12); }
+.cp-btn:not(:disabled):active, .cp-btn.pressed:not(:disabled), .cp-btn.latched { transform: translateY(3px); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
+.cp-btn:not(:disabled):active:hover, .cp-btn.pressed:not(:disabled):hover, .cp-btn.latched:not(:disabled):hover { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
+.cp-btn:disabled { cursor: default; filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.55)) brightness(0.8); }
+.cp-btn.latched:disabled { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
 
 .cp-title { position: absolute; box-sizing: border-box; padding: 0 8px; pointer-events: none; color: #7f2a3c; font-size: 19px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 30px; text-align: center; }
 .cp-title.empty { opacity: 0.55; }
@@ -27,3 +30,5 @@ body { background: #2c2f38; overflow: hidden; }
 .cp-chrome { background: transparent; border-radius: 2px; }
 .cp-chrome:hover { background: rgba(255, 255, 255, 0.18); }
 @media (prefers-reduced-motion: reduce) { .cp-btn, .cp-open, .cp-hint { transition: none; } }
+
+.cp-fullscreen { background-size: 100% 100%; background-repeat: no-repeat; }

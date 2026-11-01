@@ -1,7 +1,7 @@
 # Packaging for test builds (unsigned). `pnpm package` at the repo root builds the release
 # sidecar, stages it into build/sidecar/, then runs electron-builder for the host OS.
 appId: dev.mehedibangladeshi.retroplayer
-productName: RetroPlayer
+productName: Cassette Player Retro
 directories:
   output: dist
   buildResources: build
@@ -15,10 +15,10 @@ extraResources:
     to: .
     filter:
       - engine-sidecar*
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+artifactName: Cassette-Player-Retro-${version}-${os}-${arch}.${ext}
 linux:
   target: [AppImage, tar.gz]
-  executableName: retroplayer
+  executableName: cassette-player-retro
   category: Audio
 win:
   target: [nsis, zip]

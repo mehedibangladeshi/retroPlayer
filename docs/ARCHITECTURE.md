@@ -1,6 +1,6 @@
 # Architecture
 
-retroPlayer is a desktop music player with a cassette-tape UI. Phase 1 is a minimal player: open an audio file, then play, pause, stop, and seek with the buttons. The audio engine is written in Rust and runs as a separate process. The UI is Electron with React and TypeScript.
+Cassette Player: Retro is a desktop music player with a cassette-tape UI. Phase 1 is a minimal player: open an audio file, then play, pause, stop, and seek with the buttons. The audio engine is written in Rust and runs as a separate process. The UI is Electron with React and TypeScript.
 
 ## Process model
 
@@ -13,6 +13,8 @@ Three kinds of process run while the app is open:
 A preload script runs between main and renderer. It exposes a small typed API (`window.retro`) through `contextBridge`. The renderer has `contextIsolation: true`, `sandbox: true` and `nodeIntegration: false`, so it cannot spawn processes or read files. The preload is built as CommonJS (`.cjs`), because sandboxed renderers cannot load ESM preloads.
 
 Because audio lives in the engine process, playback keeps going if the renderer freezes or crashes. The UI can reconnect to the same state when it recovers.
+
+The main process also owns the window and its settings. The window is resizable and keeps the composition's 767:616 aspect ratio. The renderer scales the fixed composition to fit, so the artwork looks the same at any size. Full screen is toggled with F11 (Ctrl+Cmd+F on macOS) or by double-clicking the drag region, and Esc leaves it. Main keeps `settings.json` in the user-data folder with the window state and the last Open folder. It writes the file atomically, and the renderer never reads or writes it.
 
 ```
  Renderer (React)            Electron main               Engine sidecar (Rust)

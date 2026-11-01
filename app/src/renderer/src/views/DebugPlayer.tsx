@@ -20,7 +20,7 @@ export default function DebugPlayer() {
   return (
     <div className={`dbg${dragging ? ' dragging' : ''}`}>
       <div className="dbg-bar">
-        <span>retroPlayer (debug)</span>
+        <span>Cassette Player: Retro (debug)</span>
         <button onClick={() => window.retro.minimizeWindow()}>_</button>
         <button onClick={() => window.retro.closeWindow()}>x</button>
       </div>

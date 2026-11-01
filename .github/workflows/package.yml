@@ -48,7 +48,7 @@ jobs:
         run: pnpm --filter app exec electron-builder ${{ matrix.builder }} --publish never
       - uses: actions/upload-artifact@v7
         with:
-          name: RetroPlayer-${{ matrix.name }}
+          name: Cassette-Player-Retro-${{ matrix.name }}
           if-no-files-found: error
           path: |
             app/dist/*.AppImage

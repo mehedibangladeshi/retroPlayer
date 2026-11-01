@@ -6,7 +6,8 @@ export function transportDisabled(status: Status): Record<ButtonId, boolean> {
   const loaded = status !== 'empty'
   const playing = status === 'playing'
   return {
-    pause: !playing,
+    // Pause stays usable while paused: pressing it again resumes.
+    pause: !(playing || status === 'paused'),
     rewind: !loaded,
     play: !loaded || playing,
     forward: !loaded,

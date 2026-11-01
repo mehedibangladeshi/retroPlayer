@@ -13,6 +13,8 @@ Missing or broken assets. Each item: what is missing, current workaround, what t
 9. **Cassette is red only** (`audio-red-*`); no other cassette colours or labels, and the cassette PNG scale was fitted to the reference by measurement, not given by the artist.
 10. **Source canvases have no registration data.** The cassette canvas offset relative to the body was found by fitting against the reference JPEG (error about 2/255 mean). Provide: layers exported on one shared canvas, or the cassette position.
 11. **No bundled label font.** The title and time on the label use a system font stack, so text rendering differs per OS. This breaks the rule that the UI looks identical on Windows, macOS and Linux. Workaround: the system font stack. Provide: a font file for the label text, for example a condensed typeface that matches "AUDIO RED", licensed for bundling in the app.
+12. **Full-screen chrome box was drawn by us.** `png/chrome-fullscreen.png` was drawn for this project from the minimize box, with four corner brackets as the glyph. It is 38x38 at 2x and sits at anchor 697,7 CSS. Workaround: the drawn box. Provide: a full-screen box in the same style as minimize and close, with the same size and anchor, and its states (see item 7).
+13. **Right pill moved in the artist's source.** The right pill in `body-bottom` was moved 15.5 CSS px outward, so both pills sit 24 px from their side edge. This was a pixel edit of `source/player-body-bottom-part-with-boltu.png`, and the PNG was regenerated from it. Workaround: the edited PNG. Provide: the artist may want to update their master file to match, or confirm the new pill position.
 
 ## App icon
 

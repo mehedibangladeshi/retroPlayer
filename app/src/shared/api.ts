@@ -6,5 +6,6 @@ export interface RetroApi {
   pathForFile(file: File): string                       // webUtils.getPathForFile
   minimizeWindow(): void
   closeWindow(): void
+  toggleFullScreen(): void
 }
-export const IPC = { command: 'engine:command', event: 'engine:event', openDialog: 'dialog:open', minimize: 'window:minimize', close: 'window:close' } as const
+export const IPC = { command: 'engine:command', event: 'engine:event', openDialog: 'dialog:open', minimize: 'window:minimize', close: 'window:close', toggleFullScreen: 'window:toggleFullScreen' } as const

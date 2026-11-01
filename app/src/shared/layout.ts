@@ -38,10 +38,14 @@ export const BUTTONS: Record<ButtonId, Rect> = {
   stop: { x: 532.5, y: 468, w: 89, h: 110 },
 }
 
-export const CHROME: { minimize: Rect; close: Rect } = {
+export const CHROME: { minimize: Rect; close: Rect; fullscreen: Rect } = {
+  fullscreen: { x: 697, y: 7, w: 19, h: 19 },
   minimize: { x: 719, y: 7, w: 19, h: 19 },
   close: { x: 741, y: 7, w: 19, h: 19 },
 }
+
+/** Art for chrome boxes that are not baked into body-top-cover (path relative to assets/ui). */
+export const CHROME_ART: { fullscreen: string } = { fullscreen: 'png/chrome-fullscreen.png' }
 
 /** Text slots drawn over the cassette label (title strip) and next to "HIGH QUALITY AUDIO" (time). */
 export const LABEL: { title: Rect; time: Rect } = {

@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { BUTTONS, CASSETTE, CHROME, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
+import { useEffect, useState } from 'react'
+import { BUTTONS, CASSETTE, CHROME, CHROME_ART, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
 import { pause, play, stop } from '../engine/commands'
 import { clearError } from '../engine/store'
 import { useDisplayPosition, useEngine } from '../engine/useEngine'
@@ -18,6 +18,27 @@ const layerUrl = (id: LayerId): string => {
   const hit = Object.entries(urls).find(([k]) => k.endsWith(`/${file}`))
   if (!hit) throw new Error(`missing artwork for ${id}`)
   return hit[1]
+}
+
+const fileUrl = (file: string): string => {
+  const hit = Object.entries(urls).find(([k]) => k.endsWith(`/${file}`))
+  if (!hit) throw new Error(`missing artwork ${file}`)
+  return hit[1]
+}
+
+/** Scale that fits the fixed composition inside the viewport (letterboxed), tracked on resize. */
+function useFitScale(): { scale: number; left: number; top: number } {
+  const compute = () => {
+    const scale = Math.min(window.innerWidth / WINDOW.width, window.innerHeight / WINDOW.height)
+    return { scale, left: (window.innerWidth - WINDOW.width * scale) / 2, top: (window.innerHeight - WINDOW.height * scale) / 2 }
+  }
+  const [fit, setFit] = useState(compute)
+  useEffect(() => {
+    const onResize = (): void => setFit(compute())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return fit
 }
 
 const rectStyle = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h })
@@ -65,6 +86,7 @@ export default function CassettePlayer() {
   useKeyboard(seek)
   const dragging = useFileDrop()
   const off = transportDisabled(status)
+  const fit = useFitScale()
   const loaded = status !== 'empty'
   const title = trackInfo?.title || PROMPT
 
@@ -82,16 +104,21 @@ export default function CassettePlayer() {
   }, [])
 
   const buttonProps: Record<ButtonId, React.ButtonHTMLAttributes<HTMLButtonElement>> = {
-    pause: { onClick: pause },
+    // Like a real deck: Pause while paused releases and resumes.
+    pause: { onClick: status === 'paused' ? play : pause },
     rewind: seek.bind('back'),
     play: { onClick: play },
     forward: seek.bind('forward'),
     stop: { onClick: stop }
   }
   const pressed: Partial<Record<ButtonId, boolean>> = { rewind: seek.held === 'back', forward: seek.held === 'forward' }
+  // Latched keys stay pushed down, like a cassette deck.
+  const latched: Partial<Record<ButtonId, boolean>> = { play: status === 'playing', pause: status === 'paused' }
 
   return (
-    <div className="cp" style={{ width: WINDOW.width, height: WINDOW.height }}>
+    <div className="cp-stage">
+    {/* CSS transform keeps pointer events, drag-and-drop and the drag region correct: the browser maps input through it. */}
+    <div className="cp" style={{ width: WINDOW.width, height: WINDOW.height, left: fit.left, top: fit.top, transform: `scale(${fit.scale})` }}>
       {STATIC_LAYERS.map((id) => (
         <Layer key={id} id={id} />
       ))}
@@ -107,7 +134,7 @@ export default function CassettePlayer() {
           type="button"
           aria-label={id}
           aria-pressed={id === 'rewind' || id === 'forward' ? !!pressed[id] : undefined}
-          className={`cp-btn${pressed[id] ? ' pressed' : ''}`}
+          className={`cp-btn${pressed[id] ? ' pressed' : ''}${latched[id] ? ' latched' : ''}`}
           disabled={off[id]}
           style={{ ...rectStyle(BUTTONS[id]), backgroundImage: `url(${layerUrl('bodyButtons')})`, backgroundSize: `${WINDOW.width}px ${WINDOW.height}px`, backgroundPosition: `${-BUTTONS[id].x}px ${-BUTTONS[id].y}px` }}
           {...buttonProps[id]}
@@ -135,8 +162,10 @@ export default function CassettePlayer() {
         </button>
       )}
 
+      <button type="button" className="cp-chrome cp-fullscreen" aria-label="Full screen" style={{ ...rectStyle(CHROME.fullscreen), backgroundImage: `url(${fileUrl(CHROME_ART.fullscreen)})` }} onClick={() => window.retro.toggleFullScreen()} />
       <button type="button" className="cp-chrome" aria-label="Minimize" style={rectStyle(CHROME.minimize)} onClick={() => window.retro.minimizeWindow()} />
       <button type="button" className="cp-chrome" aria-label="Close" style={rectStyle(CHROME.close)} onClick={() => window.retro.closeWindow()} />
+    </div>
     </div>
   )
 }

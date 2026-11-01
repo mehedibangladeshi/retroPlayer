@@ -14,7 +14,8 @@ const api: RetroApi = {
   openFileDialog: () => ipcRenderer.invoke(IPC.openDialog) as Promise<string | null>,
   pathForFile: (file) => webUtils.getPathForFile(file),
   minimizeWindow: () => ipcRenderer.send(IPC.minimize),
-  closeWindow: () => ipcRenderer.send(IPC.close)
+  closeWindow: () => ipcRenderer.send(IPC.close),
+  toggleFullScreen: () => ipcRenderer.send(IPC.toggleFullScreen)
 }
 
 contextBridge.exposeInMainWorld('retro', api)

@@ -1,9 +1,11 @@
-import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { existsSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { app, BrowserWindow, dialog, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/api'
 import { WINDOW } from '@shared/layout'
 import { SUPPORTED_EXTENSIONS, type Command } from '@shared/protocol'
 import { isValidCommand } from './ndjson'
+import { loadSettings, saveSettings } from './settings'
 import { Sidecar } from './sidecar'
 
 let win: BrowserWindow | null = null
@@ -14,15 +16,56 @@ function fromMainWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
   return win !== null && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame
 }
 
+const ASPECT = WINDOW.width / WINDOW.height
+const MIN_WIDTH = 575
+const MIN_HEIGHT = 462
+
+// Sizes below are content sizes (the window is frameless, so content == window).
+function initialBounds(): { x?: number; y?: number; width: number; height: number; fullScreen: boolean } {
+  const saved = loadSettings().window
+  if (saved) {
+    const visible = screen.getAllDisplays().some((d) => {
+      const a = d.workArea
+      const ow = Math.min(saved.x + saved.width, a.x + a.width) - Math.max(saved.x, a.x)
+      const oh = Math.min(saved.y + saved.height, a.y + a.height) - Math.max(saved.y, a.y)
+      return ow >= 100 && oh >= 50
+    })
+    if (visible) {
+      const width = Math.max(MIN_WIDTH, Math.round(saved.width))
+      return { x: Math.round(saved.x), y: Math.round(saved.y), width, height: Math.round(width / ASPECT), fullScreen: saved.fullScreen }
+    }
+  }
+  const area = screen.getPrimaryDisplay().workAreaSize
+  let width = Math.round(0.55 * area.width)
+  if (width / ASPECT > 0.8 * area.height) width = Math.round(0.8 * area.height * ASPECT)
+  width = Math.max(MIN_WIDTH, width)
+  return { width, height: Math.round(width / ASPECT), fullScreen: false }
+}
+
+function lastOpenDir(): string | undefined {
+  const dir = loadSettings().lastOpenDir
+  if (!dir) return undefined
+  try {
+    return existsSync(dir) && statSync(dir).isDirectory() ? dir : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function createWindow(): void {
+  const b = initialBounds()
   const w = new BrowserWindow({
-    width: WINDOW.width,
-    height: WINDOW.height,
+    ...(b.x !== undefined && b.y !== undefined ? { x: b.x, y: b.y } : { center: true }),
+    width: b.width,
+    height: b.height,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     useContentSize: true,
     frame: false,
-    resizable: false,
-    maximizable: false,
-    fullscreenable: false,
+    resizable: true,
+    maximizable: true,
+    fullscreenable: true,
+    title: 'Cassette Player: Retro',
     backgroundColor: '#2b2e36',
     show: false,
     webPreferences: {
@@ -34,7 +77,46 @@ function createWindow(): void {
     }
   })
   win = w
-  w.once('ready-to-show', () => w.show())
+  w.setAspectRatio(ASPECT)
+  w.once('ready-to-show', () => {
+    w.show()
+    if (b.fullScreen) w.setFullScreen(true)
+  })
+
+  // Remember the non-fullscreen bounds; skip while minimized (bounds can be bogus then).
+  const persist = (): void => {
+    if (w.isDestroyed() || w.isMinimized()) return
+    // Some platforms report the full-screen rect as "normal" bounds: keep the last windowed ones then.
+    const prev = loadSettings().window
+    const { x, y, width, height } = w.isFullScreen() && prev ? prev : w.getNormalBounds()
+    saveSettings({ window: { x, y, width, height, fullScreen: w.isFullScreen() } })
+  }
+  let timer: NodeJS.Timeout | undefined
+  const persistSoon = (): void => {
+    clearTimeout(timer)
+    timer = setTimeout(persist, 500)
+  }
+  w.on('resize', persistSoon)
+  w.on('move', persistSoon)
+  w.on('close', () => {
+    clearTimeout(timer)
+    persist()
+  })
+  // The frameless window's double-click on the drag region makes the OS maximize it; full screen is what we want instead.
+  w.on('maximize', () => {
+    w.unmaximize()
+    setImmediate(() => w.setFullScreen(true)) // unmaximize is async on Linux
+  })
+  w.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return
+    if (input.key === 'F11' || (process.platform === 'darwin' && input.control && input.meta && input.key.toLowerCase() === 'f')) {
+      w.setFullScreen(!w.isFullScreen())
+      e.preventDefault()
+    } else if (input.key === 'Escape' && w.isFullScreen()) {
+      w.setFullScreen(false)
+      e.preventDefault()
+    }
+  })
   w.on('closed', () => {
     win = null
   })
@@ -72,13 +154,19 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle(IPC.openDialog, async (e): Promise<string | null> => {
     if (!fromMainWindow(e) || !win) return null
     const r = await dialog.showOpenDialog(win, {
+      defaultPath: lastOpenDir(),
       properties: ['openFile'],
       filters: [{ name: 'Audio', extensions: [...SUPPORTED_EXTENSIONS] }]
     })
-    return r.canceled ? null : (r.filePaths[0] ?? null)
+    const file = r.canceled ? null : (r.filePaths[0] ?? null)
+    if (file) saveSettings({ lastOpenDir: dirname(file) })
+    return file
   })
   ipcMain.on(IPC.minimize, (e) => {
     if (fromMainWindow(e)) win?.minimize()
+  })
+  ipcMain.on(IPC.toggleFullScreen, (e) => {
+    if (fromMainWindow(e)) win?.setFullScreen(!win.isFullScreen())
   })
   ipcMain.on(IPC.close, (e) => {
     if (fromMainWindow(e)) win?.close()

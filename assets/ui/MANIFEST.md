@@ -15,6 +15,7 @@ Paint order bottom to top. "Anchor" is the top-left in window CSS px.
 | 5 | `png/body-top-cover.png` | 1534x1232 | 0,0 | 767x616 | Window bezel/glass, brand text "SUPER LX-RETRO", "HIGH QUALITY AUDIO", minimize/close boxes. Covers the cassette edges |
 | 6 | `png/body-bottom.png` | 1534x1232 | 0,0 | 767x616 | Lower panel, bolts, PAUSE/REWIND/PLAY/FORWARD/STOP text labels |
 | 7 | `png/body-buttons.png` | 1534x1232 | 0,0 | 767x616 | The five key caps with icons (no text labels) |
+| 8 | `png/chrome-fullscreen.png` | 38x38 | 697,7 | 19x19 | Full-screen chrome box, derived from the minimize box art; drawn for the project, not by the artist |
 
 ### How png/ was derived
 
@@ -30,6 +31,8 @@ Command per file (ImageMagick 7):
 Mapping: `player-body-base`->`body-base`, `player-body-top-cover-and-utility`->`body-top-cover`, `player-body-bottom-part-with-boltu`->`body-bottom`, `player-body-buttons`->`body-buttons`, `cassette/audio-red-{base,mid,reel}`->`cassette-{base,mid,reel}`.
 
 Size: sources 7 PNGs 260,174 B; shipped 7 PNGs 269,166 B (resampled to 2x, still lossless).
+
+Edits to the artist's art (2026-11-01): in `source/player-body-bottom-part-with-boltu.png` the right pill (alpha island at x 2013-2213, y 1461-1494) was moved 47 px right (+15.5 CSS px) so both pills have a 24 px gap to the window edge; the island was cut and pasted unchanged, the vacated area cleared to transparent, and `png/body-bottom.png` regenerated with the command above (left pill at 2x x 48, right pill ends at 2x x 1485). `png/chrome-fullscreen.png` is the minimize box crop (2x 1438,14 38x38) with its glyph filled out and four corner brackets drawn in the same glyph colour (112,115,126), about 2.6 px stroke at 2x, antialiased.
 
 Measured values in `layout.ts` come from the shipped PNGs: reels and button keys from alpha connected components (3 px dilation, button threshold alpha > 128); text, chrome and label strip from luminance difference against the local background in the composite, and the label strip edges from the reference. `LABEL.title` is the strip (128,126,521x38) inset 4 px; `LABEL.time` is a slot left of "HIGH QUALITY AUDIO" on the same baseline.
 
