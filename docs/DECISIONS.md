@@ -210,3 +210,9 @@ Why: AGENTS.md locks all audio to Rust and forbids Web Audio and `<audio>`, so t
 Decision: JS unit tests use Node's built-in `node:test` runner with `node:assert/strict`, run by `pnpm test` over `app/test/`. Node 26 runs the `.ts` files directly (native type stripping), and `app/test/alias-hooks.mjs` maps the `@shared/*` path alias for it. No new dependency was added. The first suite covers the main-process NDJSON parsing and renderer command validation (`app/src/main/ndjson.ts`).
 
 Why: The main process has security-relevant logic (which commands the renderer may send) that was untested. Node is already pinned to 26 by `.nvmrc`, so a runner such as Vitest or Jest would add a dependency for no gain.
+
+## 2026-11-01 — Smaller release bundles
+
+Decision: Three changes make the release bundles smaller. (1) `react` and `react-dom` moved from `dependencies` to `devDependencies` in `app/package.json`. Vite already bundles React into `out/renderer`, and the main and preload bundles do not load React, so electron-builder no longer copies `node_modules/react*` into `app.asar` (about 8.3 MB). (2) The sidecar release profile in `engine/Cargo.toml` uses `lto = "fat"`, `codegen-units = 1` and `strip = "symbols"`. `opt-level` stays at 3 for real-time headroom, and `panic` stays at `unwind` because the sidecar recovers from panics with `catch_unwind`. (3) `app/electron-builder.yml` sets `compression: maximum`.
+
+Why: About 94% of each ~120 MB bundle is the Electron runtime, which cannot be cut safely. These changes remove our own waste. Rejected: pruning Chromium locales (the user declined), deleting swiftshader (the window goes blank without a GPU) or the Chromium licence files (licence compliance), and `panic = "abort"` (it would break the sidecar's `catch_unwind` recovery).

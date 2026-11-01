@@ -21,6 +21,8 @@ extraResources:
     filter:
       - '*.mp3'
 artifactName: Cassette-Player-Retro-${version}-${os}-${arch}.${ext}
+# Smallest downloads (xz/lzma for AppImage, nsis and dmg); packaging is slower.
+compression: maximum
 linux:
   target: [AppImage, tar.gz]
   executableName: cassette-player-retro
