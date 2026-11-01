@@ -1,0 +1,23 @@
+#!/bin/sh
+# Pre-commit gate: every check must pass before a commit is recorded.
+# Enabled by `pnpm install` (the `prepare` script sets core.hooksPath).
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+# step <label> <command...>: print a header, run the command, stop on the first failure.
+step() {
+  label=$1
+  shift
+  echo "pre-commit: $label"
+  if ! "$@"; then
+    echo "pre-commit: $label failed - fix it, don't use --no-verify" >&2
+    exit 1
+  fi
+}
+
+step "typecheck" pnpm typecheck
+step "lint" pnpm lint
+step "JS tests" pnpm test
+step "cargo test" cargo test --manifest-path engine/Cargo.toml --workspace
+step "clippy" cargo clippy --manifest-path engine/Cargo.toml --all-targets -- -D warnings
+echo "pre-commit: all checks passed"

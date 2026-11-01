@@ -53,6 +53,12 @@ cargo clippy --manifest-path engine/Cargo.toml --all-targets -- -D warnings
 
 `cargo test ... -p player-core -- --ignored` also runs the tests that play a short tone through the real audio device. These are worth running on each OS.
 
+## Pre-commit hook and TDD
+
+`scripts/git-hooks/pre-commit` runs, in order: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `cargo test --workspace` and clippy with `-D warnings`. The first failure blocks the commit. It is enabled by `pnpm install`, whose `prepare` script sets `core.hooksPath` to `scripts/git-hooks`. Run it by hand with `scripts/git-hooks/pre-commit`. Do not bypass it with `--no-verify`.
+
+The test-first rule (red, green, refactor) is in AGENTS.md, "How to work", item 8.
+
 ## Releases
 
 Bump `version` in `app/package.json` and `engine/Cargo.toml`, then push a tag such as `v0.1.3-beta`. The `package` workflow's `check` job runs the checks above and stops the run if the tag (without `v` and the `-suffix`) differs from `app/package.json`'s version. Only then are the bundles built and a draft release created.

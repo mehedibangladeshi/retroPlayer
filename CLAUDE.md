@@ -14,6 +14,7 @@ Run all commands from the repo root. Per-OS setup (macOS, Linux, Windows) is in 
 - `pnpm dev`: builds the engine sidecar (cargo, debug), then starts electron-vite dev. The app spawns `engine/target/debug/engine-sidecar`. Override the path with `RETRO_SIDECAR=/path`.
 - `pnpm build`: production build of the Electron app into `app/out`. Run it with `cd app && pnpm exec electron .`.
 - `pnpm package`: release-builds the sidecar, stages it into `app/build/sidecar/`, and bundles the app for the host OS into `app/dist/`. Windows and macOS bundles come from the `package` GitHub Actions workflow (run it by hand, or push a `v*` tag to get a draft release). Its `check` job (typecheck, lint, `pnpm test`, cargo test, clippy) must pass before any bundle is built, and a tag must match `app/package.json`'s version without the suffix (`v0.1.2-beta` for 0.1.2), so bump the version first. Tester install notes: `docs/TESTING.md`.
+- Pre-commit hook: `scripts/git-hooks/pre-commit` runs typecheck, lint, JS tests, cargo test and clippy and blocks a failing commit. `pnpm install` enables it (the `prepare` script sets `core.hooksPath`). The TDD rule lives in AGENTS.md item 8.
 - `pnpm typecheck`, `pnpm lint`, `pnpm test` (Node's `node:test` over `app/test/`, TypeScript run natively by Node 26).
 - `cargo test --manifest-path engine/Cargo.toml --workspace`: all Rust tests (no audio device needed).
 - `cargo test --manifest-path engine/Cargo.toml -p player-core -- --ignored`: playback tests that need an audio device (they play a short quiet tone).
