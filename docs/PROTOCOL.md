@@ -74,6 +74,26 @@ Fields: `deltaMs` (integer, milliseconds, may be negative).
 {"v":1,"type":"seekRelative","deltaMs":-10000}
 ```
 
+### loadSound
+
+Decodes a short UI sound (a key click) into memory under `name`, replacing any sound already loaded under that name. Only the Electron main process sends it, once per sound after the engine starts; the renderer can't. It doesn't touch the audio device or the transport, and emits no event. At most the first 10 seconds of the file are kept.
+
+Fields: `name` (string), `path` (string, absolute path to the audio file).
+
+```json
+{"v":1,"type":"loadSound","name":"stop","path":"/opt/app/resources/sounds/stop_button.mp3"}
+```
+
+### playSound
+
+Mixes the sound loaded under `name` on top of the music, in any state (also `Empty`, `Stopped` and `Paused`). It never changes the transport and emits no event. Up to 4 sounds can overlap; a fifth is skipped.
+
+Fields: `name` (string).
+
+```json
+{"v":1,"type":"playSound","name":"stop"}
+```
+
 ## Events (engine to UI)
 
 ### state
@@ -165,7 +185,8 @@ Empty --load--> Stopped --play--> Playing <--pause/play--> Paused
 - `positionMs` and `deltaMs` accept any JSON number. The engine rounds to the nearest integer, halves away from zero. A negative `positionMs` is treated as 0. The Electron main process also rounds before sending.
 - A line that is not valid UTF-8, is longer than 1 MiB, is not JSON, has an unknown `type`, or has a `v` other than 1 is answered with `error` and code `bad_message`. The engine keeps running.
 - If the engine panics while handling a command, it emits `error` with code `internal` and a message starting with `engine panic:`. It then resets the player and emits a fresh `state` (empty).
-- The audio device is opened on the first `load`. With no device, `load` fails with `no_output_device` and nothing else changes.
+- The audio device is opened on the first `load` or `playSound`. With no device, `load` fails with `no_output_device` and nothing else changes.
+- `loadSound` and `playSound` never produce events, including `error`: a missing file, an unknown name or no audio device is logged to stderr only, so a key sound can't put an error message in front of the user. A sound that can't play is skipped.
 
 ## Changing the protocol
 

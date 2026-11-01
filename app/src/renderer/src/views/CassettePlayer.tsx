@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BUTTONS, CASSETTE, CHROME, CHROME_ART, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
-import { pause, play, stop } from '../engine/commands'
+import { pressPause, pressPlay, pressStop } from '../engine/commands'
 import { clearError } from '../engine/store'
 import { useDisplayPosition, useEngine } from '../engine/useEngine'
 import { ERROR_MESSAGES, formatTime } from '../format'
@@ -105,11 +105,11 @@ export default function CassettePlayer() {
 
   const buttonProps: Record<ButtonId, React.ButtonHTMLAttributes<HTMLButtonElement>> = {
     // Like a real deck: Pause while paused releases and resumes.
-    pause: { onClick: status === 'paused' ? play : pause },
+    pause: { onClick: status === 'paused' ? pressPlay : pressPause },
     rewind: seek.bind('back'),
-    play: { onClick: play },
+    play: { onClick: pressPlay },
     forward: seek.bind('forward'),
-    stop: { onClick: stop }
+    stop: { onClick: pressStop }
   }
   const pressed: Partial<Record<ButtonId, boolean>> = { rewind: seek.held === 'back', forward: seek.held === 'forward' }
   // Latched keys stay pushed down, like a cassette deck.

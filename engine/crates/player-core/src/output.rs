@@ -4,6 +4,9 @@
 //! device's native rate and mapped to its channel count) into an `rtrb` ring.
 //! The real-time audio callback pops from the ring and converts to the device's
 //! sample format. All cross-thread state is atomics; the callback never locks.
+//!
+//! Short UI sounds (key clicks) are mixed on top in the same callback: each one
+//! is a pre-converted `Clip` handed over through a second small ring.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -13,6 +16,66 @@ use cpal::{FromSample, I24, Sample, SampleFormat, SizedSample, Stream, StreamCon
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::error::{ErrorCode, PlayerError};
+
+/// A short sound in the device's format (interleaved, device rate and channels),
+/// mixed on top of the music. The control side keeps its own reference to each
+/// clip for as long as the stream lives, so the callback dropping a finished
+/// voice only decrements the count and never frees memory.
+pub type Clip = Arc<[f32]>;
+
+/// Clips that can sound at once; a new one is dropped when all are busy.
+const MAX_VOICES: usize = 4;
+
+struct Voice {
+    clip: Clip,
+    pos: usize,
+}
+
+/// Callback-side mixer for clips.
+struct Mixer {
+    incoming: Consumer<Voice>,
+    voices: [Option<Voice>; MAX_VOICES],
+}
+
+impl Mixer {
+    fn new(incoming: Consumer<Voice>) -> Self {
+        Mixer { incoming, voices: Default::default() }
+    }
+
+    /// Add active clips onto `out` (which already holds music or silence).
+    /// Runs inside the audio callback: no allocation, locking or blocking.
+    fn mix<T>(&mut self, out: &mut [T])
+    where
+        T: Sample + FromSample<f32>,
+        f32: FromSample<T>,
+    {
+        while let Ok(v) = self.incoming.pop() {
+            if let Some(slot) = self.voices.iter_mut().find(|s| s.is_none()) {
+                *slot = Some(v);
+            }
+        }
+        if self.voices.iter().all(Option::is_none) {
+            return;
+        }
+        for (i, dst) in out.iter_mut().enumerate() {
+            let mut s = f32::from_sample(*dst);
+            for v in self.voices.iter().flatten() {
+                if let Some(x) = v.clip.get(v.pos + i) {
+                    s += x;
+                }
+            }
+            *dst = T::from_sample(s.clamp(-1.0, 1.0));
+        }
+        for slot in &mut self.voices {
+            if let Some(v) = slot {
+                v.pos += out.len();
+                if v.pos >= v.clip.len() {
+                    *slot = None;
+                }
+            }
+        }
+    }
+}
 
 /// The device's native output format; the player must feed exactly this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +112,7 @@ struct Shared {
 /// to sample rate) as `capacity_frames` to `open_default`.
 pub struct Output {
     shared: Arc<Shared>,
+    clips: Producer<Voice>,
     _stream: Stream,
 }
 
@@ -72,18 +136,20 @@ impl Output {
         let (producer, consumer) =
             RingBuffer::<f32>::new(capacity_frames.max(1) * usize::from(channels));
         let shared = Arc::new(Shared::default());
+        let (clips, clip_rx) = RingBuffer::<Voice>::new(MAX_VOICES * 2);
+        let mixer = Mixer::new(clip_rx);
 
         let stream = match format {
-            SampleFormat::F32 => build::<f32>(&device, config, consumer, &shared),
-            SampleFormat::F64 => build::<f64>(&device, config, consumer, &shared),
-            SampleFormat::I8 => build::<i8>(&device, config, consumer, &shared),
-            SampleFormat::I16 => build::<i16>(&device, config, consumer, &shared),
-            SampleFormat::I24 => build::<I24>(&device, config, consumer, &shared),
-            SampleFormat::I32 => build::<i32>(&device, config, consumer, &shared),
-            SampleFormat::U8 => build::<u8>(&device, config, consumer, &shared),
-            SampleFormat::U16 => build::<u16>(&device, config, consumer, &shared),
-            SampleFormat::U24 => build::<U24>(&device, config, consumer, &shared),
-            SampleFormat::U32 => build::<u32>(&device, config, consumer, &shared),
+            SampleFormat::F32 => build::<f32>(&device, config, consumer, mixer, &shared),
+            SampleFormat::F64 => build::<f64>(&device, config, consumer, mixer, &shared),
+            SampleFormat::I8 => build::<i8>(&device, config, consumer, mixer, &shared),
+            SampleFormat::I16 => build::<i16>(&device, config, consumer, mixer, &shared),
+            SampleFormat::I24 => build::<I24>(&device, config, consumer, mixer, &shared),
+            SampleFormat::I32 => build::<i32>(&device, config, consumer, mixer, &shared),
+            SampleFormat::U8 => build::<u8>(&device, config, consumer, mixer, &shared),
+            SampleFormat::U16 => build::<u16>(&device, config, consumer, mixer, &shared),
+            SampleFormat::U24 => build::<U24>(&device, config, consumer, mixer, &shared),
+            SampleFormat::U32 => build::<u32>(&device, config, consumer, mixer, &shared),
             other => {
                 return Err(PlayerError::new(
                     ErrorCode::NoOutputDevice,
@@ -93,7 +159,13 @@ impl Output {
         }?;
         stream.play().map_err(map_err)?;
 
-        Ok((Output { shared, _stream: stream }, producer, out_config))
+        Ok((Output { shared, clips, _stream: stream }, producer, out_config))
+    }
+
+    /// Start mixing `clip` on top of whatever is playing (also while paused or
+    /// stopped). False if the hand-over ring is full; the clip is then skipped.
+    pub fn play_clip(&mut self, clip: Clip) -> bool {
+        self.clips.push(Voice { clip, pos: 0 }).is_ok()
     }
 
     /// A cloneable `Send + Sync` handle onto this output's shared state.
@@ -188,10 +260,12 @@ fn build<T>(
     device: &cpal::Device,
     config: StreamConfig,
     mut consumer: Consumer<f32>,
+    mut mixer: Mixer,
     shared: &Arc<Shared>,
 ) -> Result<Stream, PlayerError>
 where
     T: SizedSample + FromSample<f32>,
+    f32: FromSample<T>,
 {
     let channels = usize::from(config.channels);
     let cb_shared = Arc::clone(shared);
@@ -205,6 +279,7 @@ where
                 // deadline and cause audible glitches. Atomics and the
                 // lock-free ring only.
                 render(&mut consumer, data, channels, &cb_shared);
+                mixer.mix(data);
             },
             move |err: cpal::Error| {
                 // Not the realtime audio callback, but we still avoid logging; the
@@ -358,6 +433,67 @@ mod tests {
         render(&mut c, &mut out, 2, &shared);
         assert_eq!(out, [0.25, 0.75, 0.0, 0.0]);
         assert_eq!(shared.frames_played.load(Ordering::Relaxed), 1);
+    }
+
+    fn mixer() -> (Producer<Voice>, Mixer) {
+        let (p, c) = RingBuffer::<Voice>::new(MAX_VOICES * 2);
+        (p, Mixer::new(c))
+    }
+
+    fn voice(samples: &[f32]) -> Voice {
+        Voice { clip: samples.into(), pos: 0 }
+    }
+
+    #[test]
+    fn idle_mixer_leaves_output_untouched() {
+        let (_p, mut m) = mixer();
+        let mut out = [0.25f32, -0.5];
+        m.mix(&mut out);
+        assert_eq!(out, [0.25, -0.5]);
+    }
+
+    #[test]
+    fn clip_is_added_across_callbacks_then_retired() {
+        let (mut p, mut m) = mixer();
+        p.push(voice(&[0.1, 0.2, 0.3])).ok().unwrap();
+        let mut out = [0.5f32, 0.5];
+        m.mix(&mut out);
+        assert_eq!(out, [0.6, 0.7]);
+        let mut out = [0.0f32, 0.0];
+        m.mix(&mut out);
+        assert_eq!(out, [0.3, 0.0]);
+        assert!(m.voices.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn overlapping_clips_sum_and_clamp() {
+        let (mut p, mut m) = mixer();
+        p.push(voice(&[0.75, -0.75])).ok().unwrap();
+        p.push(voice(&[0.75, -0.75])).ok().unwrap();
+        let mut out = [0.0f32, 0.0];
+        m.mix(&mut out);
+        assert_eq!(out, [1.0, -1.0]);
+    }
+
+    #[test]
+    fn clips_beyond_the_voice_limit_are_skipped() {
+        let (mut p, mut m) = mixer();
+        for _ in 0..MAX_VOICES + 1 {
+            p.push(voice(&[0.1; 4])).ok().unwrap();
+        }
+        let mut out = [0.0f32; 2];
+        m.mix(&mut out);
+        assert!((out[0] - 0.1 * MAX_VOICES as f32).abs() < 1e-6, "got {}", out[0]);
+        assert_eq!(p.slots(), MAX_VOICES * 2);
+    }
+
+    #[test]
+    fn clip_mixes_into_integer_output() {
+        let (mut p, mut m) = mixer();
+        p.push(voice(&[0.5])).ok().unwrap();
+        let mut out = [0i16];
+        m.mix(&mut out);
+        assert!((i32::from(out[0]) - 16383).abs() <= 1, "got {}", out[0]);
     }
 
     #[test]

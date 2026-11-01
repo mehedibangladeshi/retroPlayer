@@ -4,6 +4,6 @@ export type Status = 'empty' | 'stopped' | 'playing' | 'paused'
 export interface TrackInfo { title: string; path: string; codec: string; sampleRate: number; channels: number }
 export type ErrorCode = 'unsupported_format' | 'file_not_found' | 'no_output_device' | 'decode_error' | 'invalid_state' | 'bad_message' | 'internal' | 'engine_crashed'
 type V = { v: typeof PROTOCOL_VERSION }
-export type Command = V & ({ type: 'load'; path: string } | { type: 'play' } | { type: 'pause' } | { type: 'stop' } | { type: 'seek'; positionMs: number } | { type: 'seekRelative'; deltaMs: number })
+export type Command = V & ({ type: 'load'; path: string } | { type: 'play' } | { type: 'pause' } | { type: 'stop' } | { type: 'seek'; positionMs: number } | { type: 'seekRelative'; deltaMs: number } | { type: 'loadSound'; name: string; path: string } | { type: 'playSound'; name: string })
 export type EngineEvent = V & ({ type: 'state'; status: Status; positionMs: number; durationMs: number | null; trackInfo: TrackInfo | null } | { type: 'position'; positionMs: number } | { type: 'ended' } | { type: 'error'; code: ErrorCode; message: string })
 export const SUPPORTED_EXTENSIONS = ['flac', 'wav', 'mp3', 'm4a', 'aac', 'ogg', 'oga'] as const

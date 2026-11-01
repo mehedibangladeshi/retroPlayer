@@ -198,3 +198,9 @@ Why: The user wants the pills to read as clips holding the two body parts togeth
 Decision: The seam between the upper body and the lower panel is redrawn in `body-bottom` as a thinner groove: the upper panel's edge rolls off and casts a shadow into a dark line, and the lower panel's lip has a faint highlight, as if lit from above. The artist's rounded panel corners at both ends are kept, and the groove fades into them. Exact rows and colours are in `assets/ui/MANIFEST.md`.
 
 Why: The user asked for a thinner seam that looks grooved, with the panels sitting on top of it.
+
+## 2026-11-01 — Key sounds are played by the engine
+
+Decision: The transport keys play sounds: Play and Pause play `button_click.mp3`, Stop plays `stop_button.mp3`, and Rewind and Forward play `rewind_forward.mp3` once per press (not again while held). The keyboard shortcuts play the same sounds as the keys. A disabled key, or a shortcut that does nothing, is silent. The engine decodes the sounds and mixes them into its output on top of the music, through two new commands, `loadSound` (main process only) and `playSound`. A failed sound is logged to stderr and never shown to the user. Adding these commands doesn't change the protocol version. The sound files live in `assets/audio/` and are bundled into `resources/sounds/`. The name-to-file map is `app/src/shared/sounds.ts`, so other keys can get sounds later.
+
+Why: AGENTS.md locks all audio to Rust and forbids Web Audio and `<audio>`, so the renderer can't play the sounds itself. The user chose the engine path over an exception to that rule. Mixing in the existing callback needs no new dependency (`symphonia` already decodes MP3) and no second audio stream.

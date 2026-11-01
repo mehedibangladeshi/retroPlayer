@@ -110,6 +110,19 @@ fn dispatch(player: &mut Player, cmd: Command) -> Result<(), PlayerError> {
             player.seek_relative(delta_ms);
             Ok(())
         }
+        // Key sounds are cosmetic: failures are logged, never sent as error events.
+        Command::LoadSound { name, path } => {
+            if let Err(e) = player.load_sound(&name, Path::new(&path)) {
+                eprintln!("engine-sidecar: sound {name:?} not loaded: {}", e.message);
+            }
+            Ok(())
+        }
+        Command::PlaySound { name } => {
+            if let Err(e) = player.play_sound(&name) {
+                eprintln!("engine-sidecar: sound {name:?} not played: {}", e.message);
+            }
+            Ok(())
+        }
     }
 }
 

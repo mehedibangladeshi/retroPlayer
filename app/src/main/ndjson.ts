@@ -30,7 +30,8 @@ export function parseEvent(line: string): EngineEvent | null {
   return null
 }
 
-const COMMAND_TYPES = new Set(['load', 'play', 'pause', 'stop', 'seek', 'seekRelative'])
+// Commands the renderer may send. `loadSound` is main-process only, so it is not listed.
+const COMMAND_TYPES = new Set(['load', 'play', 'pause', 'stop', 'seek', 'seekRelative', 'playSound'])
 
 /** Light validation of a renderer-supplied command. */
 export function isValidCommand(x: unknown): boolean {
@@ -40,5 +41,6 @@ export function isValidCommand(x: unknown): boolean {
   if (c.type === 'load') return typeof c.path === 'string'
   if (c.type === 'seek') return typeof c.positionMs === 'number' && Number.isFinite(c.positionMs)
   if (c.type === 'seekRelative') return typeof c.deltaMs === 'number' && Number.isFinite(c.deltaMs)
+  if (c.type === 'playSound') return typeof c.name === 'string'
   return true
 }

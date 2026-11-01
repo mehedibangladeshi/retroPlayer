@@ -41,6 +41,7 @@ The engine is a Cargo workspace in `engine/`.
   - `dsp`: the DSP chain, an explicit list of stages between decoder and output. The chain is empty in Phase 1. An equalizer can be added later as a stage without restructuring the pipeline.
   - `resample`: converts the file's sample rate to the device rate with `rubato`. It passes audio through when the rates are equal.
   - `output`: opens the default output device with `cpal`, reads from the ring buffer in the audio callback, and provides atomics for position. It also provides the acknowledged clear described below.
+  - `sound`: short UI sounds (key clicks). Each is decoded fully into memory once, then converted to the device's rate and channels on first use.
   - `player`: ties the parts together. It accepts commands and emits events. Each opened output gets one `player-worker` thread.
 - **`engine-sidecar`** (binary). A thin wrapper. It reads commands from stdin, passes them to `player-core`, and writes events to stdout. It contains the protocol types and no audio logic. If a command panics inside the player, the sidecar reports `internal` and resets the player.
 
@@ -66,6 +67,12 @@ Dropping buffered audio cannot be a plain "clear" flag. Samples refilled after t
 3. It resets the frame counter to the new position, then refills the ring from the decoder.
 
 This prevents stale audio after a seek and keeps the reported position in step with what is heard.
+
+### Key sounds
+
+The keys' click sounds go through the engine too, never through Web Audio or `<audio>`. The main process sends `loadSound` once per sound after the engine starts (the files are `assets/audio/` in dev and `resources/sounds/` in a packaged build). The renderer sends `playSound` by name when a key is pressed.
+
+A key sound is a `Clip`: an `Arc<[f32]>` already in the device's format. `Output::play_clip` hands it to the audio callback through a second small `rtrb` ring. After writing the music (or silence), the callback adds up to 4 clips on top and clamps the sum. Sounds play in every state, also while paused, stopped or empty, and they don't move the frame counter, so the position stays exact. The player keeps its own reference to every clip until the stream is gone, so the callback dropping a finished clip never frees memory.
 
 ## Threads
 

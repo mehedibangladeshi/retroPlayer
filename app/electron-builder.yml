@@ -15,6 +15,11 @@ extraResources:
     to: .
     filter:
       - engine-sidecar*
+  # Key sounds, decoded by the engine (main/sidecar.ts resolves them from resources/sounds).
+  - from: ../assets/audio/
+    to: sounds
+    filter:
+      - '*.mp3'
 artifactName: Cassette-Player-Retro-${version}-${os}-${arch}.${ext}
 linux:
   target: [AppImage, tar.gz]

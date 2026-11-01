@@ -14,6 +14,7 @@
 //! a mutex is fine. Rule against deadlock: the control side NEVER holds the
 //! lock while waiting for a worker reply (the worker takes the lock itself).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -23,8 +24,9 @@ use std::time::{Duration, Instant};
 use crate::decode::Decoder;
 use crate::dsp::DspChain;
 use crate::error::{ErrorCode, PlayerError};
-use crate::output::{Output, OutputHandle};
+use crate::output::{Output, OutputConfig, OutputHandle};
 use crate::resample::Resampler;
+use crate::sound::Sound;
 use crate::state::{Status, Transport, clamp_seek};
 
 const POSITION_INTERVAL: Duration = Duration::from_millis(50);
@@ -155,6 +157,10 @@ pub struct Player {
     handle: Option<OutputHandle>,
     worker: Option<Worker>,
     device_rate: u32,
+    device_config: Option<OutputConfig>,
+    /// UI sounds by name. Declared after `output` so it drops after the stream:
+    /// the audio callback must never hold the last reference to a clip.
+    sounds: HashMap<String, Sound>,
 }
 
 impl Player {
@@ -175,6 +181,8 @@ impl Player {
             handle: None,
             worker: None,
             device_rate: 0,
+            device_config: None,
+            sounds: HashMap::new(),
         };
         (player, rx)
     }
@@ -287,6 +295,36 @@ impl Player {
         self.do_seek(target);
     }
 
+    /// Decode a short UI sound into memory under `name`, replacing any sound
+    /// already there. Does not touch the audio device or the transport.
+    pub fn load_sound(&mut self, name: &str, path: &Path) -> Result<(), PlayerError> {
+        let sound = Sound::open(path)?;
+        self.sounds.insert(name.to_owned(), sound);
+        Ok(())
+    }
+
+    /// Mix a loaded sound on top of the music, in any state (also Empty). Opens
+    /// the output if nothing has yet. Never changes the transport or emits events.
+    pub fn play_sound(&mut self, name: &str) -> Result<(), PlayerError> {
+        if !self.sounds.contains_key(name) {
+            return Err(PlayerError::new(ErrorCode::InvalidState, format!("no sound named {name:?}")));
+        }
+        // A failed output is reopened only by `load` (that resets the track); skip quietly.
+        if self.handle.is_none() {
+            self.ensure_output()?;
+        }
+        let (Some(output), Some(cfg)) = (self.output.as_mut(), self.device_config) else {
+            return Ok(());
+        };
+        if output.has_failed() {
+            return Ok(());
+        }
+        let Some(sound) = self.sounds.get_mut(name) else { return Ok(()) };
+        let clip = sound.clip_for(cfg)?;
+        output.play_clip(clip);
+        Ok(())
+    }
+
     pub fn snapshot(&self) -> Snapshot {
         let frames = self.handle.as_ref().map_or(0, OutputHandle::frames_played);
         let mut g = lock(&self.inner);
@@ -339,6 +377,7 @@ impl Player {
         let handle = output.handle();
         lock(&self.inner).device_rate = cfg.sample_rate;
         self.device_rate = cfg.sample_rate;
+        self.device_config = Some(cfg);
         let (tx, rx) = mpsc::channel();
         let mut worker = WorkerState {
             rx,

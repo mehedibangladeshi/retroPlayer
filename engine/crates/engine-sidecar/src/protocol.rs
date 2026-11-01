@@ -24,6 +24,8 @@ pub enum Command {
         #[serde(deserialize_with = "lenient_delta")]
         delta_ms: i64,
     },
+    LoadSound { name: String, path: String },
+    PlaySound { name: String },
 }
 
 /// Commands accept any JSON number for millisecond fields and round to the
@@ -250,6 +252,8 @@ mod tests {
         assert!(parse_command(r#"{"v":1,"type":"load"}"#).is_err());
         assert!(parse_command(r#"{"v":1,"type":"seek"}"#).is_err());
         assert!(parse_command(r#"{"v":1,"type":"seek","positionMs":"x"}"#).is_err());
+        assert!(parse_command(r#"{"v":1,"type":"playSound"}"#).is_err());
+        assert!(parse_command(r#"{"v":1,"type":"loadSound","name":"x"}"#).is_err());
     }
 
     #[test]

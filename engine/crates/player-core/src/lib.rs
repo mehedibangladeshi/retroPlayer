@@ -7,12 +7,14 @@ pub mod error;
 pub mod output;
 pub mod player;
 pub mod resample;
+pub mod sound;
 pub mod state;
 
 pub use decode::Decoder;
 pub use dsp::{DspChain, DspStage};
 pub use error::{ErrorCode, PlayerError};
-pub use output::{Output, OutputConfig};
+pub use output::{Clip, Output, OutputConfig};
 pub use player::{Player, PlayerEvent, Snapshot, TrackInfo};
 pub use resample::Resampler;
+pub use sound::Sound;
 pub use state::{Status, Transport, clamp_seek};

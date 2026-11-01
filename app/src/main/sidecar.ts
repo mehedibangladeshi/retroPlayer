@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import { IPC } from '@shared/api'
 import { PROTOCOL_VERSION, type Command, type EngineEvent } from '@shared/protocol'
+import { SOUNDS } from '@shared/sounds'
 import { LineSplitter, parseEvent } from './ndjson'
 
 const BACKOFF_MIN_MS = 500
@@ -17,6 +18,11 @@ function sidecarPath(): string {
   if (process.env.RETRO_SIDECAR) return process.env.RETRO_SIDECAR
   if (app.isPackaged) return join(process.resourcesPath, exe)
   return resolve(app.getAppPath(), '../engine/target/debug', exe)
+}
+
+// Key sounds: packaged builds ship them in resources/sounds (extraResources); dev reads the repo's assets/audio.
+function soundPath(file: string): string {
+  return app.isPackaged ? join(process.resourcesPath, 'sounds', file) : resolve(app.getAppPath(), '../assets/audio', file)
 }
 
 export class Sidecar {
@@ -84,6 +90,8 @@ export class Sidecar {
     child.on('exit', (code, signal) => {
       onDown(`engine exited unexpectedly (${signal ? `signal ${signal}` : `exit code ${String(code)}`})`)
     })
+    // Every (re)started engine needs the key sounds; stdin buffers these until it reads them.
+    for (const [name, file] of Object.entries(SOUNDS)) this.send({ v: PROTOCOL_VERSION, type: 'loadSound', name, path: soundPath(file) })
   }
 
   send(cmd: Command): void {

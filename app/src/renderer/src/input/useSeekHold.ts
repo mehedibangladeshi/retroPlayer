@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { seekRelative } from '../engine/commands'
+import { playSound, seekRelative } from '../engine/commands'
 import { getSnapshot, subscribe } from '../engine/store'
 import { useEngine } from '../engine/useEngine'
 import type { Status } from '@shared/protocol'
@@ -49,6 +49,7 @@ export function useSeekHold(): SeekHold {
     const delta = dir === 'back' ? -STEP_MS : STEP_MS
     active.current = { dir, source, status: st }
     setHeld(dir)
+    playSound('seek') // once per press, not per repeat
     seekRelative(delta)
     timers.current.delay = setTimeout(() => {
       timers.current.repeat = setInterval(() => {
