@@ -8,8 +8,51 @@ on:
   push:
     tags: ['v*']
 
+# Least privilege by default. Only the release job below gets write access.
+permissions:
+  contents: read
+
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          # v0.1.2-beta -> 0.1.2: drop the leading v and any -suffix.
+          tag_base="${GITHUB_REF_NAME#v}"
+          tag_base="${tag_base%%-*}"
+          app_version="$(node -p "require(\"./app/package.json\").version")"
+          if [ "$tag_base" != "$app_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app/package.json version $app_version. Use a tag like v$app_version or v$app_version-beta." >&2
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches app version $app_version."
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+          key: check
+      - name: ALSA headers (cpal)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: cargo test --manifest-path engine/Cargo.toml --workspace
+      - run: cargo clippy --manifest-path engine/Cargo.toml --all-targets -- -D warnings
+
   bundle:
+    needs: check
     strategy:
       fail-fast: false
       matrix:
