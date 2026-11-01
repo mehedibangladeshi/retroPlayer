@@ -1,7 +1,7 @@
 {
   "name": "app",
   "productName": "Cassette Player Retro",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": true,
   "description": "Cassette-tape music player",
   "author": "Mehedi Hasan <mehedipy@gmail.com>",
