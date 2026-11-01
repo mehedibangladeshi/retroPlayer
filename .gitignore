@@ -7,3 +7,6 @@ engine/target/
 .DS_Store
 *.tsbuildinfo
 app/build/sidecar/
+
+# Claude Code local state (worktrees, locks)
+.claude/
