@@ -186,3 +186,15 @@ Why: The user asked for solid keys that look physically pressed. Opacity made th
 Decision: The right pill in `body-bottom` moved 15.5 CSS px outward, so both pills sit 24 px from their side edge. The source (`source/player-body-bottom-part-with-boltu.png`) was edited and the PNG regenerated. The full-screen box `png/chrome-fullscreen.png` was drawn for this project from the minimize box, with four corner brackets as the glyph.
 
 Why: The user asked for both. This is an exception to the rule not to invent artwork, made at the user's request. See `docs/ASSETS_TODO.md` items 12 and 13.
+
+## 2026-11-01 — Pills sit on the body seam
+
+Decision: Both pills in `body-bottom` moved about 20 CSS px down (60 px in the source) so each is centred on the thin seam between the upper body and the lower panel (CSS y 500-511). The seam itself is unchanged and not transparent.
+
+Why: The user wants the pills to read as clips holding the two body parts together. A truly see-through seam was considered and declined: it needs a transparent window, which Electron warns may break resizing on some platforms.
+
+## 2026-11-01 — The body seam is a shaded groove
+
+Decision: The seam between the upper body and the lower panel is redrawn in `body-bottom` as a thinner groove: the upper panel's edge rolls off and casts a shadow into a dark line, and the lower panel's lip has a faint highlight, as if lit from above. The artist's rounded panel corners at both ends are kept, and the groove fades into them. Exact rows and colours are in `assets/ui/MANIFEST.md`.
+
+Why: The user asked for a thinner seam that looks grooved, with the panels sitting on top of it.
