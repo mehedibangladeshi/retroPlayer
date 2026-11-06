@@ -44,8 +44,17 @@ export function togglePlayPause(): void {
 
 /** Play the next (+1) or previous (-1) album track relative to the one playing; no-op at the ends. */
 export function stepTrack(delta: 1 | -1): void {
-  const { album, trackInfo } = getSnapshot()
-  const i = album?.tracks.findIndex((t) => t.path === trackInfo?.path) ?? -1
-  if (!album || i < 0 || i + delta < 0 || i + delta >= album.tracks.length) return
+  const { album } = getSnapshot()
+  const i = currentIndex()
+  if (!album || i === null || i + delta < 0 || i + delta >= album.tracks.length) return
   playIndex(i + delta)
 }
+
+/** Index of the playing track in the album, or null with no album or an unlisted track. */
+export function currentIndex(): number | null {
+  const { album, trackInfo } = getSnapshot()
+  const i = album?.tracks.findIndex((t) => t.path === trackInfo?.path) ?? -1
+  return i < 0 ? null : i
+}
+
+export const seek = (positionMs: number): void => send({ type: 'seek', positionMs })
