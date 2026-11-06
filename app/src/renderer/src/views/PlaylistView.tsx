@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { PLAYLIST as P, type Rect } from '@shared/layout'
 import { playIndex, stepTrack } from '../engine/commands'
+import { openAlbum, openFile } from '../input/openFile'
 import { useEngine } from '../engine/useEngine'
 import fontUrl from '@assets/playlist/fonts/SueEllenFrancisco-Regular.ttf?url'
 import defaultCover from '@assets/playlist/default-cover.svg?url'
@@ -99,8 +100,9 @@ export default function PlaylistView() {
       const k = e.key.toLowerCase()
       if ((k === 'n' || k === 'p') && !e.repeat) stepTrack(k === 'n' ? 1 : -1)
       else if (k === 'arrowdown' || k === 'arrowup' || k === 'enter') {
-        // Chrome buttons (Minimize/Close) keep their native Enter/click behaviour.
-        if ((document.activeElement as Element | null)?.classList.contains('pl-chrome')) return
+        // Chrome buttons (Minimize/Close) and the empty-state buttons keep their native Enter/click behaviour.
+        const active = document.activeElement as Element | null
+        if (active?.classList.contains('pl-chrome') || active?.closest('.pl-empty')) return
         e.preventDefault() // also stops the native button click on a focused row
         const rows = Array.from(rowsRef.current?.querySelectorAll('.pl-row') ?? [])
         const f = rows.indexOf(document.activeElement as Element)
@@ -139,8 +141,15 @@ export default function PlaylistView() {
         </div>
 
         <div className="pl-rows" ref={rowsRef} style={rectStyle(P.TEXT_AREA)}>
+          {!album && (
+            <div className="pl-empty">
+              <p>No album loaded</p>
+              <button type="button" onClick={() => void openFile()}>Open file…</button>
+              <button type="button" onClick={() => void openAlbum()}>Open album…</button>
+            </div>
+          )}
           {/* y0 is a baseline; the baseline sits about 3/4 down a line box. */}
-          <div style={{ height: P.ROW.y0 - P.TEXT_AREA.y - P.ROW.pitch * 0.75 }} />
+          {album && <div style={{ height: P.ROW.y0 - P.TEXT_AREA.y - P.ROW.pitch * 0.75 }} />}
           {album?.tracks.map((t, i) => {
             const artist = t.artist ?? album.artist
             return (
@@ -149,8 +158,10 @@ export default function PlaylistView() {
                 type="button"
                 className={`pl-row${t.path === trackInfo?.path ? ' current' : ''}${i === selected ? ' selected' : ''}`}
                 style={{ height: P.ROW.pitch, lineHeight: `${P.ROW.pitch}px`, fontSize: P.ROW.fontSize, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
-                onClick={() => setSel({ album, i })}
-                onDoubleClick={() => playIndex(i)}
+                onClick={() => {
+                  setSel({ album, i })
+                  playIndex(i)
+                }}
               >
                 <span className="pl-name">
                   {String(i + 1).padStart(2, '0')}. {artist ? `${artist} - ` : ''}
