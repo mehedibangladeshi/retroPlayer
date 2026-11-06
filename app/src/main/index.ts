@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/api'
 import { PLAYLIST, WINDOW } from '@shared/layout'
-import { SUPPORTED_EXTENSIONS, type Command, type EngineEvent } from '@shared/protocol'
+import { SUPPORTED_EXTENSIONS, type Command } from '@shared/protocol'
 import { fitAll, follow, gripResize, isAttached, overlaps, placeSide, snapTo, type Side } from './dock'
 import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
@@ -11,7 +11,7 @@ import { Sidecar } from './sidecar'
 
 let win: BrowserWindow | null = null
 let quitting = false
-// "Satellite" windows (playlist, album art): frameless, hidden instead of closed, shown while the engine has content for them.
+// "Satellite" windows (playlist, album art): frameless, open with the player, hidden instead of closed, hidden while the player is minimized.
 interface Satellite {
   hash: string
   title: string
@@ -49,7 +49,7 @@ const album: Satellite = {
 }
 const satellites = [playlist, album]
 const live = (w: BrowserWindow | null): w is BrowserWindow => w !== null && !w.isDestroyed()
-const sidecar = new Sidecar(() => [win, playlist.win, album.win].filter(live), onEngineEvent)
+const sidecar = new Sidecar(() => [win, playlist.win, album.win].filter(live))
 const devUrl = process.env.ELECTRON_RENDERER_URL
 
 function fromAppWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
@@ -209,6 +209,23 @@ function createWindow(): void {
   w.once('ready-to-show', () => {
     w.show()
     if (b.fullScreen) w.setFullScreen(true)
+    // Satellites open with the player, after it exists so they can dock beside it.
+    for (const s of satellites) openSatellite(s)
+  })
+
+  // Minimizing the player hides the satellites too; restoring it shows the ones that were visible.
+  const hiddenByMinimize = new Set<Satellite>()
+  w.on('minimize', () => {
+    for (const s of satellites) {
+      if (live(s.win) && s.win.isVisible()) {
+        hiddenByMinimize.add(s)
+        s.win.hide()
+      }
+    }
+  })
+  w.on('restore', () => {
+    for (const s of [...hiddenByMinimize]) if (s.wanted) showSatellite(s)
+    hiddenByMinimize.clear()
   })
 
   // Remember the non-fullscreen bounds; skip while minimized (bounds can be bogus then).
@@ -300,6 +317,7 @@ function createSatellite(s: Satellite): BrowserWindow {
     resizable: true,
     maximizable: false,
     fullscreenable: false,
+    skipTaskbar: true,
     title: s.title,
     transparent: true,
     backgroundColor: '#00000000',
@@ -361,23 +379,11 @@ function createSatellite(s: Satellite): BrowserWindow {
   return w
 }
 
-function setSatelliteWanted(s: Satellite, on: boolean): void {
-  s.wanted = on
-  if (on) {
-    // Satellites are only created here, driven by engine playlist/artwork events: never at launch.
-    if (!live(s.win)) createSatellite(s) // shows itself on ready-to-show
-    else {
-      showSatellite(s)
-    }
-  } else {
-    deferred.delete(s)
-    if (live(s.win)) s.win.hide()
-  }
-}
-
-function onEngineEvent(evt: EngineEvent): void {
-  if (evt.type === 'playlist') setSatelliteWanted(playlist, evt.album !== null)
-  else if (evt.type === 'artwork') setSatelliteWanted(album, evt.cover !== null)
+// Create the satellite on first use (it shows itself on ready-to-show), or show it if it already exists.
+function openSatellite(s: Satellite): void {
+  s.wanted = true
+  if (!live(s.win)) createSatellite(s)
+  else showSatellite(s)
 }
 
 // Dev gets its own profile so a running dev session and an installed build don't share the
@@ -403,8 +409,9 @@ if (!app.requestSingleInstanceLock()) {
     sidecar.send(cmd as Command)
   })
   ipcMain.handle(IPC.openDialog, async (e): Promise<string | null> => {
-    if (!fromAppWindow(e) || !win) return null
-    const r = await dialog.showOpenDialog(win, {
+    const parent = BrowserWindow.fromWebContents(e.sender) ?? win
+    if (!fromAppWindow(e) || !parent) return null
+    const r = await dialog.showOpenDialog(parent, {
       defaultPath: lastOpenDir(),
       properties: ['openFile'],
       filters: [{ name: 'Audio', extensions: [...SUPPORTED_EXTENSIONS] }]
