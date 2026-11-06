@@ -67,6 +67,7 @@ The long-term product is a lossless audio player with an equalizer and several f
 - The main process spawns and supervises the sidecar (restart on crash, surface the error in the UI) and owns the native "open file" dialog.
 - File import: an "Open" button (native dialog filtered to supported audio) and drag-and-drop of a file onto the window. Both result in a `load` command and then an automatic `play`.
 - Phase 1 window: one fixed-size, non-resizable window, standard OS frame is fine for now (custom frameless chrome comes with the multi-window phase).
+- Drag regions: a side window has exactly one childless drag strip, in its top bar left of minimize and close. Nothing else in its view sets `-webkit-app-region` (Chromium builds drag regions in DOM order, so a stray one swallows clicks). `app/test/dragRegions.test.ts` enforces this. No window goes full screen or maximizes, and double-click does nothing.
 - The UI shows the cassette, five buttons (play, pause, stop, backward, forward), the track name, and elapsed/total time. Buttons are disabled when they do not apply (e.g. nothing loaded).
 - Cassette animation: the reels rotate only while status is `Playing`, stop smoothly on pause or stop, and spin faster while a seek button is held. Use CSS or SVG transform animation, not canvas. Tape amount on each reel may shift with progress if the asset layers allow it (nice-to-have).
 - State comes from engine events only. Do not predict or keep a separate clock in the UI beyond smoothing the displayed position between `position` events.

@@ -342,3 +342,39 @@ Why: The three windows read as one set from the first launch, and an empty windo
 Decision: On the playlist and album-art windows, the minimize button rolls the window up into its own top bar, and it stays docked. The playlist shades to 80 design px and the album-art window to 70. The minimize button again, or a double-click on the top bar, restores it. While shaded, the minimize icon shows a "restore" glyph. Only the player's minimize sends everything to the OS taskbar or dock. Shading uses two UI-internal Electron IPC channels, `window:toggleShade` (renderer to main) and `window:shaded` (main to renderer). They are not part of the engine protocol.
 
 Why: A Winamp-style set needs its windows to stay docked. An OS minimize would give each satellite its own taskbar entry and take it out of the set. A shade keeps the window in place. Risk: a double-click on a drag region is caught through the window's `maximize` event, since Linux ignores `maximizable: false`. This is untested on macOS.
+
+## 2026-11-06 — Side-window drag region is one top-bar strip
+
+Decision: The playlist and album-art windows have exactly one drag region: a childless strip in their top bar (`.pl-titlebar`, `.al-titlebar`), left of the minimize and close buttons. Nothing else in those views sets `-webkit-app-region`. `app/test/dragRegions.test.ts` fails if that changes.
+
+Why: Chromium builds drag regions in DOM order. The top artwork `<img>` came after the rows and buttons and inherited `drag`, so it covered the whole window and every click became a title-bar click. A live CDP probe with real clicks found this. Scaling was not the cause, so the transform in the 2026-11-01 "Resizable, aspect-locked window" entry stays.
+
+## 2026-11-06 — No window is full screen or maximized
+
+Decision: No window goes full screen or maximizes, the player included. The F11, Ctrl+Cmd+F and Esc handling, the full-screen button, its IPC and the saved full-screen setting are removed. All windows are `maximizable: false` and `fullscreenable: false`. A `maximize` listener calls `unmaximize()` at once, because Linux ignores `maximizable: false`. The drawn full-screen box (`chrome-fullscreen.png`) is removed from the assets. Supersedes the 2026-11-01 "Only the player goes full screen" entry. Also supersedes the full-screen parts of the 2026-11-01 "Resizable, aspect-locked window" entry (full-screen state restore) and of the "Artwork edits" entry (the drawn full-screen box).
+
+Why: Owner decision. Full screen and maximize would break the fixed, docked set of three windows.
+
+## 2026-11-06 — Double-click does nothing; roll-up only from minimize
+
+Decision: A double-click does nothing on any window, the player and the top bars included. A side window rolls up and down only with its minimize button. Supersedes the double-click restore in the 2026-11-06 "Satellite minimize rolls up into a window shade" entry, and its `maximize`-event catch. On macOS, if the system setting makes a title-bar double-click minimize, a side window rolls up instead. Untested on macOS.
+
+Why: Owner decision. The double-click restore relied on the `maximize` event, which is a fragile signal to build a control on.
+
+## 2026-11-06 — Side windows match the player's height
+
+Decision: The playlist and album-art windows are always the same height as the player, docked or not. Their width comes from their design aspect ratio. They are not resizable by the user. The playlist's resize grip and its `window:resize` IPC are removed. Supersedes the 2026-11-01 "The playlist window has its own frame" entry's resize-from-edges and grip statements, and the "Playlist resize grip uses a sender-checked IPC" entry. Also supersedes the square sizing in the 2026-11-01 "Window placement on first appearance only" entry, since the album-art window is no longer square.
+
+Why: Owner decision. One shared height keeps the three windows aligned as a set, and a fixed aspect ratio keeps the artwork true to its design.
+
+## 2026-11-06 — Cover-art window drawn from artist layers
+
+Decision: The album-art window is drawn from the artist's layers in `assets/ui/source/album cover deck/`: a base, three display-only tabs ("Cassette Box", "J-Flap", "Lyric"), and a top layer with the glass, border and buttons. The playing cover sits under the glass. The reference art and the preview are not shipped. Supersedes the frame in the 2026-11-01 "Album-art window" entry, which was a CSS placeholder cropped from the playlist artwork.
+
+Why: The artist's layers replace the placeholder. The tabs are display-only for now.
+
+## 2026-11-06 — Linux runs on any platform; no side-window docking on native Wayland
+
+Decision: Linux runs on whatever platform is available. On native Wayland the app cannot position windows, so side windows do not dock there. This is accepted. Windows and macOS are the targets for the full behaviour. Extends the 2026-11-01 "Window positions are decided by the compositor on Wayland" entry, and does not change it.
+
+Why: Owner decision. This accepts the limit that entry describes, rather than forcing XWayland.
