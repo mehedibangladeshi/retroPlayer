@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { BUTTONS, CASSETTE, CHROME, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { BUTTONS, BUTTON_SHADOW_PAD, CASSETTE, CHROME, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
 import { pressPause, pressPlay, pressStop } from '../engine/commands'
 import { clearError } from '../engine/store'
 import { useDisplayPosition, useEngine } from '../engine/useEngine'
@@ -151,7 +151,7 @@ export default function CassettePlayer() {
           aria-pressed={id === 'rewind' || id === 'forward' ? !!pressed[id] : undefined}
           className={`cp-btn${pressed[id] ? ' pressed' : ''}${latched[id] ? ' latched' : ''}`}
           disabled={off[id]}
-          style={{ ...rectStyle(BUTTONS[id]), backgroundImage: `url(${layerUrl('bodyButtons')})`, backgroundSize: `${WINDOW.width}px ${WINDOW.height}px`, backgroundPosition: `${-BUTTONS[id].x}px ${-BUTTONS[id].y}px` }}
+          style={{ ...rectStyle(BUTTONS[id]), '--art': `url(${layerUrl('bodyButtons')})`, '--pos': `${-BUTTONS[id].x}px ${-BUTTONS[id].y}px`, '--pad-r': `${BUTTON_SHADOW_PAD.right}px`, '--pad-b': `${BUTTON_SHADOW_PAD.bottom}px` } as CSSProperties}
           {...buttonProps[id]}
         />
       ))}

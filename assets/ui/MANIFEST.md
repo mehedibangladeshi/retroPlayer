@@ -14,7 +14,7 @@ Paint order bottom to top. "Anchor" is the top-left in window CSS px.
 | 4 | `png/cassette-reel.png` | 1172x684 | 90,85 | 586x342 | Both reels (hub centres in cassette px 173.5,164 and 422.5,164.5; clip r 36, visible r≈33) |
 | 5 | `png/body-top-cover.png` | 1534x1232 | 0,0 | 767x616 | Window bezel/glass, brand text "SUPER LX-RETRO", "HIGH QUALITY AUDIO", minimize/close boxes. Covers the cassette edges |
 | 6 | `png/body-bottom.png` | 1534x1232 | 0,0 | 767x616 | Lower panel, bolts, PAUSE/REWIND/PLAY/FORWARD/STOP text labels |
-| 7 | `png/body-buttons.png` | 1534x1232 | 0,0 | 767x616 | The five key caps with icons (no text labels) |
+| 7 | `png/body-buttons.png` | 1534x1232 | 0,0 | 767x616 | The five key caps with icons (no text labels), with baked drop shadow (extends ~5 px right, ~7 px bottom past the `BUTTONS` rects; see `BUTTON_SHADOW_PAD`) |
 
 ### How png/ was derived
 
@@ -42,7 +42,7 @@ Measured values in `layout.ts` come from the shipped PNGs: reels and button keys
 | `source/player-body-base.png` | 2334x1874 | Body layer 1 (shared body canvas) |
 | `source/player-body-top-cover-and-utility.png` | 2334x1874 | Body layer top cover |
 | `source/player-body-bottom-part-with-boltu.png` | 2334x1874 | Body layer bottom |
-| `source/player-body-buttons.png` | 2334x1874 | Body layer buttons |
+| `source/player-body-buttons.png` | 2334x1874 | Body layer buttons, with baked drop shadow ("player buttons with shadow") |
 | `source/cassette/audio-red-base.png` | 1783x1040 | Cassette layer base |
 | `source/cassette/audio-red-mid.png` | 1783x1040 | Cassette layer mid |
 | `source/cassette/audio-red-reel.png` | 1783x1040 | Cassette layer reels (both) |
@@ -57,7 +57,7 @@ Canvas 1874x1885 px at 2x, so the design size is 937x943 CSS px. Constants are i
 
 | File | What | Anchor (CSS px) |
 |------|------|-----------------|
-| `playlist/playlist-base.png` | Dark window frame and background (was "1st playlist base") | 0,0 937x943 |
+| `playlist/playlist-base.png` | Dark window frame and background. 1874x1885: `source/playlist-base.png` (1874x1874, new "1st playlist base") pasted at y=11 to line up with the other layers | 0,0 937x943 |
 | `playlist/playlist-paper.png` | Paper sheet laid over the cover, cover shows around its border (was "3rd paper like texture") | 0,0 937x943; paper bbox 70.5,91.5 781.5x790.5 |
 | `playlist/playlist-top.png` | Minimize and close buttons, status dots, resize grip (was "4th top layers") | 0,0 937x943; minimize 862,20 30x30; close 895.5,20 30x30 (the resize grip is baked in, no longer used) |
 | `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,81.5 810.5x811, drawn between base and paper |

@@ -38,6 +38,9 @@ export const BUTTONS: Record<ButtonId, Rect> = {
   stop: { x: 532.5, y: 468, w: 89, h: 110 },
 }
 
+// Baked drop shadow of the key art extends this far (design px) past each BUTTONS rect (measured from body-buttons.png).
+export const BUTTON_SHADOW_PAD = { right: 5, bottom: 7 }
+
 export const CHROME: { minimize: Rect; close: Rect } = {
   minimize: { x: 719, y: 7, w: 19, h: 19 },
   close: { x: 741, y: 7, w: 19, h: 19 },
