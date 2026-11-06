@@ -378,3 +378,27 @@ Why: The artist's layers replace the placeholder. The tabs are display-only for 
 Decision: Linux runs on whatever platform is available. On native Wayland the app cannot position windows, so side windows do not dock there. This is accepted. Windows and macOS are the targets for the full behaviour. Extends the 2026-11-01 "Window positions are decided by the compositor on Wayland" entry, and does not change it.
 
 Why: Owner decision. This accepts the limit that entry describes, rather than forcing XWayland.
+
+## 2026-11-06 — UI sounds can loop until stopped
+
+Decision: `playSound` takes an optional `loop` flag, and `stopSound {name}` ends a sound. A looping sound restarts at 0 when it ends. A second loop of a sound that is already looping is ignored. `stopSound` ends every voice of that sound, looping or not. Looping voices count toward the 4-voice mix cap. Inside the engine, `Output::loop_clip` and `Output::stop_clip` send a small `Cmd` enum (`Play`, `Loop`, `Stop`) through the existing sound ring to the audio callback. The callback does no allocation, locking or logging. The wire format is in `docs/PROTOCOL.md`. Extends the 2026-11-01 "Key sounds are played by the engine" entry.
+
+Why: The seek hold needs a sound that runs for as long as the button is held and stops on release. A one-shot sound would need a timer in the UI, and the UI must not keep its own clock for audio.
+
+## 2026-11-06 — Tape-motor loop is FLAC, cut to loop seamlessly
+
+Decision: Holding forward or rewind loops `assets/audio/tape_motor.flac`, mapped as `motor` in `app/src/shared/sounds.ts`. The file is an 8.0 s loop cut from the artist's 60 s mp3 (source 20-28 s), with a 0.4 s equal-power crossfade at the seam. The renderer starts the loop when a hold starts (after the 400 ms delay, or when a key is held) and plays the one-shot `seek` sound with it. It stops the loop when the hold ends. A click plays no motor sound. The main process also sends `stopSound motor` when the player window's renderer closes, crashes or reloads, so a dead UI cannot leave the loop running. `electron-builder.yml` copies `*.flac` into the resources too.
+
+Why: An mp3 adds encoder padding, which leaves a gap at the loop point. FLAC keeps the loop clean. The engine decodes each sound fully and caps sound length at 10 s, so an 8 s loop fits.
+
+## 2026-11-06 — Default player window is 25% of the work area (provisional)
+
+Decision: On first launch the player is 25% of the primary work-area width, down from 55%. Its height is capped at 80% of the work-area height, and its minimum width is 384 (minimum height 308). The value comes from `defaultPlayerSize` in `app/src/main/windowSize.ts`. The 25% figure is provisional. The owner will pick the final size after testing. Supersedes the 55% first-launch size in the 2026-11-01 "Resizable, aspect-locked window that scales the player as one picture" entry. The rest of that entry still holds.
+
+Why: The 55% window was too big on the owner's screen. 25% is a value to test, not a settled design. The minimum was lowered from 575 to 384 so the player can get that small.
+
+## 2026-11-06 — One-time layout reset through `layoutVersion`
+
+Decision: `settings.json` stores a `layoutVersion`. The current value is `LAYOUT_VERSION = 3` in `app/src/main/windowSize.ts`. When settings load with a missing or older version, the saved player, playlist and album-art window bounds are dropped once. `lastOpenDir` is kept. Every save writes the current version. To reset window sizes again, bump `LAYOUT_VERSION`.
+
+Why: Without a version, old saved bounds would keep the old sizes forever. One version number resets them once and leaves the user's Open folder alone.

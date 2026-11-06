@@ -32,6 +32,6 @@ JS unit tests use Node's built-in `node:test` (no dependency); they live in `app
 
 - The protocol source of truth is `docs/PROTOCOL.md`. The Rust types are in `engine/crates/engine-sidecar/src/protocol.rs` and the TypeScript types in `app/src/shared/protocol.ts`. Change all three together.
 - Window geometry and artwork positions live in `app/src/shared/layout.ts`. It is generated from `assets/ui/source` (see `assets/ui/MANIFEST.md`).
-- Main-process settings (window bounds, full screen, last Open folder) live in `settings.json` under userData (`app/src/main/settings.ts`). The renderer scales the fixed 767x616 composition to the window (`CassettePlayer.tsx`), so layout.ts coordinates stay in design px.
+- Main-process settings (window bounds, last Open folder, `layoutVersion`) live in `settings.json` under userData (`app/src/main/settings.ts`). The renderer scales the fixed 767x616 composition to the window (`CassettePlayer.tsx`), so layout.ts coordinates stay in design px.
 - The debug view opens with the URL hash `#debug` (`app/src/renderer/src/App.tsx`).
 - Plans and history are in `docs/plans/`.
