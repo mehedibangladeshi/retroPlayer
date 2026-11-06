@@ -27,3 +27,6 @@ body { background: transparent; overflow: hidden; }
 .pl .pl-chrome:hover { background: rgba(255, 255, 255, 0.12); }
 .pl .pl-chrome:active { background: rgba(0, 0, 0, 0.25); transform: translateY(1px); }
 .pl .pl-chrome:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); }
+/* Placeholder restore glyph (see ASSETS_TODO): a dark patch hides the baked minimize icon, an outlined square marks "restore". */
+.pl .pl-chrome.shaded, .pl .pl-chrome.shaded:hover { background: #2f3138; }
+.pl .pl-chrome.shaded::after { content: ''; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #ddd; border-top-width: 4px; }

@@ -5,6 +5,7 @@ import { openAlbum, openFile } from '../input/openFile'
 import { useEngine } from '../engine/useEngine'
 import fontUrl from '@assets/playlist/fonts/SueEllenFrancisco-Regular.ttf?url'
 import defaultCover from '@assets/playlist/default-cover.svg?url'
+import { SHADE } from '@shared/shade'
 import { rowKeyAction } from './rowKeys'
 import './PlaylistView.css'
 
@@ -28,17 +29,21 @@ const fmt = (ms: number | null): string => {
 const rectStyle = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h })
 
 /** Scale that fits the fixed composition inside the viewport (letterboxed), tracked on resize. */
-function useFitScale(): { scale: number; left: number; top: number } {
-  const compute = () => {
+const compute = (shaded: boolean): { scale: number; left: number; top: number } => {
+    // Shaded: the window is only the top bar, so scale by width alone and anchor top-left.
+    if (shaded) return { scale: window.innerWidth / SHADE.playlist.designW, left: 0, top: 0 }
     const scale = Math.min(window.innerWidth / P.WINDOW.w, window.innerHeight / P.WINDOW.h)
     return { scale, left: (window.innerWidth - P.WINDOW.w * scale) / 2, top: (window.innerHeight - P.WINDOW.h * scale) / 2 }
-  }
-  const [fit, setFit] = useState(compute)
+}
+
+function useFitScale(shaded: boolean): { scale: number; left: number; top: number } {
+  const [fit, setFit] = useState(() => compute(shaded))
   useEffect(() => {
-    const onResize = (): void => setFit(compute())
+    const onResize = (): void => setFit(compute(shaded))
+    onResize() // re-fit when the shade state flips
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [])
+  }, [shaded])
   return fit
 }
 
@@ -81,7 +86,9 @@ function useGrip(): React.HTMLAttributes<HTMLDivElement> {
 export default function PlaylistView() {
   const grip = useGrip()
   const { album, trackInfo } = useEngine()
-  const fit = useFitScale()
+  const [shaded, setShaded] = useState(false)
+  useEffect(() => window.retro.onShaded(setShaded), [])
+  const fit = useFitScale(shaded)
   const heading = album ? [album.artist, album.title].filter(Boolean).join(' - ') + (album.year ? ` (${album.year})` : '') : ''
   const ul = P.HEADING.underline
   // Selection is tied to the album it was made in, so a new album starts unselected.
@@ -173,7 +180,7 @@ export default function PlaylistView() {
           })}
         </div>
 
-        <button type="button" className="pl-chrome" aria-label="Minimize" style={rectStyle(P.MINIMIZE)} onClick={() => window.retro.minimizeWindow()} />
+        <button type="button" className={`pl-chrome${shaded ? ' shaded' : ''}`} aria-label={shaded ? 'Restore' : 'Roll up'} style={rectStyle(P.MINIMIZE)} onClick={() => window.retro.toggleShade()} />
         <button type="button" className="pl-chrome" aria-label="Close playlist" style={rectStyle(P.CLOSE)} onClick={() => window.retro.closeWindow()} />
 
         <img className="pl-layer" src={layerUrl('top')} alt="" draggable={false} style={rectStyle(layerRect('top'))} />

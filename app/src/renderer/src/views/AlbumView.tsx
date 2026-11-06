@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PLAYLIST as P, type Rect } from '@shared/layout'
+import { SHADE } from '@shared/shade'
 import { useEngine } from '../engine/useEngine'
 import topUrl from '@assets/playlist/playlist-top.png?url'
 import './AlbumView.css'
@@ -11,17 +12,21 @@ const CLOSE_X = SIZE - RIGHT_MARGIN - P.CLOSE.w
 const MINIMIZE_X = CLOSE_X - GAP - P.MINIMIZE.w
 
 /** Scale that fits the square composition inside the viewport (letterboxed). */
-function useFitScale(): { scale: number; left: number; top: number } {
-  const compute = () => {
+const compute = (shaded: boolean): { scale: number; left: number; top: number } => {
+    // Shaded: the window is only the top bar, so scale by width alone and anchor top-left.
+    if (shaded) return { scale: window.innerWidth / SHADE.album.designW, left: 0, top: 0 }
     const scale = Math.min(window.innerWidth, window.innerHeight) / SIZE
     return { scale, left: (window.innerWidth - SIZE * scale) / 2, top: (window.innerHeight - SIZE * scale) / 2 }
-  }
-  const [fit, setFit] = useState(compute)
+}
+
+function useFitScale(shaded: boolean): { scale: number; left: number; top: number } {
+  const [fit, setFit] = useState(() => compute(shaded))
   useEffect(() => {
-    const onResize = (): void => setFit(compute())
+    const onResize = (): void => setFit(compute(shaded))
+    onResize() // re-fit when the shade state flips
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [])
+  }, [shaded])
   return fit
 }
 
@@ -38,13 +43,15 @@ const chrome = (r: Rect, left: number): React.CSSProperties => ({
 
 export default function AlbumView() {
   const { artwork } = useEngine()
-  const fit = useFitScale()
+  const [shaded, setShaded] = useState(false)
+  useEffect(() => window.retro.onShaded(setShaded), [])
+  const fit = useFitScale(shaded)
 
   return (
     <div className="al-stage">
       <div className="al" style={{ width: SIZE, height: SIZE, left: fit.left, top: fit.top, transform: `scale(${fit.scale})` }}>
         <div className="al-inset">{artwork && <img src={artwork} alt="Album cover" draggable={false} />}</div>
-        <button type="button" className="al-chrome" aria-label="Minimize" style={chrome(P.MINIMIZE, MINIMIZE_X)} onClick={() => window.retro.minimizeWindow()} />
+        <button type="button" className={`al-chrome${shaded ? ' shaded' : ''}`} aria-label={shaded ? 'Restore' : 'Roll up'} style={chrome(P.MINIMIZE, MINIMIZE_X)} onClick={() => window.retro.toggleShade()} />
         <button type="button" className="al-chrome" aria-label="Close album art" style={chrome(P.CLOSE, CLOSE_X)} onClick={() => window.retro.closeWindow()} />
       </div>
     </div>
