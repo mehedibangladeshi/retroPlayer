@@ -2,7 +2,7 @@ import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
-export interface WindowState { x: number; y: number; width: number; height: number; fullScreen: boolean }
+export interface WindowState { x: number; y: number; width: number; height: number }
 export interface Settings { lastOpenDir?: string; window?: WindowState; playlistWindow?: WindowState; albumWindow?: WindowState }
 
 let cache: Settings | null = null
@@ -16,7 +16,7 @@ function settingsPath(): string {
 function parseWindow(v: unknown): WindowState | undefined {
   const w = v as Record<string, unknown> | null | undefined
   if (typeof w === 'object' && w !== null && isNum(w.x) && isNum(w.y) && isNum(w.width) && isNum(w.height) && w.width > 0 && w.height > 0) {
-    return { x: w.x, y: w.y, width: w.width, height: w.height, fullScreen: w.fullScreen === true }
+    return { x: w.x, y: w.y, width: w.width, height: w.height }
   }
   return undefined
 }

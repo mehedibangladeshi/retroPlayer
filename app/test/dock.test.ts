@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import {
   fitAll,
   follow,
-  gripResize,
   isAttached,
   overlaps,
   placeSide,
@@ -104,13 +103,4 @@ test('fitAll: player y is clamped into the work area', () => {
   const work = r(0, 0, 1000, 800)
   assert.equal(fitAll(r(200, -40, 400, 300), {}, work).player.y, 0)
   assert.equal(fitAll(r(200, 700, 400, 300), {}, work).player.y, 500)
-})
-
-test('gripResize: plain drag, aspect kept, diagonal uses the larger, min clamp', () => {
-  const s = r(10, 20, 400, 200)
-  assert.deepEqual(gripResize(s, 100, 0, 2, 100, 50), r(10, 20, 500, 250))
-  assert.deepEqual(gripResize(s, 0, 100, 2, 100, 50), r(10, 20, 600, 300))
-  assert.deepEqual(gripResize(s, 100, 100, 2, 100, 50), r(10, 20, 600, 300))
-  assert.deepEqual(gripResize(s, -1000, -1000, 2, 100, 50), r(10, 20, 100, 50))
-  assert.deepEqual(gripResize(s, -1000, -1000, 2, 100, 80), r(10, 20, 160, 80))
 })

@@ -85,20 +85,7 @@ export function fitAll(
   return out
 }
 
-/** Top-left anchored, aspect-locked resize from a bottom-right grip drag. */
-export function gripResize(
-  start: Rect,
-  dx: number,
-  dy: number,
-  aspect: number,
-  minW: number,
-  minH: number
-): Rect {
-  let width = Math.round(Math.max(minW, start.width + Math.max(dx, dy * aspect)))
-  let height = Math.round(width / aspect)
-  if (height < minH) {
-    height = minH
-    width = Math.round(minH * aspect)
-  }
-  return { x: start.x, y: start.y, width, height }
+/** Side-window size: always the player's height, width from the window's aspect (never below minWidth). */
+export function matchHeight(playerHeight: number, aspect: number, minWidth: number): { width: number; height: number } {
+  return { width: Math.max(minWidth, Math.round(playerHeight * aspect)), height: playerHeight }
 }

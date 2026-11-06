@@ -2,11 +2,11 @@ import { existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/api'
-import { PLAYLIST, WINDOW } from '@shared/layout'
+import { ALBUM, PLAYLIST, WINDOW } from '@shared/layout'
 import { SUPPORTED_EXTENSIONS, type Command } from '@shared/protocol'
 import { SHADE } from '@shared/shade'
 import { clampInto, expandedAt, shadedBounds } from './shade'
-import { fitAll, follow, gripResize, isAttached, overlaps, placeSide, snapTo, type Side } from './dock'
+import { fitAll, follow, isAttached, matchHeight, overlaps, placeSide, snapTo, type Side } from './dock'
 import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
 import { Sidecar } from './sidecar'
@@ -24,8 +24,8 @@ interface Satellite {
   side: Side
   attached: boolean // docked flush to the player (in memory only)
   dockTimer?: NodeJS.Timeout
-  // Default bounds beside the player (p = player content bounds, a = its display work area), before clamping.
-  place: (p: Rect, a: Rect) => Rect
+  // Flush x beside the player (p = player bounds) for a window of the given width.
+  placeX: (p: Rect, width: number) => number
   win: BrowserWindow | null
   wanted: boolean
   shaded: boolean // rolled up to its top bar
@@ -37,19 +37,11 @@ const PL_ASPECT = PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h
 const PL_MIN_WIDTH = 320
 const playlist: Satellite = {
   hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 322, key: 'playlistWindow', side: 'right', attached: true, win: null, wanted: false, shaded: false, expanded: null,
-  // Flush against the player's right edge, same height.
-  place: (p, a) => {
-    const height = Math.min(p.height, a.height)
-    return { x: p.x + p.width, y: p.y, width: Math.max(PL_MIN_WIDTH, Math.round(height * PL_ASPECT)), height }
-  }
+  placeX: (p) => p.x + p.width // flush against the player's right edge
 }
 const album: Satellite = {
-  hash: 'album', title: 'Cassette Player: Album', aspect: 1, minWidth: 240, minHeight: 240, key: 'albumWindow', side: 'left', attached: true, win: null, wanted: false, shaded: false, expanded: null,
-  // Square, flush against the player's left edge.
-  place: (p, a) => {
-    const size = Math.max(240, Math.min(p.height, a.height, a.width))
-    return { x: p.x - size, y: p.y, width: size, height: size }
-  }
+  hash: 'album', title: 'Cassette Player: Album', aspect: ALBUM.WINDOW.w / ALBUM.WINDOW.h, minWidth: 240, minHeight: 240, key: 'albumWindow', side: 'left', attached: true, win: null, wanted: false, shaded: false, expanded: null,
+  placeX: (p, width) => p.x - width // flush against the player's left edge
 }
 const satellites = [playlist, album]
 const live = (w: BrowserWindow | null): w is BrowserWindow => w !== null && !w.isDestroyed()
@@ -66,7 +58,7 @@ const MIN_HEIGHT = 462
 
 // Sizes below are content sizes (the window is frameless, so content == window).
 // Returns the saved bounds fitted to a visible display, or null if there are none or they are off-screen.
-function fitSaved(saved: WindowState | undefined, aspect: number, minWidth: number): { x: number; y: number; width: number; height: number; fullScreen: boolean } | null {
+function fitSaved(saved: WindowState | undefined, aspect: number, minWidth: number): { x: number; y: number; width: number; height: number } | null {
   if (!saved) return null
   const visible = screen.getAllDisplays().some((d) => {
     const a = d.workArea
@@ -80,28 +72,28 @@ function fitSaved(saved: WindowState | undefined, aspect: number, minWidth: numb
   const a = screen.getDisplayMatching({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }).workArea
   const maxWidth = Math.max(minWidth, Math.min(a.width, Math.floor(a.height * aspect)))
   const width = Math.min(maxWidth, Math.max(minWidth, Math.round(saved.width)))
-  return { x: Math.round(saved.x), y: Math.round(saved.y), width, height: Math.round(width / aspect), fullScreen: saved.fullScreen }
+  return { x: Math.round(saved.x), y: Math.round(saved.y), width, height: Math.round(width / aspect) }
 }
 
-function initialBounds(): { x?: number; y?: number; width: number; height: number; fullScreen: boolean } {
+function initialBounds(): { x?: number; y?: number; width: number; height: number } {
   const fitted = fitSaved(loadSettings().window, ASPECT, MIN_WIDTH)
   if (fitted) return fitted
   const area = screen.getPrimaryDisplay().workAreaSize
   let width = Math.round(0.55 * area.width)
   if (width / ASPECT > 0.8 * area.height) width = Math.round(0.8 * area.height * ASPECT)
   width = Math.max(MIN_WIDTH, width)
-  return { width, height: Math.round(width / ASPECT), fullScreen: false }
+  return { width, height: Math.round(width / ASPECT) }
 }
 
+// Side windows always take the player's height; only a saved position is reused (and only if still on screen).
 function satelliteBounds(s: Satellite): { x?: number; y?: number; width: number; height: number } {
+  const size = matchHeight(live(win) ? win.getBounds().height : MIN_HEIGHT, s.aspect, s.minWidth)
   const fitted = fitSaved(loadSettings()[s.key], s.aspect, s.minWidth)
-  if (fitted) return fitted
-  if (!live(win)) return { width: s.minWidth * 2, height: Math.round((s.minWidth * 2) / s.aspect) }
-  const p = win.getContentBounds()
+  if (fitted) return { x: fitted.x, y: fitted.y, ...size }
+  if (!live(win)) return size
+  const p = win.getBounds()
   const a = screen.getDisplayMatching(p).workArea
-  const r = s.place(p, a)
-  // Keep it inside the player's display.
-  return { ...r, x: Math.max(a.x, Math.min(r.x, a.x + a.width - r.width)), y: Math.max(a.y, Math.min(r.y, a.y + a.height - r.height)) }
+  return { ...size, x: Math.max(a.x, Math.min(s.placeX(p, size.width), a.x + a.width - size.width)), y: Math.max(a.y, Math.min(p.y, a.y + a.height - size.height)) }
 }
 
 // Shared by the debounced save and the immediate save before the player destroys the window.
@@ -111,7 +103,7 @@ function persistSatellite(s: Satellite): void {
   const nb = w.getNormalBounds()
   // While shaded, save the full size so a restart does not open a stub.
   const { x, y, width, height } = s.shaded && s.expanded ? expandedAt(nb, s.expanded) : nb
-  saveSettings({ [s.key]: { x, y, width, height, fullScreen: false } })
+  saveSettings({ [s.key]: { x, y, width, height } })
 }
 
 // Bounds changes we make ourselves: their move/resize events must not be read as user drags (feedback loop).
@@ -129,19 +121,41 @@ function isOwn(w: BrowserWindow): boolean {
 }
 const sameRect = (a: Rect, b: Rect): boolean => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 let prevPlayer: Rect | null = null
+
+// Side windows are not user-resizable, and GTK ignores size changes on a fixed window: lift the lock around the change.
+function resizeFixed(w: BrowserWindow, r: Rect): void {
+  w.setResizable(true)
+  programmatic(w, r)
+  w.setResizable(false)
+}
+
+// Give a side window the player's height (and the width that goes with it), docked flush and vertically on screen.
+// base = where it is going to be (default: where it is). Shaded windows keep their bar and only update the size they unroll to.
+function matchPlayer(s: Satellite, base?: Rect): void {
+  const w = s.win
+  if (!live(win) || !live(w) || win.isMinimized()) return // a minimized player's bounds can be bogus
+  const cur = base ?? w.getBounds()
+  const p = win.getBounds()
+  const size = matchHeight(p.height, s.aspect, s.minWidth)
+  let next = cur
+  if (s.shaded) {
+    if (s.expanded) s.expanded = { ...s.expanded, ...size }
+  } else {
+    next = { ...cur, ...size }
+    if (s.attached) next = snapTo(p, next, s.side)
+    const a = screen.getDisplayMatching(p).workArea
+    next.y = Math.max(a.y, Math.min(next.y, a.y + a.height - next.height))
+  }
+  if (!sameRect(next, w.getBounds())) resizeFixed(w, next)
+}
 const attachedVisible = (): Satellite[] => satellites.filter((s) => live(s.win) && s.win.isVisible() && s.attached)
 
-// Satellites that must show once the full-screen player returns to a window.
-const deferred = new Set<Satellite>()
-// Show a wanted satellite on a real hidden -> shown transition only; never over the full-screen player.
+// Show a wanted satellite on a real hidden -> shown transition only.
 function showSatellite(s: Satellite): void {
   if (!live(s.win)) return
-  if (live(win) && win.isFullScreen()) {
-    deferred.add(s)
-    return
-  }
   if (s.win.isVisible()) return
   if (s.win.isMinimized()) s.win.restore()
+  matchPlayer(s) // the player may have been resized while it was hidden
   dockOnShow(s)
   s.win.showInactive()
 }
@@ -196,7 +210,7 @@ function createWindow(): void {
     frame: false,
     resizable: true,
     maximizable: false,
-    fullscreenable: true,
+    fullscreenable: false,
     title: 'Cassette Player: Retro',
     transparent: true, // rounded corners
     backgroundColor: '#00000000',
@@ -214,7 +228,6 @@ function createWindow(): void {
   prevPlayer = w.getBounds()
   w.once('ready-to-show', () => {
     w.show()
-    if (b.fullScreen) w.setFullScreen(true)
     // Satellites open with the player, after it exists so they can dock beside it.
     for (const s of satellites) openSatellite(s)
   })
@@ -230,17 +243,17 @@ function createWindow(): void {
     }
   })
   w.on('restore', () => {
+    prevPlayer = w.getBounds()
+    for (const s of satellites) matchPlayer(s) // resync heights after the minimize
     for (const s of [...hiddenByMinimize]) if (s.wanted) showSatellite(s)
     hiddenByMinimize.clear()
   })
 
-  // Remember the non-fullscreen bounds; skip while minimized (bounds can be bogus then).
+  // Remember the bounds; skip while minimized (bounds can be bogus then).
   const persist = (): void => {
     if (w.isDestroyed() || w.isMinimized()) return
-    // Some platforms report the full-screen rect as "normal" bounds: keep the last windowed ones then.
-    const prev = loadSettings().window
-    const { x, y, width, height } = w.isFullScreen() && prev ? prev : w.getNormalBounds()
-    saveSettings({ window: { x, y, width, height, fullScreen: w.isFullScreen() } })
+    const { x, y, width, height } = w.getNormalBounds()
+    saveSettings({ window: { x, y, width, height } })
   }
   let timer: NodeJS.Timeout | undefined
   const persistSoon = (): void => {
@@ -249,32 +262,19 @@ function createWindow(): void {
   }
   w.on('resize', persistSoon)
   w.on('move', persistSoon)
-  // Attached satellites follow the player (our own nudges are handled in dockOnShow).
+  // Attached satellites follow the player (our own nudges are handled in dockOnShow); every satellite keeps the player's height.
   const followPlayer = (): void => {
-    if (w.isFullScreen()) return // keep prevPlayer at the windowed bounds; leave-full-screen re-docks
+    if (w.isMinimized()) return
     const next = w.getBounds()
-    if (!isOwn(w) && prevPlayer) {
-      for (const s of attachedVisible()) if (live(s.win)) programmatic(s.win, follow(s.win.getBounds(), prevPlayer, next, s.side))
+    for (const s of satellites) {
+      if (!live(s.win)) continue
+      const moved = !isOwn(w) && prevPlayer && s.attached && s.win.isVisible()
+      matchPlayer(s, moved ? follow(s.win.getBounds(), prevPlayer!, next, s.side) : undefined)
     }
     prevPlayer = next
   }
   w.on('resize', followPlayer)
   w.on('move', followPlayer)
-  // Satellites stay hidden while the player is full screen.
-  w.on('enter-full-screen', () => {
-    for (const s of satellites) {
-      if (live(s.win) && s.win.isVisible()) {
-        deferred.add(s)
-        s.win.hide()
-      }
-    }
-  })
-  w.on('leave-full-screen', () => {
-    for (const s of attachedVisible()) dockOnShow(s)
-    for (const s of [...deferred]) if (s.wanted) showSatellite(s)
-    deferred.clear()
-    prevPlayer = w.getBounds()
-  })
   w.on('close', () => {
     clearTimeout(timer)
     persist()
@@ -287,17 +287,7 @@ function createWindow(): void {
       s.win.destroy()
     }
   })
-  w.on('maximize', () => w.unmaximize()) // Linux ignores maximizable:false; double-click must never maximize
-  w.webContents.on('before-input-event', (e, input) => {
-    if (input.type !== 'keyDown') return
-    if (input.key === 'F11' || (process.platform === 'darwin' && input.control && input.meta && input.key.toLowerCase() === 'f')) {
-      w.setFullScreen(!w.isFullScreen())
-      e.preventDefault()
-    } else if (input.key === 'Escape' && w.isFullScreen()) {
-      w.setFullScreen(false)
-      e.preventDefault()
-    }
-  })
+  w.on('maximize', () => w.unmaximize()) // Linux ignores maximizable:false; nothing may maximize
   w.on('closed', () => {
     win = null
   })
@@ -320,18 +310,14 @@ function toggleShade(s: Satellite, from?: Rect): void {
     s.expanded = cur
     const r = shadedBounds(cur, designW, barH)
     s.shaded = true
-    w.setAspectRatio(0)
     w.setMinimumSize(s.minWidth, r.height)
-    programmatic(w, r) // before setResizable(false): GTK ignores size changes on a fixed window
-    w.setResizable(false)
+    resizeFixed(w, r)
   } else {
     s.shaded = false
-    w.setResizable(true)
     w.setMinimumSize(s.minWidth, s.minHeight)
     const next = expandedAt(cur, s.expanded ?? cur)
-    programmatic(w, clampInto(next, screen.getDisplayMatching(cur).workArea))
-    w.setAspectRatio(s.aspect)
     s.expanded = null
+    matchPlayer(s, clampInto(next, screen.getDisplayMatching(cur).workArea)) // back to the player's height
   }
   w.webContents.send(IPC.shaded, s.shaded)
 }
@@ -346,7 +332,7 @@ function createSatellite(s: Satellite): BrowserWindow {
     minHeight: s.minHeight,
     useContentSize: true,
     frame: false,
-    resizable: true,
+    resizable: false, // main sets the size (always the player's height)
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
@@ -362,25 +348,10 @@ function createSatellite(s: Satellite): BrowserWindow {
     }
   })
   s.win = w
-  w.setAspectRatio(s.aspect)
   w.once('ready-to-show', () => {
     if (s.wanted) showSatellite(s)
   })
-  // Double-clicking the drag-region bar maximizes on some OSes: treat it as shade toggle.
-  w.on('maximize', () => {
-    // Bounds before the maximize; unmaximize is async on Linux, so toggle only once it has landed (300 ms fallback).
-    const normal = w.getNormalBounds()
-    w.unmaximize()
-    let done = false
-    const go = (): void => {
-      if (done) return
-      done = true
-      w.removeListener('unmaximize', go)
-      toggleShade(s, normal)
-    }
-    w.once('unmaximize', go)
-    setTimeout(go, 300)
-  })
+  w.on('maximize', () => w.unmaximize()) // Linux ignores maximizable:false; nothing may maximize
   // Satellites have no taskbar entry, so an OS-minimized one would be lost: restore and shade instead.
   w.on('minimize', () => {
     // Deferred: restoring inside the minimize event is unreliable.
@@ -502,21 +473,6 @@ if (!app.requestSingleInstanceLock()) {
   })
   ipcMain.on(IPC.minimize, (e) => {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.minimize()
-  })
-  ipcMain.on(IPC.toggleFullScreen, (e) => {
-    if (win && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame) win.setFullScreen(!win.isFullScreen())
-  })
-  ipcMain.on(IPC.resizeWindow, (e, width: unknown, height: unknown) => {
-    if (!fromAppWindow(e) || !live(win) || typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return
-    const s = satellites.find((x) => live(x.win) && e.sender === x.win.webContents)
-    if (!s || !live(s.win) || s.shaded) return
-    const cur = s.win.getBounds()
-    let next = gripResize(cur, width - cur.width, height - cur.height, s.aspect, s.minWidth, s.minHeight)
-    const a = screen.getDisplayMatching(win.getBounds()).workArea
-    const maxW = Math.max(s.minWidth, Math.floor(Math.min(a.width, a.height * s.aspect)))
-    if (next.width > maxW) next = { ...next, width: maxW, height: Math.round(maxW / s.aspect) }
-    if (s.attached) next = snapTo(win.getBounds(), next, s.side) // stay flush
-    programmatic(s.win, next)
   })
   ipcMain.on(IPC.close, (e) => {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.close()
