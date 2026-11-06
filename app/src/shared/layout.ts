@@ -38,14 +38,10 @@ export const BUTTONS: Record<ButtonId, Rect> = {
   stop: { x: 532.5, y: 468, w: 89, h: 110 },
 }
 
-export const CHROME: { minimize: Rect; close: Rect; fullscreen: Rect } = {
-  fullscreen: { x: 697, y: 7, w: 19, h: 19 },
+export const CHROME: { minimize: Rect; close: Rect } = {
   minimize: { x: 719, y: 7, w: 19, h: 19 },
   close: { x: 741, y: 7, w: 19, h: 19 },
 }
-
-/** Art for chrome boxes that are not baked into body-top-cover (path relative to assets/ui). */
-export const CHROME_ART: { fullscreen: string } = { fullscreen: 'png/chrome-fullscreen.png' }
 
 /** Text slots drawn over the cassette label (title strip) and next to "HIGH QUALITY AUDIO" (time). */
 export const LABEL: { title: Rect; time: Rect } = {
@@ -58,6 +54,29 @@ export const TEXT_MARKS: { brand: Rect; highQualityAudio: Rect } = {
   brand: { x: 92, y: 46, w: 186, h: 25 },
   highQualityAudio: { x: 564, y: 434, w: 113, h: 14 },
 }
+
+/** Album (cover-art) window. CSS px, art files are ASSET_SCALE (2x); measured with ImageMagick, see "Album cover deck" in assets/ui/MANIFEST.md. */
+export const ALBUM = {
+  WINDOW: { w: 937, h: 938.5 },
+  ASSET_SCALE: 2,
+  /** Paint order: base, cover, buttons, top. */
+  LAYERS: [
+    { id: 'base', file: 'album/album-base.png', rect: { x: 0, y: 0, w: 937, h: 938.5 } },
+    { id: 'buttons', file: 'album/album-buttons.png', rect: { x: 0, y: 0, w: 937, h: 938.5 } },
+    { id: 'top', file: 'album/album-top.png', rect: { x: 0, y: 0, w: 937, h: 938.5 } },
+  ],
+  // Alpha bbox of the artist's sample art (2x 165,169 1540x1540), the intended cover placement.
+  COVER: { x: 82.5, y: 84.5, w: 770, h: 770 },
+  // Connected components of the top layer (2x 1705,47 59x58 and 1772,47 58x58).
+  MINIMIZE: { x: 852.5, y: 23.5, w: 29.5, h: 29 },
+  CLOSE: { x: 886, y: 23.5, w: 29, h: 29 },
+  // Tab plates of the buttons layer (2x 153/429/705,1761 261x74); display only.
+  TABS: [
+    { x: 76.5, y: 880.5, w: 130.5, h: 37 },
+    { x: 214.5, y: 880.5, w: 130.5, h: 37 },
+    { x: 352.5, y: 880.5, w: 130.5, h: 37 },
+  ],
+} as const
 
 /** Playlist window. CSS px, origin = top-left of the window; art files are ASSET_SCALE (2x) of their rect, paths relative to assets/ui. See "Playlist window" in assets/ui/MANIFEST.md. */
 export const PLAYLIST = {
@@ -83,10 +102,9 @@ export const PLAYLIST = {
   ROW: { x: 110.5, y0: 200, pitch: 36, fontSize: 30 },
   // Preview "Side A and B Included" left x 127, baseline 1840; grey sampled from the glyphs.
   FOOTER: { x: 47.5, y: 921.5, fontSize: 10, color: '#5d5f66' },
-  // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60; grip 1822..1874 x 1830..1884.
+  // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60.
   MINIMIZE: { x: 862, y: 20, w: 30, h: 30 },
   CLOSE: { x: 895.5, y: 20, w: 30, h: 30 },
-  GRIP: { x: 911, y: 915, w: 26, h: 27 },
   // Closest OFL match to the designer's condensed lettering (see MANIFEST); file assets/ui/playlist/fonts/SueEllenFrancisco-Regular.ttf.
   FONT_FAMILY: 'Sue Ellen Francisco',
 } as const
