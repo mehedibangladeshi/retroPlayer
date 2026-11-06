@@ -1,5 +1,5 @@
 # Plan: Track skip on click, clickable playlist rows, all windows at startup
-Status: Verifying (wave 2-3)
+Status: Complete
 
 ## Goal / Done when / Non-goals
 Goal (user's words): 1) one click on forward/backward goes to next/previous song; click-and-hold seeks forward/backward. 2) clicking an individual playlist song plays it. 3) app starts with all windows (main player, cover art, playlist), the latter two empty at startup. 4) verify and test ourselves. 5) all work on a separate `dev` branch.
@@ -64,3 +64,8 @@ User request (2026-11-06): commit after each piece of work using `/git-commit`, 
 - Review: 2.1 retry fixes the race (minors: restore-async bounds, closed handler reset → follow-up sent, retry 2). 3.1 introduced the 2 lint warnings → retry 1 sent (hoist compute).
 - 2.1 retry 2 done: getNormalBounds before deferred restore; closed handler resets shade state. Tests pass.
 - 3.1 retry 1 done: lint 0 warnings.
+- Commits: 907599f (2.1), 5fa6212 (3.1), f3ef2a1 (2.2); pre-commit passed.
+- Wave 4 launched: 4.1 sonnet CDP E2E.
+- 4.1 E2E (CDP, Linux/Wayland): checks 1-8 PASS; shaded 352x30 / 328x38 as computed; minimize hides all three. Note: holding Forward past a track's end auto-advances (existing engine auto-advance).
+- Tier mix actual: 2 haiku builders, 4 sonnet builders, 1 sonnet E2E; retries: 1.1 x1, 2.1 x2, 3.1 x1; no escalations.
+- User (2026-11-06): hold past end-of-track auto-advance is fine, no change. Next: bump to 0.2.1, pre-release v0.2.1-beta.
