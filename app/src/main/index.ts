@@ -4,6 +4,8 @@ import { app, BrowserWindow, dialog, ipcMain, screen, type IpcMainEvent, type Ip
 import { IPC } from '@shared/api'
 import { PLAYLIST, WINDOW } from '@shared/layout'
 import { SUPPORTED_EXTENSIONS, type Command } from '@shared/protocol'
+import { SHADE } from '@shared/shade'
+import { clampInto, expandedAt, shadedBounds } from './shade'
 import { fitAll, follow, gripResize, isAttached, overlaps, placeSide, snapTo, type Side } from './dock'
 import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
@@ -26,13 +28,15 @@ interface Satellite {
   place: (p: Rect, a: Rect) => Rect
   win: BrowserWindow | null
   wanted: boolean
+  shaded: boolean // rolled up to its top bar
+  expanded: Rect | null // bounds to restore on unshade
   timer?: NodeJS.Timeout
 }
 type Rect = { x: number; y: number; width: number; height: number }
 const PL_ASPECT = PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h
 const PL_MIN_WIDTH = 320
 const playlist: Satellite = {
-  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 322, key: 'playlistWindow', side: 'right', attached: true, win: null, wanted: false,
+  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 322, key: 'playlistWindow', side: 'right', attached: true, win: null, wanted: false, shaded: false, expanded: null,
   // Flush against the player's right edge, same height.
   place: (p, a) => {
     const height = Math.min(p.height, a.height)
@@ -40,7 +44,7 @@ const playlist: Satellite = {
   }
 }
 const album: Satellite = {
-  hash: 'album', title: 'Cassette Player: Album', aspect: 1, minWidth: 240, minHeight: 240, key: 'albumWindow', side: 'left', attached: true, win: null, wanted: false,
+  hash: 'album', title: 'Cassette Player: Album', aspect: 1, minWidth: 240, minHeight: 240, key: 'albumWindow', side: 'left', attached: true, win: null, wanted: false, shaded: false, expanded: null,
   // Square, flush against the player's left edge.
   place: (p, a) => {
     const size = Math.max(240, Math.min(p.height, a.height, a.width))
@@ -104,7 +108,9 @@ function satelliteBounds(s: Satellite): { x?: number; y?: number; width: number;
 function persistSatellite(s: Satellite): void {
   const w = s.win
   if (!live(w) || w.isMinimized()) return
-  const { x, y, width, height } = w.getNormalBounds()
+  const nb = w.getNormalBounds()
+  // While shaded, save the full size so a restart does not open a stub.
+  const { x, y, width, height } = s.shaded && s.expanded ? expandedAt(nb, s.expanded) : nb
   saveSettings({ [s.key]: { x, y, width, height, fullScreen: false } })
 }
 
@@ -304,6 +310,32 @@ function createWindow(): void {
   else void w.loadFile(join(__dirname, '../renderer/index.html'))
 }
 
+// Winamp-style shade: roll the window up to its top bar (still docked) or restore it.
+function toggleShade(s: Satellite, from?: Rect): void {
+  const w = s.win
+  if (!live(w)) return
+  const cur = from ?? w.getBounds()
+  if (!s.shaded) {
+    const { designW, barH } = SHADE[s.hash as keyof typeof SHADE]
+    s.expanded = cur
+    const r = shadedBounds(cur, designW, barH)
+    s.shaded = true
+    w.setAspectRatio(0)
+    w.setMinimumSize(s.minWidth, r.height)
+    programmatic(w, r) // before setResizable(false): GTK ignores size changes on a fixed window
+    w.setResizable(false)
+  } else {
+    s.shaded = false
+    w.setResizable(true)
+    w.setMinimumSize(s.minWidth, s.minHeight)
+    const next = expandedAt(cur, s.expanded ?? cur)
+    programmatic(w, clampInto(next, screen.getDisplayMatching(cur).workArea))
+    w.setAspectRatio(s.aspect)
+    s.expanded = null
+  }
+  w.webContents.send(IPC.shaded, s.shaded)
+}
+
 function createSatellite(s: Satellite): BrowserWindow {
   const b = satelliteBounds(s)
   const w = new BrowserWindow({
@@ -334,7 +366,31 @@ function createSatellite(s: Satellite): BrowserWindow {
   w.once('ready-to-show', () => {
     if (s.wanted) showSatellite(s)
   })
-  w.on('maximize', () => w.unmaximize())
+  // Double-clicking the drag-region bar maximizes on some OSes: treat it as shade toggle.
+  w.on('maximize', () => {
+    // Bounds before the maximize; unmaximize is async on Linux, so toggle only once it has landed (300 ms fallback).
+    const normal = w.getNormalBounds()
+    w.unmaximize()
+    let done = false
+    const go = (): void => {
+      if (done) return
+      done = true
+      w.removeListener('unmaximize', go)
+      toggleShade(s, normal)
+    }
+    w.once('unmaximize', go)
+    setTimeout(go, 300)
+  })
+  // Satellites have no taskbar entry, so an OS-minimized one would be lost: restore and shade instead.
+  w.on('minimize', () => {
+    // Deferred: restoring inside the minimize event is unreliable.
+    const normal = w.getNormalBounds() // restore() is async on Linux, so getBounds() right after could be stale
+    setTimeout(() => {
+      if (!live(w)) return
+      w.restore()
+      if (!s.shaded) toggleShade(s, normal)
+    }, 0)
+  })
 
   const persistSoon = (): void => {
     clearTimeout(s.timer)
@@ -368,8 +424,13 @@ function createSatellite(s: Satellite): BrowserWindow {
   })
   w.on('closed', () => {
     s.win = null
+    s.shaded = false
+    s.expanded = null
   })
-  w.webContents.on('did-finish-load', () => sidecar.resendState(w))
+  w.webContents.on('did-finish-load', () => {
+    sidecar.resendState(w)
+    w.webContents.send(IPC.shaded, s.shaded)
+  })
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   w.webContents.on('will-navigate', (e, url) => {
     if (!devUrl || !url.startsWith(devUrl)) e.preventDefault()
@@ -434,6 +495,11 @@ if (!app.requestSingleInstanceLock()) {
     playlist.win.show()
     playlist.win.focus()
   })
+  ipcMain.on(IPC.toggleShade, (e) => {
+    if (!fromAppWindow(e)) return
+    const s = satellites.find((x) => live(x.win) && e.sender === x.win.webContents)
+    if (s) toggleShade(s)
+  })
   ipcMain.on(IPC.minimize, (e) => {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.minimize()
   })
@@ -443,7 +509,7 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on(IPC.resizeWindow, (e, width: unknown, height: unknown) => {
     if (!fromAppWindow(e) || !live(win) || typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return
     const s = satellites.find((x) => live(x.win) && e.sender === x.win.webContents)
-    if (!s || !live(s.win)) return
+    if (!s || !live(s.win) || s.shaded) return
     const cur = s.win.getBounds()
     let next = gripResize(cur, width - cur.width, height - cur.height, s.aspect, s.minWidth, s.minHeight)
     const a = screen.getDisplayMatching(win.getBounds()).workArea
