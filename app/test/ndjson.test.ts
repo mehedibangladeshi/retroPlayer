@@ -15,7 +15,10 @@ test('isValidCommand accepts every renderer command', () => {
     { v, type: 'seekRelative', deltaMs: -10000 },
     { v, type: 'playSound', name: 'click' },
     { v, type: 'playSound', name: 'stop' },
-    { v, type: 'playSound', name: 'seek' }
+    { v, type: 'playSound', name: 'seek' },
+    { v, type: 'playSound', name: 'motor', loop: true },
+    { v, type: 'playSound', name: 'motor', loop: false },
+    { v, type: 'stopSound', name: 'motor' }
   ]) {
     assert.equal(isValidCommand(c), true, JSON.stringify(c))
   }
@@ -51,6 +54,9 @@ test('isValidCommand rejects bad seek values and sound names', () => {
   assert.equal(isValidCommand({ v, type: 'playSound', name: 'boom' }), false)
   assert.equal(isValidCommand({ v, type: 'playSound', name: 'toString' }), false)
   assert.equal(isValidCommand({ v, type: 'playSound', name: 1 }), false)
+  assert.equal(isValidCommand({ v, type: 'playSound', name: 'motor', loop: 'yes' }), false)
+  assert.equal(isValidCommand({ v, type: 'stopSound', name: 'boom' }), false)
+  assert.equal(isValidCommand({ v, type: 'stopSound' }), false)
 })
 
 test('parseEvent parses valid events', () => {

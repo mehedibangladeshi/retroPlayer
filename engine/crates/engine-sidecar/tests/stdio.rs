@@ -166,3 +166,16 @@ fn fractional_and_negative_seek_are_accepted() {
     s.send(r#"{"v":1,"type":"play"}"#);
     assert_error(&s.next_event(), "invalid_state");
 }
+
+#[test]
+fn loop_and_stop_sound_commands_are_accepted_and_never_error() {
+    let mut s = Sidecar::spawn();
+    s.next();
+    s.send(r#"{"v":1,"type":"playSound","name":"motor","loop":true}"#);
+    s.send(r#"{"v":1,"type":"stopSound","name":"motor"}"#);
+    s.send(r#"{"v":1,"type":"stopSound","name":"nope"}"#);
+    s.send(r#"{"v":1,"type":"play"}"#);
+    // The first event is play's error: the sound commands emitted nothing.
+    assert_error(&s.next_event(), "invalid_state");
+    assert!(s.child.try_wait().unwrap().is_none());
+}

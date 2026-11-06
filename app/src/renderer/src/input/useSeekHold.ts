@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { currentIndex, playSound, seek, seekRelative, stepTrack } from '../engine/commands'
+import { currentIndex, playSound, seek, seekRelative, stepTrack, stopSound } from '../engine/commands'
+import { createHoldMotor } from './seekHold'
 import { backAction } from './skip'
 import { getSnapshot, subscribe } from '../engine/store'
 import { useEngine } from '../engine/useEngine'
@@ -26,7 +27,7 @@ export interface SeekHold {
   }
 }
 
-interface Active { dir: SeekDirection; source: SeekSource; status: Status; holding: boolean }
+interface Active { dir: SeekDirection; source: SeekSource; status: Status; holding: boolean; motor: ReturnType<typeof createHoldMotor> }
 
 export function useSeekHold(): SeekHold {
   const [held, setHeld] = useState<SeekDirection | null>(null)
@@ -40,6 +41,7 @@ export function useSeekHold(): SeekHold {
     if ((source && a.source !== source) || (dir && a.dir !== dir)) return
     clearTimeout(timers.current.delay)
     clearInterval(timers.current.repeat)
+    a.motor.end() // no-op for a short click that never began a hold
     active.current = null
     setHeld(null)
   }, [])
@@ -49,12 +51,13 @@ export function useSeekHold(): SeekHold {
     if (active.current || st === 'empty') return
     const delta = dir === 'back' ? -STEP_MS : STEP_MS
     // A pointer press only becomes a seek hold after HOLD_DELAY_MS; a shorter press is a click (see release).
-    const a: Active = { dir, source, status: st, holding: source === 'key' }
+    const a: Active = { dir, source, status: st, holding: source === 'key', motor: createHoldMotor(() => playSound('motor', true), () => stopSound('motor')) }
     active.current = a
     const seekOnce = (): void => {
       a.holding = true
       setHeld(dir)
       playSound('seek') // once per press, not per repeat
+      a.motor.begin()
       seekRelative(delta)
     }
     const repeat = (): void => {

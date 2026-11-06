@@ -269,9 +269,20 @@ fn dispatch(
             }
             Ok(())
         }
-        Command::PlaySound { name } => {
-            if let Err(e) = player.play_sound(&name) {
+        Command::PlaySound { name, looped } => {
+            let r = if looped {
+                player.loop_sound(&name)
+            } else {
+                player.play_sound(&name)
+            };
+            if let Err(e) = r {
                 eprintln!("engine-sidecar: sound {name:?} not played: {}", e.message);
+            }
+            Ok(())
+        }
+        Command::StopSound { name } => {
+            if let Err(e) = player.stop_sound(&name) {
+                eprintln!("engine-sidecar: sound {name:?} not stopped: {}", e.message);
             }
             Ok(())
         }

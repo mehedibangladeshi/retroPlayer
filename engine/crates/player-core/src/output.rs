@@ -29,17 +29,35 @@ const MAX_VOICES: usize = 4;
 struct Voice {
     clip: Clip,
     pos: usize,
+    looping: bool,
+}
+
+/// Control-to-callback command. Dropping a clip `Arc` in the callback is fine
+/// only because the control side (`Sound`) keeps its cached clip alive.
+enum Cmd {
+    Play(Clip),
+    Loop(Clip),
+    Stop(Clip),
 }
 
 /// Callback-side mixer for clips.
 struct Mixer {
-    incoming: Consumer<Voice>,
+    incoming: Consumer<Cmd>,
     voices: [Option<Voice>; MAX_VOICES],
 }
 
 impl Mixer {
-    fn new(incoming: Consumer<Voice>) -> Self {
+    fn new(incoming: Consumer<Cmd>) -> Self {
         Mixer { incoming, voices: Default::default() }
+    }
+
+    fn start(&mut self, clip: Clip, looping: bool) {
+        if clip.is_empty() {
+            return;
+        }
+        if let Some(slot) = self.voices.iter_mut().find(|s| s.is_none()) {
+            *slot = Some(Voice { clip, pos: 0, looping });
+        }
     }
 
     /// Add active clips onto `out` (which already holds music or silence).
@@ -49,9 +67,26 @@ impl Mixer {
         T: Sample + FromSample<f32>,
         f32: FromSample<T>,
     {
-        while let Ok(v) = self.incoming.pop() {
-            if let Some(slot) = self.voices.iter_mut().find(|s| s.is_none()) {
-                *slot = Some(v);
+        while let Ok(cmd) = self.incoming.pop() {
+            match cmd {
+                Cmd::Play(clip) => self.start(clip, false),
+                Cmd::Loop(clip) => {
+                    let running = self
+                        .voices
+                        .iter()
+                        .flatten()
+                        .any(|v| v.looping && Arc::ptr_eq(&v.clip, &clip));
+                    if !running {
+                        self.start(clip, true);
+                    }
+                }
+                Cmd::Stop(clip) => {
+                    for slot in &mut self.voices {
+                        if slot.as_ref().is_some_and(|v| Arc::ptr_eq(&v.clip, &clip)) {
+                            *slot = None;
+                        }
+                    }
+                }
             }
         }
         if self.voices.iter().all(Option::is_none) {
@@ -60,7 +95,9 @@ impl Mixer {
         for (i, dst) in out.iter_mut().enumerate() {
             let mut s = f32::from_sample(*dst);
             for v in self.voices.iter().flatten() {
-                if let Some(x) = v.clip.get(v.pos + i) {
+                let idx = v.pos + i;
+                // Loop voices are never empty (rejected in `start`).
+                if let Some(x) = v.clip.get(if v.looping { idx % v.clip.len() } else { idx }) {
                     s += x;
                 }
             }
@@ -69,7 +106,9 @@ impl Mixer {
         for slot in &mut self.voices {
             if let Some(v) = slot {
                 v.pos += out.len();
-                if v.pos >= v.clip.len() {
+                if v.looping {
+                    v.pos %= v.clip.len();
+                } else if v.pos >= v.clip.len() {
                     *slot = None;
                 }
             }
@@ -112,7 +151,7 @@ struct Shared {
 /// to sample rate) as `capacity_frames` to `open_default`.
 pub struct Output {
     shared: Arc<Shared>,
-    clips: Producer<Voice>,
+    clips: Producer<Cmd>,
     _stream: Stream,
 }
 
@@ -136,7 +175,7 @@ impl Output {
         let (producer, consumer) =
             RingBuffer::<f32>::new(capacity_frames.max(1) * usize::from(channels));
         let shared = Arc::new(Shared::default());
-        let (clips, clip_rx) = RingBuffer::<Voice>::new(MAX_VOICES * 2);
+        let (clips, clip_rx) = RingBuffer::<Cmd>::new(MAX_VOICES * 2);
         let mixer = Mixer::new(clip_rx);
 
         let stream = match format {
@@ -165,7 +204,17 @@ impl Output {
     /// Start mixing `clip` on top of whatever is playing (also while paused or
     /// stopped). False if the hand-over ring is full; the clip is then skipped.
     pub fn play_clip(&mut self, clip: Clip) -> bool {
-        self.clips.push(Voice { clip, pos: 0 }).is_ok()
+        self.clips.push(Cmd::Play(clip)).is_ok()
+    }
+
+    /// Loop `clip` until `stop_clip`. Ignored if that clip already loops.
+    pub fn loop_clip(&mut self, clip: Clip) -> bool {
+        self.clips.push(Cmd::Loop(clip)).is_ok()
+    }
+
+    /// End every voice playing `clip`, looping or not.
+    pub fn stop_clip(&mut self, clip: &Clip) {
+        let _ = self.clips.push(Cmd::Stop(Arc::clone(clip)));
     }
 
     /// A cloneable `Send + Sync` handle onto this output's shared state.
@@ -414,13 +463,67 @@ mod tests {
         assert_eq!(shared.frames_played.load(Ordering::Relaxed), 1);
     }
 
-    fn mixer() -> (Producer<Voice>, Mixer) {
-        let (p, c) = RingBuffer::<Voice>::new(MAX_VOICES * 2);
+    fn mixer() -> (Producer<Cmd>, Mixer) {
+        let (p, c) = RingBuffer::<Cmd>::new(MAX_VOICES * 2);
         (p, Mixer::new(c))
     }
 
-    fn voice(samples: &[f32]) -> Voice {
-        Voice { clip: samples.into(), pos: 0 }
+    fn voice(samples: &[f32]) -> Cmd {
+        Cmd::Play(samples.into())
+    }
+
+    #[test]
+    fn loop_wraps_across_callbacks() {
+        let (mut p, mut m) = mixer();
+        let clip: Clip = [0.1f32, 0.2, 0.3].into();
+        p.push(Cmd::Loop(clip)).ok().unwrap();
+        let mut out = [0.0f32; 2];
+        m.mix(&mut out);
+        assert_eq!(out, [0.1, 0.2]);
+        out = [0.0; 2];
+        m.mix(&mut out);
+        assert_eq!(out, [0.3, 0.1]);
+        out = [0.0; 2];
+        m.mix(&mut out);
+        assert_eq!(out, [0.2, 0.3]);
+    }
+
+    #[test]
+    fn stop_ends_looping_and_one_shot_voices() {
+        let (mut p, mut m) = mixer();
+        let clip: Clip = [0.1f32; 8].into();
+        p.push(Cmd::Loop(clip.clone())).ok().unwrap();
+        p.push(Cmd::Play(clip.clone())).ok().unwrap();
+        let mut out = [0.0f32; 2];
+        m.mix(&mut out);
+        assert!((out[0] - 0.2).abs() < 1e-6);
+        p.push(Cmd::Stop(clip)).ok().unwrap();
+        let mut out = [0.0f32; 2];
+        m.mix(&mut out);
+        assert_eq!(out, [0.0, 0.0]);
+        assert!(m.voices.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn duplicate_loop_of_same_clip_is_ignored() {
+        let (mut p, mut m) = mixer();
+        let clip: Clip = [0.1f32; 4].into();
+        p.push(Cmd::Loop(clip.clone())).ok().unwrap();
+        p.push(Cmd::Loop(clip)).ok().unwrap();
+        let mut out = [0.0f32; 2];
+        m.mix(&mut out);
+        assert!((out[0] - 0.1).abs() < 1e-6, "got {}", out[0]);
+    }
+
+    #[test]
+    fn loops_count_toward_the_voice_limit() {
+        let (mut p, mut m) = mixer();
+        for _ in 0..MAX_VOICES + 1 {
+            p.push(Cmd::Loop([0.1f32; 4].into())).ok().unwrap();
+        }
+        let mut out = [0.0f32; 2];
+        m.mix(&mut out);
+        assert!((out[0] - 0.1 * MAX_VOICES as f32).abs() < 1e-6, "got {}", out[0]);
     }
 
     #[test]

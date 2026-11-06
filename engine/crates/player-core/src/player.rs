@@ -330,6 +330,40 @@ impl Player {
     /// Mix a loaded sound on top of the music, in any state (also Empty). Opens
     /// the output if nothing has yet. Never changes the transport or emits events.
     pub fn play_sound(&mut self, name: &str) -> Result<(), PlayerError> {
+        if let Some(clip) = self.sound_clip(name)?
+            && let Some(output) = self.output.as_mut()
+        {
+            output.play_clip(clip);
+        }
+        Ok(())
+    }
+
+    /// Like `play_sound`, but repeats until `stop_sound`. A second call while it
+    /// already loops does nothing.
+    pub fn loop_sound(&mut self, name: &str) -> Result<(), PlayerError> {
+        if let Some(clip) = self.sound_clip(name)?
+            && let Some(output) = self.output.as_mut()
+        {
+            output.loop_clip(clip);
+        }
+        Ok(())
+    }
+
+    /// Silence every voice of a sound. Ok no-op if it is not playing or there is
+    /// no output yet (never opens the device).
+    pub fn stop_sound(&mut self, name: &str) -> Result<(), PlayerError> {
+        let Some(sound) = self.sounds.get_mut(name) else {
+            return Err(PlayerError::new(ErrorCode::InvalidState, format!("no sound named {name:?}")));
+        };
+        if let (Some(output), Some(cfg)) = (self.output.as_mut(), self.device_config) {
+            output.stop_clip(&sound.clip_for(cfg)?);
+        }
+        Ok(())
+    }
+
+    /// Validate `name`, make sure the output is up, and return the sound's clip
+    /// in the device format. `None` when there is no usable output.
+    fn sound_clip(&mut self, name: &str) -> Result<Option<Clip>, PlayerError> {
         if !self.sounds.contains_key(name) {
             return Err(PlayerError::new(ErrorCode::InvalidState, format!("no sound named {name:?}")));
         }
@@ -343,16 +377,14 @@ impl Player {
                 let _ = self.ensure_output();
             }
         }
-        let (Some(output), Some(cfg)) = (self.output.as_mut(), self.device_config) else {
-            return Ok(());
+        let (Some(output), Some(cfg)) = (self.output.as_ref(), self.device_config) else {
+            return Ok(None);
         };
         if output.has_failed() {
-            return Ok(());
+            return Ok(None);
         }
-        let Some(sound) = self.sounds.get_mut(name) else { return Ok(()) };
-        let clip = sound.clip_for(cfg)?;
-        output.play_clip(clip);
-        Ok(())
+        let Some(sound) = self.sounds.get_mut(name) else { return Ok(None) };
+        Ok(Some(sound.clip_for(cfg)?))
     }
 
     pub fn snapshot(&self) -> Snapshot {

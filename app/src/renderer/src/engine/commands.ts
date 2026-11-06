@@ -19,8 +19,9 @@ export const seekRelative = (deltaMs: number): void => send({ type: 'seekRelativ
 /** Engine auto-plays an album, so no expectAutoPlay here. */
 export const loadAlbum = (path: string): void => send({ type: 'loadAlbum', path })
 export const playIndex = (index: number): void => send({ type: 'playIndex', index })
+export const stopSound = (name: SoundName): void => send({ type: 'stopSound', name })
 /** Key sound, played by the engine on top of the music. */
-export const playSound = (name: SoundName): void => send({ type: 'playSound', name })
+export const playSound = (name: SoundName, loop = false): void => send(loop ? { type: 'playSound', name, loop } : { type: 'playSound', name })
 
 // Key presses: the key's sound, then the transport command. Keyboard shortcuts use these too.
 export function pressPlay(): void {

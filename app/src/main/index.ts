@@ -289,6 +289,11 @@ function createWindow(): void {
   w.on('closed', () => {
     win = null
   })
+  // A dead or reloading UI can't stop the tape-motor loop itself.
+  const stopMotor = (): void => sidecar.send({ v: 1, type: 'stopSound', name: 'motor' })
+  w.on('closed', stopMotor)
+  w.webContents.on('render-process-gone', stopMotor)
+  w.webContents.on('did-start-loading', stopMotor)
   w.webContents.on('did-finish-load', () => sidecar.resendState(w))
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   w.webContents.on('will-navigate', (e, url) => {
