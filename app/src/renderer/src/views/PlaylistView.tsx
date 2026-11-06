@@ -47,44 +47,7 @@ function useFitScale(shaded: boolean): { scale: number; left: number; top: numbe
   return fit
 }
 
-/** Pointer handlers for the corner grip: drag resizes the window by the screen-space delta, one IPC per frame. */
-function useGrip(): React.HTMLAttributes<HTMLDivElement> {
-  // sx/sy hold the latest pointer position; the frame callback reads them when it runs.
-  const drag = useRef<{ x: number; y: number; w: number; h: number; sx: number; sy: number; raf: number } | null>(null)
-  const send = (d: NonNullable<typeof drag.current>): void =>
-    window.retro.resizeWindow(Math.round(d.w + d.sx - d.x), Math.round(d.h + d.sy - d.y))
-  const end = (): void => {
-    const d = drag.current
-    // A frame still pending holds an unsent position, so cancel it and send the final one now.
-    if (d?.raf) {
-      cancelAnimationFrame(d.raf)
-      send(d)
-    }
-    drag.current = null
-  }
-  return {
-    onPointerDown: (e) => {
-      e.preventDefault()
-      e.currentTarget.setPointerCapture(e.pointerId)
-      drag.current = { x: e.screenX, y: e.screenY, w: window.outerWidth, h: window.outerHeight, sx: e.screenX, sy: e.screenY, raf: 0 }
-    },
-    onPointerMove: (e) => {
-      const d = drag.current
-      if (!d) return
-      d.sx = e.screenX
-      d.sy = e.screenY
-      if (!d.raf) d.raf = requestAnimationFrame(() => {
-        d.raf = 0
-        send(d)
-      })
-    },
-    onPointerUp: end,
-    onPointerCancel: end
-  }
-}
-
 export default function PlaylistView() {
-  const grip = useGrip()
   const { album, trackInfo } = useEngine()
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
@@ -126,6 +89,8 @@ export default function PlaylistView() {
     <div className="pl-stage">
       <style>{`@font-face { font-family: '${P.FONT_FAMILY}'; src: url(${fontUrl}) format('truetype'); }`}</style>
       <div className="pl" style={{ width: P.WINDOW.w, height: P.WINDOW.h, left: fit.left, top: fit.top, transform: `scale(${fit.scale})`, fontFamily: `'${P.FONT_FAMILY}', sans-serif` }}>
+        {/* The only drag region: no children, ends 4px short of the Minimize button. */}
+        <div className="pl-titlebar" style={{ width: P.MINIMIZE.x - 4, height: SHADE.playlist.barH }} />
         <img className="pl-layer" src={layerUrl('base')} alt="" draggable={false} style={rectStyle(layerRect('base'))} />
         <img className="pl-layer pl-cover" src={album?.cover ?? defaultCover} alt="" draggable={false} style={rectStyle(P.COVER)} />
         <img className="pl-layer" src={layerUrl('paper')} alt="" draggable={false} style={rectStyle(layerRect('paper'))} />
@@ -184,7 +149,6 @@ export default function PlaylistView() {
         <button type="button" className="pl-chrome" aria-label="Close playlist" style={rectStyle(P.CLOSE)} onClick={() => window.retro.closeWindow()} />
 
         <img className="pl-layer" src={layerUrl('top')} alt="" draggable={false} style={rectStyle(layerRect('top'))} />
-        <div className="pl-grip" aria-hidden="true" style={rectStyle(P.GRIP)} {...grip} />
       </div>
     </div>
   )
