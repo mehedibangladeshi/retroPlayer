@@ -31,8 +31,6 @@ body { background: transparent; overflow: hidden; }
 .cp-chrome:hover { background: rgba(255, 255, 255, 0.18); }
 @media (prefers-reduced-motion: reduce) { .cp-btn, .cp-open, .cp-hint { transition: none; } }
 
-.cp-fullscreen { background-size: 100% 100%; background-repeat: no-repeat; }
-
 .cp-menu { position: absolute; width: 140px; box-sizing: border-box; padding: 4px; border-radius: 6px; background: #2c2f38; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5); font-family: system-ui, sans-serif; -webkit-app-region: no-drag; z-index: 20; }
 .cp .cp-menu button { position: static; display: block; width: 100%; padding: 6px 10px; border-radius: 4px; background: transparent; color: #e8e8ec; font-size: 13px; text-align: left; }
 .cp .cp-menu button:hover, .cp .cp-menu button:focus-visible { background: rgba(255, 255, 255, 0.12); outline: none; }

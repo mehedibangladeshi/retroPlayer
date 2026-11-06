@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BUTTONS, CASSETTE, CHROME, CHROME_ART, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
+import { BUTTONS, CASSETTE, CHROME, LABEL, LAYERS, REELS, WINDOW, type ButtonId, type LayerId, type Rect } from '@shared/layout'
 import { pressPause, pressPlay, pressStop } from '../engine/commands'
 import { clearError } from '../engine/store'
 import { useDisplayPosition, useEngine } from '../engine/useEngine'
@@ -17,12 +17,6 @@ const layerUrl = (id: LayerId): string => {
   const file = LAYERS.find((l) => l.id === id)!.file
   const hit = Object.entries(urls).find(([k]) => k.endsWith(`/${file}`))
   if (!hit) throw new Error(`missing artwork for ${id}`)
-  return hit[1]
-}
-
-const fileUrl = (file: string): string => {
-  const hit = Object.entries(urls).find(([k]) => k.endsWith(`/${file}`))
-  if (!hit) throw new Error(`missing artwork ${file}`)
   return hit[1]
 }
 
@@ -189,7 +183,6 @@ export default function CassettePlayer() {
         </button>
       )}
 
-      <button type="button" className="cp-chrome cp-fullscreen" aria-label="Full screen" style={{ ...rectStyle(CHROME.fullscreen), backgroundImage: `url(${fileUrl(CHROME_ART.fullscreen)})` }} onClick={() => window.retro.toggleFullScreen()} />
       <button type="button" className="cp-chrome" aria-label="Minimize" style={rectStyle(CHROME.minimize)} onClick={() => window.retro.minimizeWindow()} />
       <button type="button" className="cp-chrome" aria-label="Close" style={rectStyle(CHROME.close)} onClick={() => window.retro.closeWindow()} />
     </div>
