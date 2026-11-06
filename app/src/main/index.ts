@@ -9,6 +9,7 @@ import { clampInto, expandedAt, shadedBounds } from './shade'
 import { fitAll, follow, isAttached, matchHeight, overlaps, placeSide, snapTo, type Side } from './dock'
 import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
+import { defaultPlayerSize } from './windowSize'
 import { Sidecar } from './sidecar'
 
 let win: BrowserWindow | null = null
@@ -53,8 +54,8 @@ function fromAppWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
 }
 
 const ASPECT = WINDOW.width / WINDOW.height
-const MIN_WIDTH = 575
-const MIN_HEIGHT = 462
+const MIN_WIDTH = 384
+const MIN_HEIGHT = 308
 
 // Sizes below are content sizes (the window is frameless, so content == window).
 // Returns the saved bounds fitted to a visible display, or null if there are none or they are off-screen.
@@ -79,10 +80,7 @@ function initialBounds(): { x?: number; y?: number; width: number; height: numbe
   const fitted = fitSaved(loadSettings().window, ASPECT, MIN_WIDTH)
   if (fitted) return fitted
   const area = screen.getPrimaryDisplay().workAreaSize
-  let width = Math.round(0.55 * area.width)
-  if (width / ASPECT > 0.8 * area.height) width = Math.round(0.8 * area.height * ASPECT)
-  width = Math.max(MIN_WIDTH, width)
-  return { width, height: Math.round(width / ASPECT) }
+  return defaultPlayerSize(area, ASPECT, MIN_WIDTH)
 }
 
 // Side windows always take the player's height; only a saved position is reused (and only if still on screen).

@@ -1,9 +1,12 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { LAYOUT_VERSION, migrateSettings } from './windowSize'
+
+export { LAYOUT_VERSION, migrateSettings }
 
 export interface WindowState { x: number; y: number; width: number; height: number }
-export interface Settings { lastOpenDir?: string; window?: WindowState; playlistWindow?: WindowState; albumWindow?: WindowState }
+export interface Settings { layoutVersion?: number; lastOpenDir?: string; window?: WindowState; playlistWindow?: WindowState; albumWindow?: WindowState }
 
 let cache: Settings | null = null
 
@@ -26,6 +29,7 @@ function parse(raw: unknown): Settings {
   const out: Settings = {}
   if (typeof raw !== 'object' || raw === null) return out
   const r = raw as Record<string, unknown>
+  if (isNum(r.layoutVersion)) out.layoutVersion = r.layoutVersion
   if (typeof r.lastOpenDir === 'string' && r.lastOpenDir) out.lastOpenDir = r.lastOpenDir
   const win = parseWindow(r.window)
   if (win) out.window = win
@@ -39,7 +43,7 @@ function parse(raw: unknown): Settings {
 export function loadSettings(): Settings {
   if (cache) return cache
   try {
-    cache = parse(JSON.parse(readFileSync(settingsPath(), 'utf8')))
+    cache = migrateSettings(parse(JSON.parse(readFileSync(settingsPath(), 'utf8'))))
   } catch {
     cache = {}
   }
@@ -47,7 +51,7 @@ export function loadSettings(): Settings {
 }
 
 export function saveSettings(patch: Partial<Settings>): void {
-  cache = { ...loadSettings(), ...patch }
+  cache = { ...loadSettings(), ...patch, layoutVersion: LAYOUT_VERSION }
   try {
     const file = settingsPath()
     const tmp = file + '.tmp'
