@@ -47,7 +47,7 @@ The long-term product is a lossless audio player with an equalizer and several f
 - The player is a state machine: `Empty -> Stopped -> Playing <-> Paused`.
 - Semantics:
   - `play`: starts or resumes. `pause`: holds the position. `stop`: halts and resets position to 0.
-  - `seek(ms)`: absolute seek. The UI's forward/backward buttons call seek relative to the current position (clicking = +/-10 seconds; holding repeats). Clamp to [0, duration].
+  - `seek(ms)`: absolute seek. Clamp to [0, duration]. The UI's forward/backward buttons split on press length. A press under 400 ms is a click: forward goes to the next track (nothing on the last track or with a single file), and backward restarts the song if more than 3 s in, otherwise goes to the previous track (on the first track or a single file it restarts). A press of 400 ms or more is a hold: it seeks -/+10 seconds relative to the current position, repeating every 200 ms.
   - When a track ends, emit `ended` and move to `Stopped`.
 - Errors (unsupported format, missing file, no output device) must be reported as protocol `error` events, never panics.
 - Include unit tests for the state machine and seek clamping, and one integration test that decodes a small bundled WAV fixture.

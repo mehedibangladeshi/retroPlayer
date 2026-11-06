@@ -187,7 +187,7 @@ There is no "current track" field. The current track is the one whose `path` equ
 
 ### artwork
 
-Carries the cover art of the current track. It is sent right after every successful track load (single `load`, `loadAlbum`, `playIndex`, auto-advance), before playback starts, and only when the art differs from the last one sent. The art is the file's embedded picture, else a folder image next to it, else the active album's cover, else `null`. A failed load counts as no art. The engine sends nothing at startup. The Electron main process caches the latest `artwork`, re-sends it to a window that (re)loads, and sends `null` if the engine restarts. The UI shows an album-art window only when `cover` is not `null`.
+Carries the cover art of the current track. It is sent right after every successful track load (single `load`, `loadAlbum`, `playIndex`, auto-advance), before playback starts, and only when the art differs from the last one sent. The art is the file's embedded picture, else a folder image next to it, else the active album's cover, else `null`. A failed load counts as no art. The engine sends nothing at startup. The Electron main process caches the latest `artwork`, re-sends it to a window that (re)loads, and sends `null` if the engine restarts. The album-art window always exists: it shows the cover, or an empty panel when `cover` is `null`.
 
 Fields: `cover` (string or `null`, always present): a `data:` URL (`data:<mime>;base64,...`), or `null` when there is no art.
 

@@ -1,5 +1,5 @@
 # Plan: Track skip on click, clickable playlist rows, all windows at startup
-Status: Verifying (wave 1)
+Status: Verifying (wave 2-3)
 
 ## Goal / Done when / Non-goals
 Goal (user's words): 1) one click on forward/backward goes to next/previous song; click-and-hold seeks forward/backward. 2) clicking an individual playlist song plays it. 3) app starts with all windows (main player, cover art, playlist), the latter two empty at startup. 4) verify and test ourselves. 5) all work on a separate `dev` branch.
@@ -52,3 +52,15 @@ User request (2026-11-06): commit after each piece of work using `/git-commit`, 
 - 1.3 done (haiku): satellites at launch, skipTaskbar, minimize/restore, dialog sender; removed Sidecar event callback (check events still reach renderers).
 - Wave1 verifier: all 6 checks pass, outside-own none. Reviewer: 1.1 blocker (key repeat timing) → retry 1 sent to same builder; 1.2, 1.3 ok (minor: Sidecar onEvent param now unused).
 - 1.1 retry 1 done: key timing restored (inspected useSeekHold.ts:47-77). Wave 1 accepted.
+- Commits: cfc016a (1.1), a33440e (1.2), 107edd1 (1.3); pre-commit passed.
+- Wave 2 launched: 2.1 sonnet (shade main/IPC), 2.2 haiku (docs).
+- 2.1 done (sonnet): red seen first; typecheck/lint/test pass (36). Extra: grip-resize ignored while shaded.
+- 2.1 review: blocker — maximize handler toggles synchronously after unmaximize (Linux async → wrong expanded rect). Minors: setResizable(false) before setBounds on GTK; minimize restore sync; no work-area clamp on unshade. Retry after verifier finishes. 2.2 done (haiku), DECISIONS append-only checked.
+- Wave 2 verifier: all 6 checks pass, outside-own none.
+- 2.1 retry 1 sent (maximize race + minors). 3.1 sonnet launched in parallel (owns views only).
+- 2.1 retry 1 done: getNormalBounds + unmaximize event (300ms fallback), setBounds/setResizable order, deferred minimize, clampInto (test-first). Tests 37 pass. Lint: 2 warnings to check.
+- 3.1 done (sonnet): views wired, typecheck/test pass, lint 2 warnings (exhaustive-deps compute in useFitScale).
+- Waves 2-3 verifier: all 6 checks pass (37 tests), outside-own none; lint 2 warnings (exhaustive-deps 'compute', AlbumView.tsx:28, PlaylistView.tsx:45), likely pre-existing shape.
+- Review: 2.1 retry fixes the race (minors: restore-async bounds, closed handler reset → follow-up sent, retry 2). 3.1 introduced the 2 lint warnings → retry 1 sent (hoist compute).
+- 2.1 retry 2 done: getNormalBounds before deferred restore; closed handler resets shade state. Tests pass.
+- 3.1 retry 1 done: lint 0 warnings.

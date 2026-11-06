@@ -324,3 +324,21 @@ Why: Without the tag, an `Ended` from the old track could arrive just after a ma
 Decision: `AGENTS.md` "How to work" items 8 and 9 make test-driven development mandatory. Every behaviour change or bug fix starts with a failing test. A versioned pre-commit hook, `scripts/git-hooks/pre-commit`, runs typecheck, lint, the JS tests, the cargo tests and clippy, and blocks a failing commit. `pnpm install` enables the hook through the `prepare` script, which sets `core.hooksPath`. CI on push and a Claude Code hook were considered and not chosen.
 
 Why: A hook that runs on every commit catches a failing test before it is shared, and it works the same for any contributor and any agent. CI on push would catch the same failures later, and a Claude Code hook would only cover Claude's commits.
+
+## 2026-11-06 — Forward and backward split into click and hold
+
+Decision: On the player's forward and backward buttons, a press under 400 ms is a click and a press of 400 ms or more is a hold. A click on forward goes to the next track, and does nothing on the last track or with a single file. A click on backward restarts the song if more than 3 s in, otherwise goes to the previous track; on the first track or a single file it restarts. A hold seeks -/+10 s, repeating every 200 ms, with the reels spinning faster. Keyboard Left/Right keeps tap-to-seek and hold-to-repeat, and n/p change track. This replaces the "clicking = +/-10 seconds" rule in `AGENTS.md`.
+
+Why: A click that only seeked 10 s gave no quick way to change track from the buttons. The 400 ms threshold separates a click from a hold, so one button can do both. The keyboard keeps seek on Left/Right and gets track changes on n/p.
+
+## 2026-11-06 — Playlist and album-art windows open at launch
+
+Decision: All three windows open at launch: the player, the playlist (docked right) and the album-art window (docked left). The playlist and album-art windows start empty and stay open when there is no album or cover. A satellite the user closes stays hidden until the next launch; Ctrl+L reopens the playlist. Satellites have no taskbar entry of their own (`skipTaskbar`). Minimizing the player hides them, and restoring the player re-shows the ones that were visible. This replaces the lazy creation and the "only with an album or cover" rule.
+
+Why: The three windows read as one set from the first launch, and an empty window shows where content will appear. Hiding satellites with the player keeps the set together when the player is minimized.
+
+## 2026-11-06 — Satellite minimize rolls up into a window shade
+
+Decision: On the playlist and album-art windows, the minimize button rolls the window up into its own top bar, and it stays docked. The playlist shades to 80 design px and the album-art window to 70. The minimize button again, or a double-click on the top bar, restores it. While shaded, the minimize icon shows a "restore" glyph. Only the player's minimize sends everything to the OS taskbar or dock. Shading uses two UI-internal Electron IPC channels, `window:toggleShade` (renderer to main) and `window:shaded` (main to renderer). They are not part of the engine protocol.
+
+Why: A Winamp-style set needs its windows to stay docked. An OS minimize would give each satellite its own taskbar entry and take it out of the set. A shade keeps the window in place. Risk: a double-click on a drag region is caught through the window's `maximize` event, since Linux ignores `maximizable: false`. This is untested on macOS.
