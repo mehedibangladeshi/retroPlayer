@@ -235,7 +235,7 @@ r = await R(app.ev)
 check('unshade: playlist back to the player height, docked', r.playlist.height === r.player.height && flush.right(r.player, r.playlist), fmt(r))
 // An OS minimize of a side window shades it instead (it has no taskbar entry), and must not leave it flagged minimized.
 await app.ev(`byId('playlist').minimize()`)
-await sleep(800)
+await sleep(1500) // macOS animates the minimize before the app can bring the window back
 r = await R(app.ev)
 const minFlag = await app.ev(`return byId('playlist').isMinimized()`)
 check('OS minimize: shades, stays docked, not stuck minimized', !minFlag && r.playlist.height < 100 && flush.right(r.player, r.playlist), fmt(r) + ' minimized=' + minFlag)

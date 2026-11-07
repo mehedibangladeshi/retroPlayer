@@ -416,16 +416,25 @@ function createSatellite(s: Satellite): BrowserWindow {
   w.on('minimize', () => {
     // Deferred: restoring inside the minimize event is unreliable.
     const normal = w.getNormalBounds() // restore() is async on Linux, so getBounds() right after could be stale
-    setTimeout(() => {
+    // macOS can drop a restore that lands during its minimize animation, so retry until the window is back.
+    let tries = 0
+    const bringBack = (): void => {
       if (!live(w)) return
-      // KWin under X11 leaves a restored window flagged minimized (isMinimized() stays true, size changes are
-      // ignored); hiding and re-showing it clears that.
-      if (process.platform === 'linux') {
-        w.hide()
-        w.showInactive()
-      } else w.restore()
+      if (w.isMinimized()) {
+        // KWin under X11 leaves a restored window flagged minimized (isMinimized() stays true, size changes are
+        // ignored); hiding and re-showing it clears that.
+        if (process.platform === 'linux') {
+          w.hide()
+          w.showInactive()
+        } else w.restore()
+        if (++tries < 20) {
+          setTimeout(bringBack, 150)
+          return
+        }
+      }
       if (!s.shaded) toggleShade(s, normal)
-    }, 0)
+    }
+    setTimeout(bringBack, 0)
   })
 
   const persistSoon = (): void => {
