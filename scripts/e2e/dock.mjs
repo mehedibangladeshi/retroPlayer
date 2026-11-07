@@ -333,6 +333,35 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   r = await R(app.ev)
   check('side resize: both still follow the player', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
 }
+
+// Size limits: every window has the same height range (308..924) with widths from its own aspect, and a user resize
+// ends in proportion and inside the limits.
+{
+  const lim = await app.ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, [...byId(k).getMinimumSize(), ...byId(k).getMaximumSize()]]))`)
+  check('limits: player 384x308 to 1151x924', fmt(lim.player) === fmt([384, 308, 1151, 924]), fmt(lim))
+  check('limits: side windows 308x308 to 924x924', fmt(lim.playlist) === fmt([308, 308, 924, 924]) && fmt(lim.album) === fmt([308, 308, 924, 924]), fmt(lim))
+  const near = (a, b) => Math.abs(a - b) <= 1
+  const userResize = async (k, b) => {
+    await app.ev(`byId('${k}').setBounds(${JSON.stringify(b)})`)
+    await sleep(800)
+    return R(app.ev)
+  }
+  let p = (await R(app.ev)).player
+  r = await userResize('player', { ...p, width: p.width + 40 }) // its right edge only
+  check('proportion: a player width drag ends in proportion', near(r.player.width, p.width + 40) && near(r.player.height, Math.round((p.width + 40) * 616 / 767)) && flush.right(r.player, r.playlist), fmt(r))
+  p = r.player
+  r = await userResize('player', { ...p, height: p.height - 20 }) // its bottom edge only
+  check('proportion: a player height drag ends in proportion', near(r.player.height, p.height - 20) && near(r.player.width, Math.round((p.height - 20) * 767 / 616)), fmt(r))
+  const pl = r.playlist
+  r = await userResize('playlist', { ...pl, width: pl.width + 24 })
+  check('proportion: a side window width drag ends in proportion, still docked', near(r.playlist.width, pl.width + 24) && near(r.playlist.height, r.playlist.width) && flush.right(r.player, r.playlist), fmt(r))
+  r = await userResize('playlist', { ...r.playlist, width: 2000, height: 2000 })
+  check('limits: a side window never grows past 924', r.playlist.width <= 924 && r.playlist.height <= 924 && near(r.playlist.width, r.playlist.height), fmt(r))
+  r = await userResize('playlist', { ...r.playlist, width: 100, height: 100 })
+  check('limits: a side window never shrinks below 308', r.playlist.width === 308 && r.playlist.height === 308 && flush.right(r.player, r.playlist), fmt(r))
+  await app.ev(`const w = byId('playlist'); w.setSize(${H}, ${H})`) // back to the size the checks below expect
+  await sleep(700)
+}
 const shadeFrom = (await R(app.ev)).playlist
 
 // Shade the playlist and back (the bar stays docked).

@@ -24,3 +24,22 @@ export function migrateSettings<T extends Migratable>(s: T): T {
   delete out.albumWindow
   return out
 }
+
+// Every window's height stays within 50%..150% of the player's design height (616); widths follow each window's aspect.
+const MIN_H = 308
+const MAX_H = 924
+export function sizeLimits(aspect: number): { minWidth: number; minHeight: number; maxWidth: number; maxHeight: number } {
+  return { minWidth: Math.round(MIN_H * aspect), minHeight: MIN_H, maxWidth: Math.round(MAX_H * aspect), maxHeight: MAX_H }
+}
+
+interface Box { x: number; y: number; width: number; height: number }
+// A user resize (`cur`, from `rest`) brought back to the window's aspect and limits. The dimension the user changed most
+// leads; an edge the user moved stays where it is, so the opposite edge moves.
+export function proportional(cur: Box, rest: Box, aspect: number, l: { minHeight: number; maxHeight: number }): Box {
+  const byWidth = Math.abs(cur.width - rest.width) / rest.width > Math.abs(cur.height - rest.height) / rest.height
+  const height = Math.max(l.minHeight, Math.min(l.maxHeight, Math.round(byWidth ? cur.width / aspect : cur.height)))
+  const width = Math.round(height * aspect)
+  const x = cur.x !== rest.x ? cur.x + cur.width - width : cur.x
+  const y = cur.y !== rest.y ? cur.y + cur.height - height : cur.y
+  return { x, y, width, height }
+}

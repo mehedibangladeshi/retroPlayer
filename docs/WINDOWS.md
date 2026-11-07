@@ -23,11 +23,16 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 6. Created with `show: false`, then shown on `ready-to-show`.
 7. Content size equals window size (`useContentSize: true`). The view scales its fixed design composition to the
    window, so its artwork coordinates stay in design px.
+8. User-resizable, in proportion and within fixed limits: every window's height stays within 308..924 px (50%..150% of
+   the player's design height), and its width follows its design aspect (`sizeLimits` in `windowSize.ts`, passed as
+   the window's min and max size, plus `setAspectRatio`). An X11 window manager (KWin) does not enforce the aspect on
+   an edge resize, so when a user resize ends the window is brought back in proportion (`proportional`): the dimension
+   the user changed most leads, and the edge the user moved stays put.
 
 ## Side windows
 
-1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, `minWidth`, `minHeight`
-   and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
+1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, size limits
+   (`...sizeLimits(aspect)`) and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
 2. Opens at launch with the player (after the player is shown, so it can dock), unless the user hid it.
 3. No taskbar or Dock entry of its own: the app has one icon, and activating it (a taskbar or Dock click) brings every
    visible window forward. Side windows are `skipTaskbar: true`, and on Windows and Linux they are always children of the

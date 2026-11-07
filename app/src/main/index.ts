@@ -10,7 +10,7 @@ import { fitGroup, inferDocks, layout, matchHeight, overlaps, snap, subtree, typ
 import { x11Relaunch } from './platform'
 import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
-import { defaultPlayerSize } from './windowSize'
+import { defaultPlayerSize, proportional, sizeLimits } from './windowSize'
 import { Sidecar } from './sidecar'
 // Bundled into out/ by electron-vite; packaged builds also get it as the .icns/.ico via electron-builder.
 import icon from '../../build/icon.png?asset'
@@ -24,6 +24,8 @@ interface Satellite {
   aspect: number
   minWidth: number
   minHeight: number
+  maxWidth: number
+  maxHeight: number
   key: 'playlistWindow' | 'albumWindow'
   win: BrowserWindow | null
   wanted: boolean
@@ -32,12 +34,12 @@ interface Satellite {
   timer?: NodeJS.Timeout
 }
 const PL_ASPECT = PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h
-const PL_MIN_WIDTH = 320
+const AL_ASPECT = ALBUM.WINDOW.w / ALBUM.WINDOW.h
 const playlist: Satellite = {
-  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 308 /* the player's MIN_HEIGHT: a side window must always fit its height */, key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
+  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, ...sizeLimits(PL_ASPECT), key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const album: Satellite = {
-  hash: 'album', title: 'Cassette Player: Album', aspect: ALBUM.WINDOW.w / ALBUM.WINDOW.h, minWidth: 240, minHeight: 240, key: 'albumWindow', win: null, wanted: false, shaded: false, expanded: null
+  hash: 'album', title: 'Cassette Player: Album', aspect: AL_ASPECT, ...sizeLimits(AL_ASPECT), key: 'albumWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const satellites = [playlist, album]
 // Who is docked to whom (in memory; read back from the saved positions at startup). Any window can dock to any side
@@ -53,12 +55,11 @@ function fromAppWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
 }
 
 const ASPECT = WINDOW.width / WINDOW.height
-const MIN_WIDTH = 384
-const MIN_HEIGHT = 308
+const PLAYER = sizeLimits(ASPECT) // every window has the same height range (windowSize.ts)
 
 // Sizes below are content sizes (the window is frameless, so content == window).
 // Returns the saved bounds fitted to a visible display, or null if there are none or they are off-screen.
-function fitSaved(saved: WindowState | undefined, aspect: number, minWidth: number): { x: number; y: number; width: number; height: number } | null {
+function fitSaved(saved: WindowState | undefined, aspect: number, { minWidth, maxWidth: largest }: { minWidth: number; maxWidth: number }): { x: number; y: number; width: number; height: number } | null {
   if (!saved) return null
   const visible = screen.getAllDisplays().some((d) => {
     const a = d.workArea
@@ -70,24 +71,24 @@ function fitSaved(saved: WindowState | undefined, aspect: number, minWidth: numb
   // Clamp to the work area of the display the window lands on, keeping the aspect ratio:
   // a corrupt or hand-edited settings.json must not open a window larger than the screen.
   const a = screen.getDisplayMatching({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }).workArea
-  const maxWidth = Math.max(minWidth, Math.min(a.width, Math.floor(a.height * aspect)))
+  const maxWidth = Math.max(minWidth, Math.min(largest, a.width, Math.floor(a.height * aspect)))
   const width = Math.min(maxWidth, Math.max(minWidth, Math.round(saved.width)))
   return { x: Math.round(saved.x), y: Math.round(saved.y), width, height: Math.round(width / aspect) }
 }
 
 function initialBounds(): { x?: number; y?: number; width: number; height: number } {
-  const fitted = fitSaved(loadSettings().window, ASPECT, MIN_WIDTH)
+  const fitted = fitSaved(loadSettings().window, ASPECT, PLAYER)
   if (fitted) return fitted
   const area = screen.getPrimaryDisplay().workAreaSize
-  return defaultPlayerSize(area, ASPECT, MIN_WIDTH)
+  return defaultPlayerSize(area, ASPECT, PLAYER.minWidth)
 }
 
 // A side window reopens at its saved bounds (if still on screen); the first time it takes the player's height.
 // A docked window is placed by its dock when it is shown, so its start position does not matter much.
 function satelliteBounds(s: Satellite): { x?: number; y?: number; width: number; height: number } {
-  const fitted = fitSaved(loadSettings()[s.key], s.aspect, s.minWidth)
+  const fitted = fitSaved(loadSettings()[s.key], s.aspect, s)
   if (fitted) return fitted
-  const size = matchHeight(live(win) ? win.getBounds().height : MIN_HEIGHT, s.aspect, s.minWidth)
+  const size = matchHeight(live(win) ? win.getBounds().height : PLAYER.minHeight, s.aspect, s.minWidth)
   if (!live(win)) return size
   const p = win.getBounds()
   return { ...size, x: p.x + p.width, y: p.y }
@@ -197,7 +198,7 @@ function parentDocked(): void {
 // comes along), then read the docks from the new geometry. Hidden windows keep their docks.
 function settle(id: string): void {
   if (!live(win) || win.isMinimized()) return
-  const rects = rectsNow()
+  const rects = rectsNow(keepProportion(id))
   const me = rects[id]
   if (!me) return
   const group = subtree(docks, id)
@@ -212,21 +213,49 @@ function settle(id: string): void {
   parentDocked()
   // A resize at the screen edge must not leave docked windows off screen (or clamped over the player). A drop is left
   // where the user put it: off screen is allowed where the OS allows it.
-  if (resizedSinceSettle && fitPlayerGroup(placed)) fitSoon()
+  if ((resizedSinceSettle && fitPlayerGroup(placed)) || resizeTarget.size) fitSoon()
   resizedSinceSettle = false
 }
 let resizedSinceSettle = false
+
+// A user resize keeps the window's aspect and size limits. Windows and macOS enforce the aspect during the resize; an
+// X11 window manager (KWin) may not, so the size is fixed when the resize ends. `resizeFrom` holds each window's bounds
+// from before its current resize, which tells which edge the user moved.
+const resizeFrom = new Map<string, Rect>()
+const resizeTarget = new Map<string, Rect>() // fixes a window manager has not applied yet (the user still holds the window)
+const windowOf = (id: string): BrowserWindow | null => (id === 'player' ? win : (satellites.find((s) => s.hash === id)?.win ?? null))
+function keepProportion(id: string): Record<string, Rect> {
+  const from = resizeFrom.get(id)
+  resizeFrom.delete(id)
+  const s = satellites.find((x) => x.hash === id)
+  const w = windowOf(id)
+  if (!from || !live(w) || s?.shaded) return {}
+  const cur = w.getBounds()
+  const want = proportional(cur, from, s ? s.aspect : ASPECT, s ?? PLAYER)
+  if (Math.abs(want.width - cur.width) <= 1 && Math.abs(want.height - cur.height) <= 1) return {}
+  programmatic(w, want)
+  resizeTarget.set(id, want)
+  return { [id]: want }
+}
 // A window manager ignores our move while the user still holds the window (a resize paused mid-way): try again
 // until the group fits, or the user changes something.
 let fitTimer: NodeJS.Timeout | undefined
 function fitSoon(tries = 0): void {
   fitTimer = setTimeout(() => {
-    if (fitPlayerGroup(sync()) && tries < 40) fitSoon(tries + 1)
+    for (const [id, want] of resizeTarget) {
+      const w = windowOf(id)
+      const b = live(w) ? w.getBounds() : want
+      if (Math.abs(b.width - want.width) <= 1 && Math.abs(b.height - want.height) <= 1) resizeTarget.delete(id)
+      else if (live(w)) programmatic(w, { ...b, width: want.width, height: want.height })
+    }
+    if ((fitPlayerGroup(sync()) || resizeTarget.size) && tries < 40) fitSoon(tries + 1)
+    else resizeTarget.clear()
   }, 250)
 }
 const settleTimers = new Map<string, NodeJS.Timeout>()
 function settleSoon(id: string): void {
   clearTimeout(fitTimer)
+  resizeTarget.clear()
   clearTimeout(settleTimers.get(id))
   settleTimers.set(id, setTimeout(() => settle(id), 120))
 }
@@ -281,8 +310,7 @@ function createWindow(): void {
     ...(b.x !== undefined && b.y !== undefined ? { x: b.x, y: b.y } : { center: true }),
     width: b.width,
     height: b.height,
-    minWidth: MIN_WIDTH,
-    minHeight: MIN_HEIGHT,
+    ...PLAYER,
     useContentSize: true,
     frame: false,
     resizable: true,
@@ -348,12 +376,16 @@ function createWindow(): void {
   w.on('resize', followPlayer)
   w.on('move', followPlayer)
   // A drop or the end of a resize snaps the player and fits its group onto the screen.
-  let size = { width: w.getBounds().width, height: w.getBounds().height }
+  let last = w.getBounds()
   const settlePlayer = (): void => {
-    if (w.isMinimized() || isOwn(w, true)) return
     const b = w.getBounds()
-    if (b.width !== size.width || b.height !== size.height) resizedSinceSettle = true
-    size = b
+    const prev = last
+    last = b
+    if (w.isMinimized() || isOwn(w, true)) return
+    if (b.width !== prev.width || b.height !== prev.height) {
+      resizedSinceSettle = true
+      if (!resizeFrom.has('player')) resizeFrom.set('player', prev)
+    }
     settleSoon('player')
   }
   w.on('move', settlePlayer)
@@ -420,6 +452,8 @@ function createSatellite(s: Satellite): BrowserWindow {
     height: b.height,
     minWidth: s.minWidth,
     minHeight: s.minHeight,
+    maxWidth: s.maxWidth,
+    maxHeight: s.maxHeight,
     useContentSize: true,
     frame: false,
     resizable: true, // each window is resized on its own, keeping its design aspect
@@ -512,17 +546,18 @@ function createSatellite(s: Satellite): BrowserWindow {
   }
   // A user resize keeps the window docked: it is placed flush again (a drag on its docked edge grows it the other way),
   // windows docked to it follow, and it settles when the resize ends. A move without a size change is a drag.
-  let size = { width: b.width, height: b.height }
+  let last = { x: b.x ?? 0, y: b.y ?? 0, width: b.width, height: b.height }
   let resizedAt = 0
   const changed = (): void => {
     const now = w.getBounds()
-    if (now.width !== size.width || now.height !== size.height) {
-      size = now
-      resizedAt = Date.now()
-    }
+    const prev = last
+    last = now
+    const resized = now.width !== prev.width || now.height !== prev.height
+    if (resized) resizedAt = Date.now()
     // One change can come as a move and a resize event.
     if (Date.now() - resizedAt > 100) return dragged()
     if (isOwn(w, true) || busyElsewhere(s.hash) || s.shaded || !w.isVisible() || !live(win) || win.isMinimized()) return
+    if (resized && !resizeFrom.has(s.hash)) resizeFrom.set(s.hash, prev)
     userChanged(s.hash)
     resizedSinceSettle = true
     sync()
