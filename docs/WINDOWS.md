@@ -97,6 +97,7 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 - [ ] It is in `satellites`, `DEFAULT_DOCKS`, `SHADE`, `Settings`, and the `fromAppWindow` / `Sidecar` window lists.
 - [ ] Its view is covered by `app/test/dragRegions.test.ts`.
 - [ ] `scripts/e2e/dock.mjs` covers it: it docks on each side, follows a player drag, tears off and snaps back, has no
-      taskbar entry of its own, and comes forward when the player is activated.
+      taskbar entry of its own, comes forward when the player is activated, keeps its dock when it or the player is
+      resized, and has the shared size limits and ends a resize in proportion.
       Run the script locally and on CI (`.github/workflows/dock-e2e.yml`) on Linux, Windows and macOS.
 - [ ] `docs/ARCHITECTURE.md` and this file are updated if anything changed.
