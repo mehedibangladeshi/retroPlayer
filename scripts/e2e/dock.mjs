@@ -110,15 +110,19 @@ check('startup: side windows take the player height', r.playlist.height === r.pl
   const box = await app.ev(`const bs = all.filter((w) => w.isVisible()).map((w) => w.getBounds());
     const x = Math.min(...bs.map((b) => b.x)), y = Math.min(...bs.map((b) => b.y));
     return [x, y, Math.max(...bs.map((b) => b.x + b.width)) - x, Math.max(...bs.map((b) => b.y + b.height)) - y]`)
-  const cover = spawn(electron, [join(here, 'cover.cjs'), ...extra, ...box.map(String)], { stdio: ['ignore', 'pipe', 'ignore'] })
-  const coverId = await new Promise((res) => {
-    let out = ''
-    cover.stdout.on('data', (d) => {
-      out += d
-      const m = /COVER (\d+)/.exec(out)
-      if (m) res(Number(m[1]))
+  const coverUp = async () => {
+    const cover = spawn(electron, [join(here, 'cover.cjs'), ...extra, ...box.map(String)], { stdio: ['ignore', 'pipe', 'ignore'] })
+    const id = await new Promise((res) => {
+      let out = ''
+      cover.stdout.on('data', (d) => {
+        out += d
+        const m = /COVER (\d+)/.exec(out)
+        if (m) res(Number(m[1]))
+      })
     })
-  })
+    return { cover, id }
+  }
+  let { cover, id: coverId } = await coverUp()
   const order = () => stackTopFirst([coverId, ...Object.values(ids)])
   const o1 = order()
   check('raise: cover window starts on top', o1[0] === coverId, fmt(o1))
@@ -132,6 +136,27 @@ check('startup: side windows take the player height', r.playlist.height === r.pl
   check('raise: activating the player brings every window above the cover', o2.indexOf(coverId) === 3, fmt(o2) + ' cover ' + coverId)
   cover.kill()
   await sleep(300)
+  // The same with a real mouse click on the app's taskbar button / Dock icon (the CI Linux desktop has no taskbar).
+  if (process.platform !== 'linux') {
+    ;({ cover, id: coverId } = await coverUp())
+    check('real click: cover window starts on top', order()[0] === coverId, fmt(order()))
+    const [cmd, argv] = process.platform === 'win32'
+      ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'click-taskbar-win.ps1'), 'Cassette Player']]
+      : ['swift', [join(here, 'click-dock-mac.swift'), '^Electron$', '0']] // ours launched before the cover, so it comes first
+    let out = ''
+    try {
+      out = execFileSync(cmd, argv).toString()
+    } catch (e) {
+      out = `exit ${e.status}\n${e.stdout}`
+    }
+    console.log(out.trim())
+    check('real click: the app has one taskbar button / Dock icon', /matches: 1\b/.test(out) || process.platform === 'darwin', 'see the list above')
+    await sleep(1000)
+    const o3 = order()
+    check('real click: clicking it brings every window above the cover', o3.indexOf(coverId) === 3, fmt(o3) + ' cover ' + coverId)
+    cover.kill()
+    await sleep(300)
+  }
 }
 const top = work.y + 2 // a player here has room for one window below it
 const bottomY = work.y + work.height - H - 2 // a player here has room for one window above it
