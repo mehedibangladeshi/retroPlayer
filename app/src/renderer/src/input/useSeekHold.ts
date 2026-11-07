@@ -51,12 +51,15 @@ export function useSeekHold(): SeekHold {
     if (active.current || st === 'empty') return
     const delta = dir === 'back' ? -STEP_MS : STEP_MS
     // A pointer press only becomes a seek hold after HOLD_DELAY_MS; a shorter press is a click (see release).
-    const a: Active = { dir, source, status: st, holding: source === 'key', motor: createHoldMotor(() => playSound('motor', true), () => stopSound('motor')) }
+    const a: Active = {
+      dir, source, status: st, holding: source === 'key',
+      motor: createHoldMotor(() => playSound('motor', true), () => stopSound('motor'), () => playSound('seek'))
+    }
     active.current = a
+    a.motor.press() // key sound on every press, click or hold
     const seekOnce = (): void => {
       a.holding = true
       setHeld(dir)
-      playSound('seek') // once per press, not per repeat
       a.motor.begin()
       seekRelative(delta)
     }
