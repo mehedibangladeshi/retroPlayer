@@ -89,7 +89,9 @@ const fmt = (r) => JSON.stringify(r)
 
 // ---- run 1
 let app = await launch(9341)
-const r0 = await R(app.ev) // first launch: side windows open at the player's height
+const r0 = await R(app.ev) // first launch: side windows open at the player's height (or their minimum size)
+const mins = await app.ev(`return Object.fromEntries(['playlist','album'].map((k) => [k, byId(k).getMinimumSize()]))`)
+const atPlayerHeight = (k) => Math.abs(r0[k].height - r0.player.height) <= 1 || r0[k].width === mins[k][0]
 // Windows small enough that two stacked ones fit the work area with a little room (CI screens are as small as
 // 1024x677, and macOS also keeps windows above the bottom of the work area), but not below the player's minimum.
 const H = await app.ev(`const w = byId('player'); const b = w.getBounds(); const a = screen.getDisplayMatching(b).workArea;
@@ -100,7 +102,7 @@ const work = await app.ev(`return screen.getDisplayMatching(byId('player').getBo
 console.log('work area', fmt(work), 'start', fmt(r))
 check('startup: playlist docked right of player', flush.right(r.player, r.playlist), fmt(r))
 check('startup: album docked left of player', flush.left(r.player, r.album), fmt(r))
-check('startup: side windows open at the player height', r0.playlist.height === r0.player.height && r0.album.height === r0.player.height, fmt(r0))
+check('startup: side windows open at the player height', atPlayerHeight('playlist') && atPlayerHeight('album'), fmt(r0) + ' min ' + fmt(mins))
 check('startup: a player resize leaves the side windows their own size', r.playlist.height === r0.playlist.height && r.album.height === r0.album.height, fmt(r))
 check('every window is user-resizable', await app.ev(`return ['player','playlist','album'].every((k) => byId(k).isResizable())`))
 // The checks below expect every window at the player's height: resize the side windows to it, as a user would.
