@@ -26,7 +26,7 @@ Single tests:
 - `cargo test --manifest-path engine/Cargo.toml -p player-core state::tests`: unit tests by module path.
 - `cargo test --manifest-path engine/Cargo.toml -p engine-sidecar --test stdio`: the stdio integration tests.
 
-JS unit tests use Node's built-in `node:test` (no dependency); they live in `app/test/` and run with `pnpm test`. Renderer behaviour was verified by driving the built app over the Chrome DevTools Protocol (`electron . --remote-debugging-port=<port>`).
+JS unit tests use Node's built-in `node:test` (no dependency); they live in `app/test/` and run with `pnpm test`. Renderer behaviour was verified by driving the built app over the Chrome DevTools Protocol (`electron . --remote-debugging-port=<port>`). Window docking has a live E2E: after `pnpm build`, `node scripts/e2e/dock.mjs app /abs/throwaway-profile [--ozone-platform=x11]` (CI: `.github/workflows/dock-e2e.yml` on Linux, Windows and macOS).
 
 ## Layout notes
 
@@ -34,4 +34,5 @@ JS unit tests use Node's built-in `node:test` (no dependency); they live in `app
 - Window geometry and artwork positions live in `app/src/shared/layout.ts`. It is generated from `assets/ui/source` (see `assets/ui/MANIFEST.md`).
 - Main-process settings (window bounds, last Open folder, `layoutVersion`) live in `settings.json` under userData (`app/src/main/settings.ts`). The renderer scales the fixed 767x616 composition to the window (`CassettePlayer.tsx`), so layout.ts coordinates stay in design px.
 - The debug view opens with the URL hash `#debug` (`app/src/renderer/src/App.tsx`).
+- Window rules (side windows, docking, shade, OS fixes) are in `docs/WINDOWS.md`. Read it before touching any window code.
 - Plans and history are in `docs/plans/`.
