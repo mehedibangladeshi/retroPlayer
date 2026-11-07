@@ -11,6 +11,8 @@ import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
 import { defaultPlayerSize } from './windowSize'
 import { Sidecar } from './sidecar'
+// Bundled into out/ by electron-vite; packaged builds also get it as the .icns/.ico via electron-builder.
+import icon from '../../build/icon.png?asset'
 
 let win: BrowserWindow | null = null
 let quitting = false
@@ -210,6 +212,7 @@ function createWindow(): void {
     maximizable: false,
     fullscreenable: false,
     title: 'Cassette Player: Retro',
+    icon,
     transparent: true, // rounded corners
     backgroundColor: '#00000000',
     show: false,

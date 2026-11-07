@@ -79,3 +79,11 @@ Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (the 3 transpare
 | `album/album-top.png` | Window border, glass frame, minimize and close (was `4. top with glass and border and buttons.png`) | 0,0; glass hole 71.5,71.5 794.5x794; minimize 852.5,23.5 29.5x29; close 886,23.5 29x29 |
 
 The cover is drawn between base and buttons at `COVER` 82.5,84.5 770x770 (2x 165,169 1540x1540, the alpha bbox of the sample art `2. reff art.png`, so it sits inside the glass hole). Shaded bar height is 62 (below the buttons, above the glass frame at 69.5). `source/album cover deck/album cover deck/2. reff art.png` (sample cover) and `preview for your eyes only.png` (composed look) are references only and are not shipped.
+
+## App icon
+
+| File | What | Where it goes |
+|------|------|---------------|
+| `icon/app-icon.svg` | Yellow coin with a stroked play triangle. Vector trace of the supplied `app_logo.jpeg` (coin measured in source px), cut off its grey backdrop and padded so the coin fills 88% of the square | Source for `app/build/icon.png` |
+
+`app/build/icon.png` (1024x1024 RGBA) is rendered from it with `rsvg-convert -w 1024 -h 1024 assets/ui/icon/app-icon.svg -o app/build/icon.png`. electron-builder makes the macOS `.icns`, Windows `.ico` and Linux icons from that PNG, and the main process sets it as the player window's icon (Linux taskbar, dev runs).
