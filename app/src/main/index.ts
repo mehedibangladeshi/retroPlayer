@@ -6,7 +6,8 @@ import { ALBUM, PLAYLIST, WINDOW } from '@shared/layout'
 import { SUPPORTED_EXTENSIONS, type Command } from '@shared/protocol'
 import { SHADE } from '@shared/shade'
 import { clampInto, expandedAt, shadedBounds } from './shade'
-import { fitAll, follow, isAttached, matchHeight, overlaps, placeSide, snapTo, type Side } from './dock'
+import { fitGroup, inferDocks, layout, matchHeight, overlaps, snap, subtree, type Docks, type Rect } from './dock'
+import { x11Relaunch } from './platform'
 import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
 import { defaultPlayerSize } from './windowSize'
@@ -18,35 +19,31 @@ let win: BrowserWindow | null = null
 let quitting = false
 // "Satellite" windows (playlist, album art): frameless, open with the player, hidden instead of closed, hidden while the player is minimized.
 interface Satellite {
-  hash: string
+  hash: 'playlist' | 'album' // also its id in the dock graph (the player is 'player')
   title: string
   aspect: number
   minWidth: number
   minHeight: number
   key: 'playlistWindow' | 'albumWindow'
-  side: Side
-  attached: boolean // docked flush to the player (in memory only)
-  dockTimer?: NodeJS.Timeout
-  // Flush x beside the player (p = player bounds) for a window of the given width.
-  placeX: (p: Rect, width: number) => number
   win: BrowserWindow | null
   wanted: boolean
   shaded: boolean // rolled up to its top bar
   expanded: Rect | null // bounds to restore on unshade
   timer?: NodeJS.Timeout
 }
-type Rect = { x: number; y: number; width: number; height: number }
 const PL_ASPECT = PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h
 const PL_MIN_WIDTH = 320
 const playlist: Satellite = {
-  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 322, key: 'playlistWindow', side: 'right', attached: true, win: null, wanted: false, shaded: false, expanded: null,
-  placeX: (p) => p.x + p.width // flush against the player's right edge
+  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 308 /* the player's MIN_HEIGHT: a side window must always fit its height */, key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const album: Satellite = {
-  hash: 'album', title: 'Cassette Player: Album', aspect: ALBUM.WINDOW.w / ALBUM.WINDOW.h, minWidth: 240, minHeight: 240, key: 'albumWindow', side: 'left', attached: true, win: null, wanted: false, shaded: false, expanded: null,
-  placeX: (p, width) => p.x - width // flush against the player's left edge
+  hash: 'album', title: 'Cassette Player: Album', aspect: ALBUM.WINDOW.w / ALBUM.WINDOW.h, minWidth: 240, minHeight: 240, key: 'albumWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const satellites = [playlist, album]
+// Who is docked to whom (in memory; read back from the saved positions at startup). Any window can dock to any side
+// of any other; docked windows follow their anchor, so everything docked to the player moves with it.
+const DEFAULT_DOCKS: Docks = { playlist: { to: 'player', side: 'right', ratio: 0 }, album: { to: 'player', side: 'left', ratio: 0 } }
+let docks: Docks = { ...DEFAULT_DOCKS }
 const live = (w: BrowserWindow | null): w is BrowserWindow => w !== null && !w.isDestroyed()
 const sidecar = new Sidecar(() => [win, playlist.win, album.win].filter(live))
 const devUrl = process.env.ELECTRON_RENDERER_URL
@@ -86,14 +83,24 @@ function initialBounds(): { x?: number; y?: number; width: number; height: numbe
 }
 
 // Side windows always take the player's height; only a saved position is reused (and only if still on screen).
+// A docked window is placed by its dock when it is shown, so its start position does not matter much.
 function satelliteBounds(s: Satellite): { x?: number; y?: number; width: number; height: number } {
   const size = matchHeight(live(win) ? win.getBounds().height : MIN_HEIGHT, s.aspect, s.minWidth)
   const fitted = fitSaved(loadSettings()[s.key], s.aspect, s.minWidth)
   if (fitted) return { x: fitted.x, y: fitted.y, ...size }
   if (!live(win)) return size
   const p = win.getBounds()
-  const a = screen.getDisplayMatching(p).workArea
-  return { ...size, x: Math.max(a.x, Math.min(s.placeX(p, size.width), a.x + a.width - size.width)), y: Math.max(a.y, Math.min(p.y, a.y + a.height - size.height)) }
+  return { ...size, x: p.x + p.width, y: p.y }
+}
+
+// Read the docks back from the saved positions (a window saved flush against the group is docked again).
+function restoreDocks(): void {
+  const st = loadSettings()
+  if (!st.window) return
+  const saved: Record<string, Rect> = { player: st.window }
+  for (const s of satellites) if (st[s.key]) saved[s.hash] = st[s.key]!
+  const found = inferDocks(saved, ['player', ...satellites.map((s) => s.hash)])
+  for (const s of satellites) if (saved[s.hash]) docks[s.hash] = found[s.hash]
 }
 
 // Shared by the debounced save and the immediate save before the player destroys the window.
@@ -107,85 +114,139 @@ function persistSatellite(s: Satellite): void {
 }
 
 // Bounds changes we make ourselves: their move/resize events must not be read as user drags (feedback loop).
-// Linux delivers move/resize asynchronously, so instead of a tick we remember the rect we asked for (250 ms cap).
-const expected = new Map<BrowserWindow, { r: Rect; until: number }>()
+// Linux delivers move/resize asynchronously (a slow X server can take several hundred ms), some X11 window managers apply a new size before the new
+// position, and several changes can be in flight at once (a resize syncs on every step). So an event is ours while
+// the window sits at a position we asked for or left in the last second; any other position is a user drag, even
+// right after our own change (a drag can go on after a mid-drag snap).
+const expected = new Map<BrowserWindow, Array<{ x: number; y: number; until: number }>>()
 function programmatic(w: BrowserWindow, r: Rect): void {
-  expected.set(w, { r, until: Date.now() + 250 })
-  w.setBounds(r)
+  const b = w.getBounds()
+  const now = Date.now()
+  const keep = (expected.get(w) ?? []).filter((p) => p.until >= now)
+  expected.set(w, [...keep, { x: b.x, y: b.y, until: now + 1000 }, { x: r.x, y: r.y, until: now + 1000 }])
+  // A pure move uses setPosition: on Windows at fractional display scaling, setBounds can drift the size by a pixel.
+  if (b.width === r.width && b.height === r.height) w.setPosition(r.x, r.y)
+  else w.setBounds(r)
 }
 function isOwn(w: BrowserWindow): boolean {
-  const e = expected.get(w)
-  if (!e || Date.now() > e.until) return false
+  const now = Date.now()
   const b = w.getBounds()
-  return Math.abs(b.x - e.r.x) <= 1 && Math.abs(b.y - e.r.y) <= 1 && Math.abs(b.width - e.r.width) <= 1 && Math.abs(b.height - e.r.height) <= 1
+  return (expected.get(w) ?? []).some((p) => p.until >= now && Math.abs(b.x - p.x) <= 1 && Math.abs(b.y - p.y) <= 1)
 }
 const sameRect = (a: Rect, b: Rect): boolean => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
-let prevPlayer: Rect | null = null
 
 // Side windows are not user-resizable, and GTK ignores size changes on a fixed window: lift the lock around the change.
-function resizeFixed(w: BrowserWindow, r: Rect): void {
+// X11 pins a fixed window's minimum size to its size, so a new minimum (`min`) is set inside the lift too.
+function resizeFixed(w: BrowserWindow, r: Rect, min?: [number, number]): void {
   w.setResizable(true)
+  if (min) w.setMinimumSize(...min)
   programmatic(w, r)
   w.setResizable(false)
 }
-
-// Give a side window the player's height (and the width that goes with it), docked flush and vertically on screen.
-// base = where it is going to be (default: where it is). Shaded windows keep their bar and only update the size they unroll to.
-function matchPlayer(s: Satellite, base?: Rect): void {
-  const w = s.win
-  if (!live(win) || !live(w) || win.isMinimized()) return // a minimized player's bounds can be bogus
-  const cur = base ?? w.getBounds()
-  const p = win.getBounds()
-  const size = matchHeight(p.height, s.aspect, s.minWidth)
-  let next = cur
-  if (s.shaded) {
-    if (s.expanded) s.expanded = { ...s.expanded, ...size }
-  } else {
-    next = { ...cur, ...size }
-    if (s.attached) next = snapTo(p, next, s.side)
-    const a = screen.getDisplayMatching(p).workArea
-    next.y = Math.max(a.y, Math.min(next.y, a.y + a.height - next.height))
-  }
-  if (!sameRect(next, w.getBounds())) resizeFixed(w, next)
+function setRect(w: BrowserWindow, r: Rect): void {
+  const b = w.getBounds()
+  if (sameRect(r, b)) return
+  if (r.width === b.width && r.height === b.height) programmatic(w, r)
+  else resizeFixed(w, r)
 }
-const attachedVisible = (): Satellite[] => satellites.filter((s) => live(s.win) && s.win.isVisible() && s.attached)
+
+// Bounds of the player and the visible side windows (plus `extra`, about to be shown), by dock id. `over` replaces
+// bounds we just set: Linux applies them asynchronously, so getBounds() can still report the old ones.
+function rectsNow(over: Record<string, Rect> = {}, extra?: Satellite): Record<string, Rect> {
+  const out: Record<string, Rect> = {}
+  if (live(win)) out.player = win.getBounds()
+  for (const s of satellites) if (live(s.win) && (s.win.isVisible() || s === extra)) out[s.hash] = s.win.getBounds()
+  for (const [id, r] of Object.entries(over)) if (out[id]) out[id] = r
+  return out
+}
+
+// Bring every window to where it belongs: side windows take the player's height (shaded ones keep their bar and
+// only update the size they unroll to), docked windows are placed against their anchor, detached ones stay on screen.
+// Returns the bounds it laid out (empty while the player is minimized).
+function sync(over: Record<string, Rect> = {}, extra?: Satellite): Record<string, Rect> {
+  if (!live(win) || win.isMinimized()) return {} // a minimized player's bounds can be bogus
+  const rects = rectsNow(over, extra)
+  const p = rects.player
+  const work = screen.getDisplayMatching(p).workArea
+  for (const s of satellites) {
+    const size = matchHeight(p.height, s.aspect, s.minWidth)
+    if (s.shaded) {
+      if (s.expanded) s.expanded = { ...s.expanded, ...size }
+      continue
+    }
+    const r = rects[s.hash]
+    if (!r) continue // hidden: sized when it is shown
+    rects[s.hash] = { ...r, ...size }
+    if (!docks[s.hash]) rects[s.hash].y = Math.max(work.y, Math.min(r.y, work.y + work.height - size.height))
+  }
+  const out = layout(rects, docks)
+  for (const s of satellites) if (live(s.win) && out[s.hash]) setRect(s.win, out[s.hash])
+  parentDocked()
+  return out
+}
+
+// macOS moves a window only when the drag ends (no move events during it), so the player's docked windows are made
+// its child windows there: the window server then carries them along live. Other platforms follow via sync().
+function parentDocked(): void {
+  if (process.platform !== 'darwin' || !live(win)) return
+  const group = subtree(docks, 'player')
+  for (const s of satellites) {
+    if (!live(s.win)) continue
+    const want = group.has(s.hash) ? win : null
+    if (s.win.getParentWindow() !== want) s.win.setParentWindow(want)
+  }
+}
+
+// A window was dropped after a user drag: snap it to the nearest edge of a window outside its own group (the group
+// comes along), then read the docks from the new geometry. Hidden windows keep their docks.
+function settle(id: string): void {
+  if (!live(win) || win.isMinimized()) return
+  const rects = rectsNow()
+  const me = rects[id]
+  if (!me) return
+  const group = subtree(docks, id)
+  const to = snap(me, Object.fromEntries(Object.entries(rects).filter(([k]) => !group.has(k))))
+  const w = id === 'player' ? win : (satellites.find((s) => s.hash === id)?.win ?? null)
+  if (!sameRect(to, me) && live(w)) programmatic(w, to)
+  // The dropped group's own docks are kept until the new ones are read, so it moves as one.
+  const placed = sync({ [id]: to })
+  const next = inferDocks(placed, ['player', id, ...satellites.map((s) => s.hash)])
+  for (const s of satellites) if (!placed[s.hash]) next[s.hash] = docks[s.hash]
+  docks = next
+  parentDocked()
+}
+const settleTimers = new Map<string, NodeJS.Timeout>()
+function settleSoon(id: string): void {
+  clearTimeout(settleTimers.get(id))
+  settleTimers.set(id, setTimeout(() => settle(id), 120))
+}
 
 // Show a wanted satellite on a real hidden -> shown transition only.
 function showSatellite(s: Satellite): void {
   if (!live(s.win)) return
   if (s.win.isVisible()) return
   if (s.win.isMinimized()) s.win.restore()
-  matchPlayer(s) // the player may have been resized while it was hidden
   dockOnShow(s)
   s.win.showInactive()
+  parentDocked() // macOS attaches child windows only once they are visible
 }
 
-// Place a satellite beside the player when it is shown: attached (default), never saved over the player, or with no saved spot.
+// Place a satellite before it is shown: by its dock, or at its saved spot if detached (a detached one saved over the
+// player is docked back to its default side). Then nudge the player's group onto the screen.
 function dockOnShow(s: Satellite): void {
   if (!live(win) || !live(s.win)) return
-  const player = win.getBounds()
-  const mine = s.win.getBounds()
-  if (loadSettings()[s.key] && !s.attached && !overlaps(player, mine)) return
-  const sides: Partial<Record<Side, Rect>> = { [s.side]: mine }
-  for (const o of attachedVisible()) if (o !== s && live(o.win)) sides[o.side] = o.win.getBounds()
-  let fit = fitAll(player, sides, screen.getDisplayMatching(player).workArea)
-  // A visible detached satellite is not part of fitAll: do not nudge the player onto it.
-  const detached = satellites.flatMap((o) => (o !== s && live(o.win) && o.win.isVisible() && !o.attached ? [o.win.getBounds()] : []))
-  if (!sameRect(fit.player, player) && detached.some((d) => overlaps(fit.player, d))) {
-    const keep: typeof fit = { player }
-    for (const side of ['left', 'right'] as const) {
-      const r = sides[side]
-      if (r) keep[side] = snapTo(player, r, side)
-    }
-    fit = keep
-  }
-  if (!sameRect(fit.player, player)) programmatic(win, fit.player) // the nudge
-  prevPlayer = fit.player
-  for (const o of satellites) {
-    const r = fit[o.side]
-    if (r && live(o.win) && (o === s || sides[o.side])) programmatic(o.win, r)
-  }
-  if (live(s.win) && overlaps(fit.player, s.win.getBounds())) programmatic(s.win, placeSide(fit.player, s.win.getBounds(), s.side))
+  if (!docks[s.hash] && overlaps(win.getBounds(), s.win.getBounds())) docks[s.hash] = DEFAULT_DOCKS[s.hash]
+  const rects = sync({}, s)
+  const p = rects.player
+  if (!p) return
+  const group = subtree(docks, 'player')
+  const { dx, dy } = fitGroup([...group].filter((id) => rects[id]).map((id) => rects[id]), screen.getDisplayMatching(p).workArea)
+  if (!dx && !dy) return
+  const moved = { ...p, x: p.x + dx, y: p.y + dy }
+  // Never nudge the player onto a detached window.
+  if (Object.entries(rects).some(([id, r]) => !group.has(id) && overlaps(moved, r))) return
+  programmatic(win, moved) // the nudge
+  sync({ player: moved }, s)
 }
 
 function lastOpenDir(): string | undefined {
@@ -226,9 +287,9 @@ function createWindow(): void {
   })
   win = w
   w.setAspectRatio(ASPECT)
-  prevPlayer = w.getBounds()
   w.once('ready-to-show', () => {
     w.show()
+    restoreDocks()
     // Satellites open with the player, after it exists so they can dock beside it.
     for (const s of satellites) openSatellite(s)
   })
@@ -244,8 +305,7 @@ function createWindow(): void {
     }
   })
   w.on('restore', () => {
-    prevPlayer = w.getBounds()
-    for (const s of satellites) matchPlayer(s) // resync heights after the minimize
+    sync() // resync heights and docks after the minimize
     for (const s of [...hiddenByMinimize]) if (s.wanted) showSatellite(s)
     hiddenByMinimize.clear()
   })
@@ -263,19 +323,16 @@ function createWindow(): void {
   }
   w.on('resize', persistSoon)
   w.on('move', persistSoon)
-  // Attached satellites follow the player (our own nudges are handled in dockOnShow); every satellite keeps the player's height.
+  // Docked windows follow the player live (our own nudges and snaps already synced); a user drag snaps when dropped.
   const followPlayer = (): void => {
-    if (w.isMinimized()) return
-    const next = w.getBounds()
-    for (const s of satellites) {
-      if (!live(s.win)) continue
-      const moved = !isOwn(w) && prevPlayer && s.attached && s.win.isVisible()
-      matchPlayer(s, moved ? follow(s.win.getBounds(), prevPlayer!, next, s.side) : undefined)
-    }
-    prevPlayer = next
+    if (w.isMinimized() || isOwn(w)) return
+    sync()
   }
   w.on('resize', followPlayer)
   w.on('move', followPlayer)
+  w.on('move', () => {
+    if (!w.isMinimized() && !isOwn(w)) settleSoon('player')
+  })
   w.on('close', () => {
     clearTimeout(timer)
     persist()
@@ -316,14 +373,14 @@ function toggleShade(s: Satellite, from?: Rect): void {
     s.expanded = cur
     const r = shadedBounds(cur, designW, barH)
     s.shaded = true
-    w.setMinimumSize(s.minWidth, r.height)
-    resizeFixed(w, r)
+    resizeFixed(w, r, [s.minWidth, r.height])
+    sync({ [s.hash]: r }) // windows docked below it move up
   } else {
     s.shaded = false
-    w.setMinimumSize(s.minWidth, s.minHeight)
-    const next = expandedAt(cur, s.expanded ?? cur)
+    const next = clampInto(expandedAt(cur, s.expanded ?? cur), screen.getDisplayMatching(cur).workArea)
     s.expanded = null
-    matchPlayer(s, clampInto(next, screen.getDisplayMatching(cur).workArea)) // back to the player's height
+    resizeFixed(w, next, [s.minWidth, s.minHeight])
+    sync({ [s.hash]: next }) // back to the player's height, docked
   }
   w.webContents.send(IPC.shaded, s.shaded)
 }
@@ -342,6 +399,11 @@ function createSatellite(s: Satellite): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
+    // One taskbar icon for the app, and activating it brings every window forward: on Windows an owned window has no
+    // taskbar button and rises with its owner; on Linux the taskbar folds a transient window into its main window
+    // (KWin ignores skipTaskbar for XWayland windows). macOS has one Dock icon anyway, and a child window would move
+    // with the player even when detached, so there only docked windows are children (parentDocked).
+    ...(process.platform !== 'darwin' && live(win) && { parent: win }),
     title: s.title,
     transparent: true,
     backgroundColor: '#00000000',
@@ -362,11 +424,27 @@ function createSatellite(s: Satellite): BrowserWindow {
   w.on('minimize', () => {
     // Deferred: restoring inside the minimize event is unreliable.
     const normal = w.getNormalBounds() // restore() is async on Linux, so getBounds() right after could be stale
-    setTimeout(() => {
-      if (!live(w)) return
-      w.restore()
+    // macOS can drop a restore that lands during its minimize animation, so retry until the window is back.
+    let tries = 0
+    const bringBack = (): void => {
+      // Openbox minimizes a transient's whole group, player included: that is a minimize of the app, and restoring
+      // the player brings this window back.
+      if (!live(w) || !live(win) || win.isMinimized()) return
+      if (w.isMinimized()) {
+        // KWin under X11 leaves a restored window flagged minimized (isMinimized() stays true, size changes are
+        // ignored); hiding and re-showing it clears that.
+        if (process.platform === 'linux') {
+          w.hide()
+          w.showInactive()
+        } else w.restore()
+        if (++tries < 20) {
+          setTimeout(bringBack, 150)
+          return
+        }
+      }
       if (!s.shaded) toggleShade(s, normal)
-    }, 0)
+    }
+    setTimeout(bringBack, 0)
   })
 
   const persistSoon = (): void => {
@@ -375,21 +453,36 @@ function createSatellite(s: Satellite): BrowserWindow {
   }
   w.on('resize', persistSoon)
   w.on('move', persistSoon)
-  // A user drag/resize decides whether the window is attached; attached ones snap flush.
-  const settle = (): void => {
-    if (isOwn(w)) return
-    clearTimeout(s.dockTimer)
-    s.dockTimer = setTimeout(() => {
-      if (!live(win) || !live(w)) return
-      const p = win.getBounds()
-      const r = w.getBounds()
-      s.attached = isAttached(p, r, s.side)
-      const flush = snapTo(p, r, s.side)
-      if (s.attached && !sameRect(flush, r)) programmatic(w, flush)
-    }, 120)
+  // A user drag tears the window off its dock (windows docked to it come along); dropping it snaps and re-docks.
+  // Still where its dock puts it: a late event of ours, or a size the OS clamped to the window's minimum. Only a
+  // changed position is a drag.
+  const atDock = (): boolean => {
+    const rects = rectsNow()
+    const at = layout(rects, docks)[s.hash]
+    const cur = rects[s.hash]
+    return !!docks[s.hash] && !!at && !!cur && Math.abs(at.x - cur.x) <= 1 && Math.abs(at.y - cur.y) <= 1
   }
-  w.on('move', settle)
-  w.on('resize', settle)
+  const ignored = (): boolean => isOwn(w) || !w.isVisible() || !live(win) || win.isMinimized() || atDock()
+  let tearTimer: NodeJS.Timeout | undefined
+  const dragged = (): void => {
+    if (ignored()) return
+    if (!docks[s.hash]) {
+      sync() // windows docked to it come along
+      settleSoon(s.hash)
+      return
+    }
+    // X11 window managers can report a bogus position for a moment (0,0 while reparenting a window being shown):
+    // tear a docked window off only if it is still away from its dock a moment later.
+    tearTimer ??= setTimeout(() => {
+      tearTimer = undefined
+      if (ignored()) return
+      docks[s.hash] = undefined
+      sync()
+      settleSoon(s.hash)
+    }, 50)
+  }
+  w.on('move', dragged)
+  w.on('resize', dragged)
   // Closing only hides: the window is reopened from the player and keeps its state. Quitting must still close it.
   w.on('close', (e) => {
     clearTimeout(s.timer)
@@ -428,7 +521,12 @@ function openSatellite(s: Satellite): void {
 // single-instance lock (one would silently quit).
 if (!app.isPackaged) app.setPath('userData', app.getPath('userData') + '-dev')
 
-if (!app.requestSingleInstanceLock()) {
+// Docking needs window positions, which native Wayland does not give apps: relaunch once on XWayland (platform.ts).
+const relaunch = x11Relaunch(process.platform, process.env, process.argv, process.execPath)
+if (relaunch) {
+  app.relaunch(relaunch)
+  app.exit(0)
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
@@ -484,6 +582,12 @@ if (!app.requestSingleInstanceLock()) {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.close()
   })
 
+  // macOS: a Dock icon click with no window in front brings the player (and so every window) back.
+  app.on('activate', () => {
+    if (!live(win)) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  })
   app.on('before-quit', () => {
     quitting = true
     sidecar.stop()
