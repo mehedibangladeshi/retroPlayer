@@ -324,3 +324,123 @@ Why: Without the tag, an `Ended` from the old track could arrive just after a ma
 Decision: `AGENTS.md` "How to work" items 8 and 9 make test-driven development mandatory. Every behaviour change or bug fix starts with a failing test. A versioned pre-commit hook, `scripts/git-hooks/pre-commit`, runs typecheck, lint, the JS tests, the cargo tests and clippy, and blocks a failing commit. `pnpm install` enables the hook through the `prepare` script, which sets `core.hooksPath`. CI on push and a Claude Code hook were considered and not chosen.
 
 Why: A hook that runs on every commit catches a failing test before it is shared, and it works the same for any contributor and any agent. CI on push would catch the same failures later, and a Claude Code hook would only cover Claude's commits.
+
+## 2026-11-06 — Forward and backward split into click and hold
+
+Decision: On the player's forward and backward buttons, a press under 400 ms is a click and a press of 400 ms or more is a hold. A click on forward goes to the next track, and does nothing on the last track or with a single file. A click on backward restarts the song if more than 3 s in, otherwise goes to the previous track; on the first track or a single file it restarts. A hold seeks -/+10 s, repeating every 200 ms, with the reels spinning faster. Keyboard Left/Right keeps tap-to-seek and hold-to-repeat, and n/p change track. This replaces the "clicking = +/-10 seconds" rule in `AGENTS.md`.
+
+Why: A click that only seeked 10 s gave no quick way to change track from the buttons. The 400 ms threshold separates a click from a hold, so one button can do both. The keyboard keeps seek on Left/Right and gets track changes on n/p.
+
+## 2026-11-06 — Playlist and album-art windows open at launch
+
+Decision: All three windows open at launch: the player, the playlist (docked right) and the album-art window (docked left). The playlist and album-art windows start empty and stay open when there is no album or cover. A satellite the user closes stays hidden until the next launch; Ctrl+L reopens the playlist. Satellites have no taskbar entry of their own (`skipTaskbar`). Minimizing the player hides them, and restoring the player re-shows the ones that were visible. This replaces the lazy creation and the "only with an album or cover" rule.
+
+Why: The three windows read as one set from the first launch, and an empty window shows where content will appear. Hiding satellites with the player keeps the set together when the player is minimized.
+
+## 2026-11-06 — Satellite minimize rolls up into a window shade
+
+Decision: On the playlist and album-art windows, the minimize button rolls the window up into its own top bar, and it stays docked. The playlist shades to 80 design px and the album-art window to 70. The minimize button again, or a double-click on the top bar, restores it. While shaded, the minimize icon shows a "restore" glyph. Only the player's minimize sends everything to the OS taskbar or dock. Shading uses two UI-internal Electron IPC channels, `window:toggleShade` (renderer to main) and `window:shaded` (main to renderer). They are not part of the engine protocol.
+
+Why: A Winamp-style set needs its windows to stay docked. An OS minimize would give each satellite its own taskbar entry and take it out of the set. A shade keeps the window in place. Risk: a double-click on a drag region is caught through the window's `maximize` event, since Linux ignores `maximizable: false`. This is untested on macOS.
+
+## 2026-11-06 — Side-window drag region is one top-bar strip
+
+Decision: The playlist and album-art windows have exactly one drag region: a childless strip in their top bar (`.pl-titlebar`, `.al-titlebar`), left of the minimize and close buttons. Nothing else in those views sets `-webkit-app-region`. `app/test/dragRegions.test.ts` fails if that changes.
+
+Why: Chromium builds drag regions in DOM order. The top artwork `<img>` came after the rows and buttons and inherited `drag`, so it covered the whole window and every click became a title-bar click. A live CDP probe with real clicks found this. Scaling was not the cause, so the transform in the 2026-11-01 "Resizable, aspect-locked window" entry stays.
+
+## 2026-11-06 — No window is full screen or maximized
+
+Decision: No window goes full screen or maximizes, the player included. The F11, Ctrl+Cmd+F and Esc handling, the full-screen button, its IPC and the saved full-screen setting are removed. All windows are `maximizable: false` and `fullscreenable: false`. A `maximize` listener calls `unmaximize()` at once, because Linux ignores `maximizable: false`. The drawn full-screen box (`chrome-fullscreen.png`) is removed from the assets. Supersedes the 2026-11-01 "Only the player goes full screen" entry. Also supersedes the full-screen parts of the 2026-11-01 "Resizable, aspect-locked window" entry (full-screen state restore) and of the "Artwork edits" entry (the drawn full-screen box).
+
+Why: Owner decision. Full screen and maximize would break the fixed, docked set of three windows.
+
+## 2026-11-06 — Double-click does nothing; roll-up only from minimize
+
+Decision: A double-click does nothing on any window, the player and the top bars included. A side window rolls up and down only with its minimize button. Supersedes the double-click restore in the 2026-11-06 "Satellite minimize rolls up into a window shade" entry, and its `maximize`-event catch. On macOS, if the system setting makes a title-bar double-click minimize, a side window rolls up instead. Untested on macOS.
+
+Why: Owner decision. The double-click restore relied on the `maximize` event, which is a fragile signal to build a control on.
+
+## 2026-11-06 — Side windows match the player's height
+
+Decision: The playlist and album-art windows are always the same height as the player, docked or not. Their width comes from their design aspect ratio. They are not resizable by the user. The playlist's resize grip and its `window:resize` IPC are removed. Supersedes the 2026-11-01 "The playlist window has its own frame" entry's resize-from-edges and grip statements, and the "Playlist resize grip uses a sender-checked IPC" entry. Also supersedes the square sizing in the 2026-11-01 "Window placement on first appearance only" entry, since the album-art window is no longer square.
+
+Why: Owner decision. One shared height keeps the three windows aligned as a set, and a fixed aspect ratio keeps the artwork true to its design.
+
+## 2026-11-06 — Cover-art window drawn from artist layers
+
+Decision: The album-art window is drawn from the artist's layers in `assets/ui/source/album cover deck/`: a base, three display-only tabs ("Cassette Box", "J-Flap", "Lyric"), and a top layer with the glass, border and buttons. The playing cover sits under the glass. The reference art and the preview are not shipped. Supersedes the frame in the 2026-11-01 "Album-art window" entry, which was a CSS placeholder cropped from the playlist artwork.
+
+Why: The artist's layers replace the placeholder. The tabs are display-only for now.
+
+## 2026-11-06 — Linux runs on any platform; no side-window docking on native Wayland
+
+Decision: Linux runs on whatever platform is available. On native Wayland the app cannot position windows, so side windows do not dock there. This is accepted. Windows and macOS are the targets for the full behaviour. Extends the 2026-11-01 "Window positions are decided by the compositor on Wayland" entry, and does not change it.
+
+Why: Owner decision. This accepts the limit that entry describes, rather than forcing XWayland.
+
+## 2026-11-06 — UI sounds can loop until stopped
+
+Decision: `playSound` takes an optional `loop` flag, and `stopSound {name}` ends a sound. A looping sound restarts at 0 when it ends. A second loop of a sound that is already looping is ignored. `stopSound` ends every voice of that sound, looping or not. Looping voices count toward the 4-voice mix cap. Inside the engine, `Output::loop_clip` and `Output::stop_clip` send a small `Cmd` enum (`Play`, `Loop`, `Stop`) through the existing sound ring to the audio callback. The callback does no allocation, locking or logging. The wire format is in `docs/PROTOCOL.md`. Extends the 2026-11-01 "Key sounds are played by the engine" entry.
+
+Why: The seek hold needs a sound that runs for as long as the button is held and stops on release. A one-shot sound would need a timer in the UI, and the UI must not keep its own clock for audio.
+
+## 2026-11-06 — Tape-motor loop is FLAC, cut to loop seamlessly
+
+Decision: Holding forward or rewind loops `assets/audio/tape_motor.flac`, mapped as `motor` in `app/src/shared/sounds.ts`. The file is an 8.0 s loop cut from the artist's 60 s mp3 (source 20-28 s), with a 0.4 s equal-power crossfade at the seam. The renderer starts the loop when a hold starts (after the 400 ms delay, or when a key is held) and plays the one-shot `seek` sound with it. It stops the loop when the hold ends. A click plays no motor sound. The main process also sends `stopSound motor` when the player window's renderer closes, crashes or reloads, so a dead UI cannot leave the loop running. `electron-builder.yml` copies `*.flac` into the resources too.
+
+Why: An mp3 adds encoder padding, which leaves a gap at the loop point. FLAC keeps the loop clean. The engine decodes each sound fully and caps sound length at 10 s, so an 8 s loop fits.
+
+## 2026-11-06 — Default player window is 25% of the work area (provisional)
+
+Decision: On first launch the player is 25% of the primary work-area width, down from 55%. Its height is capped at 80% of the work-area height, and its minimum width is 384 (minimum height 308). The value comes from `defaultPlayerSize` in `app/src/main/windowSize.ts`. The 25% figure is provisional. The owner will pick the final size after testing. Supersedes the 55% first-launch size in the 2026-11-01 "Resizable, aspect-locked window that scales the player as one picture" entry. The rest of that entry still holds.
+
+Why: The 55% window was too big on the owner's screen. 25% is a value to test, not a settled design. The minimum was lowered from 575 to 384 so the player can get that small.
+
+## 2026-11-06 — One-time layout reset through `layoutVersion`
+
+Decision: `settings.json` stores a `layoutVersion`. The current value is `LAYOUT_VERSION = 3` in `app/src/main/windowSize.ts`. When settings load with a missing or older version, the saved player, playlist and album-art window bounds are dropped once. `lastOpenDir` is kept. Every save writes the current version. To reset window sizes again, bump `LAYOUT_VERSION`.
+
+Why: Without a version, old saved bounds would keep the old sizes forever. One version number resets them once and leaves the user's Open folder alone.
+
+## 2026-11-07 — Playlist font is "Another Typewriter"
+
+Decision: The playlist's album heading and song rows use "Another Typewriter", a public domain font, bundled as `assets/ui/playlist/fonts/AnotherTypewriter.ttf` with its licence in `AnotherTypewriter-EULA.txt`. It replaces "Sue Ellen Francisco" from the 2026-11-01 entry, which is superseded. The font file and its OFL licence are removed. The font applies only to the playlist window, through `PLAYLIST.FONT_FAMILY` in `app/src/shared/layout.ts`. Sizes are 32 px for the heading and 28 px for rows, with a 36 px row pitch, all in design px. The font stack is `'Another Typewriter', monospace`. The font has no '-', '…' or accented letters, so artist and title are joined with an en dash, and missing glyphs fall back to the system monospace font.
+
+Why: The user picked the font and the sizes from a rendered preview of four options. The OS text size was rejected: Electron cannot read it reliably (macOS has no such setting), the Rust core must stay free of UI concepts, and a per-OS text size would break the rule that the UI looks identical on every OS. Accepted by the user: the fallback glyphs may differ slightly per OS.
+
+## 2026-11-07 — Side-window art is cropped to its body
+
+Decision: The album and playlist layer PNGs are cropped to their 1874x1874 base body (album lost 3 transparent rows at the bottom, playlist 11 at the top), so both design sizes are 937x937 and every playlist y position moved up 5.5 design px (shade bar 80 to 74.5). `app/test/sideArt.test.ts` checks the sizes against the PNG headers. The playlist aspect is now 1:1, superseding the 1874:1885 in the playlist frame entry.
+
+Why: Side windows take the player's exact pixel height and the player art fills its canvas edge to edge, so transparent rows made the side windows' visible body slightly shorter than the player.
+
+## 2026-11-07 — Docking on every side, between any windows; Linux runs on XWayland
+
+Decision: Any window docks to any side of any other, and everything docked to the player, directly or through other windows, moves with it. The docks are a tree read from the window geometry (`inferDocks`) after every drop and at startup, rather than a stored setting. On Linux, a Wayland session with an X server relaunches the app once with `--ozone-platform=x11` so it can place windows. A Linux machine with Wayland and no XWayland still runs, without docking. This supersedes the 2026-11-01 "Window positions are decided by the compositor on Wayland" and 2026-11-06 "no side-window docking on native Wayland" entries. macOS makes docked windows child windows of the player, because it sends no move events during a drag. No dependency was added. The playlist window's minimum height drops from 322 to 308, the player's minimum, so a side window can always take the player's height (322 came from the old 1874:1885 playlist aspect).
+
+Why: The owner asked for docking from any side, between any windows, with the group following the player on every OS, plus whatever OS-specific fixes that needs. Native Wayland does not let an app read or set its window positions, so XWayland is the only way to dock on Linux. `app.commandLine.appendSwitch` runs too late to change Chromium's platform (checked: the window stayed a Wayland window), so a one-time relaunch is used, and `pnpm dev` passes the flag through electron-vite instead. Reading docks from geometry keeps the saved settings format unchanged and makes a docked layout survive a restart for free.
+
+## 2026-11-07 — One taskbar/Dock icon; side windows are children of the player
+
+Decision: The app shows one taskbar/Dock icon, and activating it brings every visible window forward. On Windows and Linux every side window is created with the player as its parent (an owned window on Windows, a transient `WM_TRANSIENT_FOR` window on X11). On macOS only docked windows are children, as before, and `app.on('activate')` restores and focuses the player. `scripts/e2e/dock.mjs` checks it with another app's window covering all three (`scripts/e2e/cover.cjs`) and a taskbar-style activation (`_NET_ACTIVE_WINDOW` from `scripts/e2e/activate-linux.py` on X11, `SwitchToThisWindow` from `scripts/e2e/activate-win.ps1` on Windows, app activation on macOS), and reads the stacking order from the OS (`scripts/e2e/zorder.mjs`). On Windows and macOS it also clicks the app's real taskbar button or Dock icon with OS mouse input (`scripts/e2e/click-taskbar-win.ps1`, `scripts/e2e/click-dock-mac.swift`), and counts the taskbar entries on all three OSes.
+
+Why: The owner asked for all windows under one icon, raised together, on every OS. `skipTaskbar` alone was not enough: on KDE (XWayland) KWin ignored `_NET_WM_STATE_SKIP_TASKBAR` from Electron and from a raw client message, so each window had its own icon, and raising one window left the others behind. A transient window is folded into its main window by Linux taskbars and raised with it, and an owned window on Windows has no taskbar button and rises with its owner, so one mechanism covers both. Openbox minimizes a transient's whole group, so on openbox an OS minimize of a side window minimizes the app, and restoring the player brings every window back (the side window's minimize handler steps aside when the player is minimized too); on KWin it still shades. macOS child windows move with their parent, so a detached window there cannot be a child; macOS already gives one Dock icon per app and a Dock click brings the app's windows forward. Raising the side windows with `moveTop` from the player's `focus` event was tried first and dropped: the parent relationship lets the OS do the raise, with no extra code path that moves windows.
+
+## 2026-11-07 — Resizing keeps windows docked: consequences are not drags, and the group is fitted after a resize
+
+Decision: A side window's move or resize within 300 ms of a user change to another window is treated as a consequence of that change, never as a drag of the side window. A player resize now settles like a drop, and after a user resize the player's docked group is nudged onto the screen (`fitGroup`, as when a side window is shown), unless that would push the player onto a loose window. A drop is not nudged: on Windows and macOS a user may drag the group partly off screen. The nudge is retried every 250 ms until the group fits, because a window manager ignores it while the user still holds the window. `scripts/e2e/dock.mjs` grows the player against the right edge of the work area and checks that the group shifts back and stays docked.
+
+Why: The owner reported that docking breaks when a window is resized. With real pointer resizes on KDE (XWayland), growing the player pushed a docked side window past the screen edge. KWin keeps such a window inside the work area, so it landed somewhere the app had not asked for, and the app read that as a user drag: the side window was torn off its dock or left over the player. A resize that changed no position never settled either. KWin also ignored the nudge when it fired during a resize the user had paused but not released, so a single nudge was not enough.
+
+## 2026-11-07 — Every window is resizable on its own
+
+Decision: The playlist and album-art windows are user-resizable, each on its own, keeping its design aspect ratio (`setAspectRatio`). They no longer take the player's height: they open at the player's height the first time, then at their saved size, and a player resize leaves them alone. A docked window keeps its dock while it is resized: it is placed flush against its anchor again, so a drag on its docked edge grows it away from the anchor, and windows docked to it follow. A shaded window is not resizable and has no aspect lock until it is unrolled. Own-change detection compares the size as well as the position for resizes (`isOwn(w, true)`), because a user resize from the far corner keeps the position the app last set. Supersedes the 2026-11-06 "Side windows match the player's height" entry, except that the removed resize grip and `window:resize` IPC stay removed (the OS edges resize the window).
+
+Why: The owner asked for every window to be resizable individually.
+
+## 2026-11-07 — Fixed, proportional size limits for every window
+
+Decision: Every window's height stays within 308..924 px, which is 50%..150% of the player's design height (616), and its width follows its own design aspect: the player is 384x308 to 1151x924, and the playlist and album-art windows are 308x308 to 924x924. The limits come from `sizeLimits` in `app/src/main/windowSize.ts` and are each window's min and max size. When a user resize ends, the window is brought back to its aspect and limits (`proportional`): the dimension the user changed most leads, and an edge the user moved stays where it is. The fix is retried until the window manager applies it, as the group nudge is. This replaces the playlist's 320 px and the album-art window's 240 px minimum widths. Saved bounds are clamped to the same limits.
+
+Why: The owner asked for fixed, proportional minimum and maximum sizes for all windows. One height range for every window keeps the side windows at the same scale as the player at both ends (a side window at the player's height is the intended look). `setAspectRatio` alone was not enough: with real pointer resizes on KDE (XWayland), a right-edge drag of the player gave 528x394 instead of its 767:616 aspect.

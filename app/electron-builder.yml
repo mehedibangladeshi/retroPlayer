@@ -20,6 +20,7 @@ extraResources:
     to: sounds
     filter:
       - '*.mp3'
+      - '*.flac'
 artifactName: Cassette-Player-Retro-${version}-${os}-${arch}.${ext}
 # Smallest downloads (xz/lzma for AppImage, nsis and dmg); packaging is slower.
 compression: maximum

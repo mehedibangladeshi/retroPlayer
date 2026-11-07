@@ -1,0 +1,43 @@
+# Live window-docking E2E (scripts/e2e/dock.mjs) on Linux (Xvfb + openbox), Windows and macOS, including a real
+# OS pointer drag of the player. The engine is not built: docking needs no audio (the app shows an engine error).
+name: dock-e2e
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter app build
+      - name: E2E (Linux, X server with a window manager)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb openbox x11-utils
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 2
+          DISPLAY=:99 openbox &
+          sleep 2
+          # Ubuntu's AppArmor blocks Chromium's user-namespace sandbox on CI runners.
+          DISPLAY=:99 node scripts/e2e/dock.mjs app "$RUNNER_TEMP/ud" --no-sandbox
+      - name: E2E (Windows / macOS desktop session)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: node scripts/e2e/dock.mjs app "$RUNNER_TEMP/ud"

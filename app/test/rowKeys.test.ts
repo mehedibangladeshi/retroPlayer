@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { rowKeyAction } from '../src/renderer/src/views/rowKeys.ts'
+import { rowClickAction, rowKeyAction } from '../src/renderer/src/views/rowKeys.ts'
 
 test('Enter plays the focused row, even when another is selected', () => {
   assert.deepEqual(rowKeyAction('Enter', 3, 1, 5), { type: 'play', index: 3 })
@@ -23,4 +23,8 @@ test('arrows start from the focused row when one has focus', () => {
 })
 test('other keys do nothing', () => {
   assert.equal(rowKeyAction('a', 1, 1, 5), null)
+})
+test('a single click only selects a row; a double-click plays it', () => {
+  assert.deepEqual(rowClickAction(1, 2), { type: 'select', index: 2 })
+  assert.deepEqual(rowClickAction(2, 2), { type: 'play', index: 2 })
 })

@@ -32,7 +32,7 @@ export function parseEvent(line: string): EngineEvent | null {
 }
 
 // Commands the renderer may send. `loadSound` is main-process only, so it is not listed.
-const COMMAND_TYPES = new Set(['load', 'play', 'pause', 'stop', 'seek', 'seekRelative', 'playSound', 'loadAlbum', 'playIndex'])
+const COMMAND_TYPES = new Set(['load', 'play', 'pause', 'stop', 'seek', 'seekRelative', 'playSound', 'stopSound', 'loadAlbum', 'playIndex'])
 
 /** True if the path ends in a supported audio extension (case-insensitive). */
 function hasSupportedExtension(path: string): boolean {
@@ -51,6 +51,9 @@ export function isValidCommand(x: unknown): boolean {
   if (c.type === 'playIndex') return Number.isInteger(c.index) && (c.index as number) >= 0
   if (c.type === 'seek') return typeof c.positionMs === 'number' && Number.isFinite(c.positionMs)
   if (c.type === 'seekRelative') return typeof c.deltaMs === 'number' && Number.isFinite(c.deltaMs)
-  if (c.type === 'playSound') return typeof c.name === 'string' && Object.hasOwn(SOUNDS, c.name)
+  if (c.type === 'playSound' || c.type === 'stopSound') {
+    if (c.type === 'playSound' && c.loop !== undefined && typeof c.loop !== 'boolean') return false
+    return typeof c.name === 'string' && Object.hasOwn(SOUNDS, c.name)
+  }
   return true
 }

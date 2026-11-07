@@ -25,7 +25,12 @@ pub enum Command {
         delta_ms: i64,
     },
     LoadSound { name: String, path: String },
-    PlaySound { name: String },
+    PlaySound {
+        name: String,
+        #[serde(default, rename = "loop", skip_serializing_if = "std::ops::Not::not")]
+        looped: bool,
+    },
+    StopSound { name: String },
     #[serde(rename_all = "camelCase")]
     LoadAlbum { path: String },
     /// `usize` makes serde reject negatives and non-integers.

@@ -15,3 +15,8 @@ export function rowKeyAction(key: string, focusedIndex: number | null, selectedI
   }
   return null
 }
+
+/** Playlist mouse rules: a click selects a row; the second click of a double-click (`detail` 2) plays it. */
+export function rowClickAction(detail: number, index: number): RowKeyAction {
+  return { type: detail >= 2 ? 'play' : 'select', index }
+}

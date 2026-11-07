@@ -86,12 +86,26 @@ Fields: `name` (string), `path` (string, absolute path to the audio file).
 
 ### playSound
 
-Mixes the sound loaded under `name` on top of the music, in any state (also `Empty`, `Stopped` and `Paused`). It never changes the transport and emits no event. Up to 4 sounds can overlap; a fifth is skipped.
+Mixes the sound loaded under `name` on top of the music, in any state (also `Empty`, `Stopped` and `Paused`). It never changes the transport and emits no event. Up to 4 sounds can overlap; a fifth is skipped. An unknown `name` is ignored and logged.
+
+Fields: `name` (string), `loop` (boolean, optional; absent or false plays the sound once, true repeats it until `stopSound`). A second looping `playSound` of a sound that is already looping is ignored.
+
+```json
+{"v":1,"type":"playSound","name":"stop"}
+```
+
+```json
+{"v":1,"type":"playSound","name":"motor","loop":true}
+```
+
+### stopSound
+
+Ends every voice of the sound `name` (a loop or a one-shot still playing). Stopping a sound that is silent is a no-op. It emits no event; an unknown `name` is ignored and logged.
 
 Fields: `name` (string).
 
 ```json
-{"v":1,"type":"playSound","name":"stop"}
+{"v":1,"type":"stopSound","name":"motor"}
 ```
 
 ### loadAlbum
@@ -187,7 +201,7 @@ There is no "current track" field. The current track is the one whose `path` equ
 
 ### artwork
 
-Carries the cover art of the current track. It is sent right after every successful track load (single `load`, `loadAlbum`, `playIndex`, auto-advance), before playback starts, and only when the art differs from the last one sent. The art is the file's embedded picture, else a folder image next to it, else the active album's cover, else `null`. A failed load counts as no art. The engine sends nothing at startup. The Electron main process caches the latest `artwork`, re-sends it to a window that (re)loads, and sends `null` if the engine restarts. The UI shows an album-art window only when `cover` is not `null`.
+Carries the cover art of the current track. It is sent right after every successful track load (single `load`, `loadAlbum`, `playIndex`, auto-advance), before playback starts, and only when the art differs from the last one sent. The art is the file's embedded picture, else a folder image next to it, else the active album's cover, else `null`. A failed load counts as no art. The engine sends nothing at startup. The Electron main process caches the latest `artwork`, re-sends it to a window that (re)loads, and sends `null` if the engine restarts. The album-art window always exists: it shows the cover, or an empty panel when `cover` is `null`.
 
 Fields: `cover` (string or `null`, always present): a `data:` URL (`data:<mime>;base64,...`), or `null` when there is no art.
 

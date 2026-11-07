@@ -1,17 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  fitAll,
-  follow,
-  gripResize,
-  isAttached,
-  overlaps,
-  placeSide,
-  snapTo,
-  type Rect
-} from '../src/main/dock.ts'
+import { fitGroup, inferDocks, layout, overlaps, snap, subtree, type Docks, type Rect } from '../src/main/dock.ts'
 
 const r = (x: number, y: number, width: number, height: number): Rect => ({ x, y, width, height })
+const P = r(100, 100, 400, 300) // player
 
 test('overlaps: true, false and touching edges', () => {
   assert.equal(overlaps(r(0, 0, 10, 10), r(5, 5, 10, 10)), true)
@@ -20,97 +12,106 @@ test('overlaps: true, false and touching edges', () => {
   assert.equal(overlaps(r(0, 0, 10, 10), r(0, 10, 10, 10)), false)
 })
 
-test('placeSide: flush and top-aligned on both sides', () => {
-  const p = r(100, 50, 400, 300)
-  assert.deepEqual(placeSide(p, { width: 80, height: 200 }, 'right'), r(500, 50, 80, 200))
-  assert.deepEqual(placeSide(p, { width: 80, height: 200 }, 'left'), r(20, 50, 80, 200))
+test('snap: each of the four sides, within tolerance', () => {
+  assert.deepEqual(snap(r(508, 150, 80, 200), { player: P }), r(500, 150, 80, 200)) // right
+  assert.deepEqual(snap(r(15, 150, 80, 200), { player: P }), r(20, 150, 80, 200)) // left
+  assert.deepEqual(snap(r(200, 395, 80, 50), { player: P }), r(200, 400, 80, 50)) // bottom
+  assert.deepEqual(snap(r(200, 40, 80, 50), { player: P }), r(200, 50, 80, 50)) // top
 })
 
-test('snapTo keeps y and size', () => {
-  const p = r(100, 50, 400, 300)
-  assert.deepEqual(snapTo(p, r(530, 90, 80, 200), 'right'), r(500, 90, 80, 200))
-  assert.deepEqual(snapTo(p, r(0, 90, 80, 200), 'left'), r(20, 90, 80, 200))
+test('snap: aligns the start edge with the window it docks to', () => {
+  assert.deepEqual(snap(r(505, 108, 80, 200), { player: P }), r(500, 100, 80, 200))
+  assert.deepEqual(snap(r(95, 405, 80, 50), { player: P }), r(100, 400, 80, 50))
 })
 
-test('isAttached: tolerance and vertical overlap', () => {
-  const p = r(100, 50, 400, 300)
-  assert.equal(isAttached(p, r(500, 50, 80, 200), 'right'), true)
-  assert.equal(isAttached(p, r(508, 50, 80, 200), 'right'), true)
-  assert.equal(isAttached(p, r(520, 50, 80, 200), 'right'), false)
-  assert.equal(isAttached(p, r(20, 50, 80, 200), 'left'), true)
-  assert.equal(isAttached(p, r(0, 50, 80, 200), 'left'), false)
-  assert.equal(isAttached(p, r(500, 350, 80, 200), 'right'), false)
+test('snap: too far, or no overlap on the other axis, leaves the rect alone', () => {
+  assert.deepEqual(snap(r(520, 150, 80, 200), { player: P }), r(520, 150, 80, 200))
+  assert.deepEqual(snap(r(505, 450, 80, 200), { player: P }), r(505, 450, 80, 200))
 })
 
-test('follow: pure move keeps vertical offset', () => {
-  const from = r(100, 50, 400, 300)
-  const to = r(150, 80, 400, 300)
-  assert.deepEqual(follow(r(500, 70, 80, 200), from, to, 'right'), r(550, 100, 80, 200))
-  assert.deepEqual(follow(r(20, 70, 80, 200), from, to, 'left'), r(70, 100, 80, 200))
+test('snap: picks the nearest edge among several windows', () => {
+  const others = { player: P, album: r(500, 420, 100, 100) }
+  // 6 px right of the player, 3 px above the album's top: the album wins.
+  assert.deepEqual(snap(r(506, 317, 100, 100), others), r(500, 320, 100, 100))
 })
 
-test('follow: resize moves right side to the new right edge, left stays flush', () => {
-  const from = r(100, 50, 400, 300)
-  const to = r(100, 50, 500, 400)
-  assert.deepEqual(follow(r(500, 50, 80, 200), from, to, 'right'), r(600, 50, 80, 200))
-  assert.deepEqual(follow(r(20, 50, 80, 200), from, to, 'left'), r(20, 50, 80, 200))
+test('inferDocks: windows flush to the root dock to it, chains dock to the window they touch', () => {
+  const rects = { player: P, playlist: r(500, 100, 80, 300), album: r(500, 400, 80, 80) }
+  const d = inferDocks(rects, ['player'])
+  assert.deepEqual(d.playlist, { to: 'player', side: 'right', ratio: 0 })
+  assert.deepEqual(d.album, { to: 'playlist', side: 'bottom', ratio: 0 })
 })
 
-test('fitAll: room on both sides leaves everything unchanged', () => {
-  const out = fitAll(
-    r(200, 50, 400, 300),
-    { left: r(120, 50, 80, 200), right: r(600, 50, 80, 200) },
-    r(0, 0, 1000, 800)
-  )
-  assert.deepEqual(out, {
-    player: r(200, 50, 400, 300),
-    left: r(120, 50, 80, 200),
-    right: r(600, 50, 80, 200)
-  })
+test('inferDocks: a window that only touches at a corner, or not at all, stays undocked', () => {
+  const rects = { player: P, a: r(500, 400, 50, 50), b: r(600, 100, 50, 50) }
+  const d = inferDocks(rects, ['player'])
+  assert.equal(d.a, undefined)
+  assert.equal(d.b, undefined)
 })
 
-test('fitAll: player at left edge with a left side shifts right by the side width', () => {
-  const out = fitAll(r(0, 0, 400, 300), { left: r(-80, 0, 80, 200) }, r(0, 0, 1000, 800))
-  assert.deepEqual(out.player, r(80, 0, 400, 300))
-  assert.deepEqual(out.left, r(0, 0, 80, 200))
-  assert.equal(out.right, undefined)
+test('inferDocks: a later root keeps its own group', () => {
+  const rects = { player: P, playlist: r(800, 100, 80, 300), album: r(880, 100, 80, 80) }
+  const d = inferDocks(rects, ['player', 'playlist', 'album'])
+  assert.equal(d.playlist, undefined)
+  assert.deepEqual(d.album, { to: 'playlist', side: 'right', ratio: 0 })
 })
 
-test('fitAll: player at right edge with a right side shifts left', () => {
-  const out = fitAll(r(600, 0, 400, 300), { right: r(1000, 0, 80, 200) }, r(0, 0, 1000, 800))
-  assert.deepEqual(out.player, r(520, 0, 400, 300))
-  assert.deepEqual(out.right, r(920, 0, 80, 200))
+test('inferDocks: ratio records the offset along the shared edge', () => {
+  const d = inferDocks({ player: P, a: r(200, 400, 80, 80) }, ['player'])
+  assert.deepEqual(d.a, { to: 'player', side: 'bottom', ratio: 0.25 })
 })
 
-test('fitAll: too-narrow work centres player, sides flush, no overlap', () => {
-  const out = fitAll(
-    r(0, 0, 400, 300),
-    { left: r(0, 0, 100, 200), right: r(0, 0, 100, 200) },
-    r(0, 0, 500, 800)
-  )
-  assert.deepEqual(out.player, r(50, 0, 400, 300))
-  assert.deepEqual(out.left, r(-50, 0, 100, 200))
-  assert.deepEqual(out.right, r(450, 0, 100, 200))
-  assert.equal(overlaps(out.player, out.left!), false)
-  assert.equal(overlaps(out.player, out.right!), false)
+test('layout: docked windows follow a moved player, in chains, on every side', () => {
+  const docks: Docks = {
+    right: { to: 'player', side: 'right', ratio: 0 },
+    left: { to: 'player', side: 'left', ratio: 0 },
+    top: { to: 'player', side: 'top', ratio: 0.5 },
+    below: { to: 'right', side: 'bottom', ratio: 0 }
+  }
+  const rects = {
+    player: r(150, 130, 400, 300), // moved +50, +30
+    right: r(500, 100, 80, 300),
+    left: r(20, 100, 80, 300),
+    top: r(300, 50, 60, 50),
+    below: r(500, 400, 80, 80),
+    loose: r(900, 900, 10, 10)
+  }
+  const out = layout(rects, docks)
+  assert.deepEqual(out.right, r(550, 130, 80, 300))
+  assert.deepEqual(out.left, r(70, 130, 80, 300))
+  assert.deepEqual(out.top, r(350, 80, 60, 50))
+  assert.deepEqual(out.below, r(550, 430, 80, 80))
+  assert.deepEqual(out.loose, r(900, 900, 10, 10))
+  assert.deepEqual(out.player, rects.player)
 })
 
-test('fitAll: side without vertical overlap gets the player y', () => {
-  const out = fitAll(r(200, 50, 400, 300), { right: r(600, 500, 80, 200) }, r(0, 0, 1000, 800))
-  assert.equal(out.right!.y, 50)
+test('layout: a resized anchor keeps the dock flush and scales the offset', () => {
+  const out = layout({ player: r(100, 100, 800, 600), a: r(200, 400, 80, 80) }, { a: { to: 'player', side: 'bottom', ratio: 0.25 } })
+  assert.deepEqual(out.a, r(300, 700, 80, 80))
 })
 
-test('fitAll: player y is clamped into the work area', () => {
+test('layout: a dock to a missing (hidden) window leaves the window where it is', () => {
+  const out = layout({ player: P, a: r(1, 2, 3, 4) }, { a: { to: 'gone', side: 'left', ratio: 0 } })
+  assert.deepEqual(out.a, r(1, 2, 3, 4))
+})
+
+test('subtree: a window and everything docked to it, directly or through others', () => {
+  const docks: Docks = { a: { to: 'player', side: 'left', ratio: 0 }, b: { to: 'a', side: 'top', ratio: 0 }, c: { to: 'player', side: 'right', ratio: 0 } }
+  assert.deepEqual([...subtree(docks, 'a')].sort(), ['a', 'b'])
+  assert.deepEqual([...subtree(docks, 'player')].sort(), ['a', 'b', 'c', 'player'])
+})
+
+test('fitGroup: a group already inside the work area does not move', () => {
+  assert.deepEqual(fitGroup([P, r(20, 100, 80, 300)], r(0, 0, 1000, 800)), { dx: 0, dy: 0 })
+})
+
+test('fitGroup: smallest shift that brings the group inside', () => {
   const work = r(0, 0, 1000, 800)
-  assert.equal(fitAll(r(200, -40, 400, 300), {}, work).player.y, 0)
-  assert.equal(fitAll(r(200, 700, 400, 300), {}, work).player.y, 500)
+  assert.deepEqual(fitGroup([r(0, 0, 400, 300), r(-80, 0, 80, 300)], work), { dx: 80, dy: 0 })
+  assert.deepEqual(fitGroup([r(600, 500, 400, 300), r(600, 800, 400, 50)], work), { dx: 0, dy: -50 })
 })
 
-test('gripResize: plain drag, aspect kept, diagonal uses the larger, min clamp', () => {
-  const s = r(10, 20, 400, 200)
-  assert.deepEqual(gripResize(s, 100, 0, 2, 100, 50), r(10, 20, 500, 250))
-  assert.deepEqual(gripResize(s, 0, 100, 2, 100, 50), r(10, 20, 600, 300))
-  assert.deepEqual(gripResize(s, 100, 100, 2, 100, 50), r(10, 20, 600, 300))
-  assert.deepEqual(gripResize(s, -1000, -1000, 2, 100, 50), r(10, 20, 100, 50))
-  assert.deepEqual(gripResize(s, -1000, -1000, 2, 100, 80), r(10, 20, 160, 80))
+test('fitGroup: a group too big for the work area clamps the player in, start edge wins', () => {
+  const out = fitGroup([r(0, -40, 400, 300), r(-100, 0, 100, 300), r(400, 0, 200, 300)], r(0, 0, 500, 800))
+  assert.deepEqual(out, { dx: 0, dy: 40 })
 })

@@ -47,7 +47,7 @@ The long-term product is a lossless audio player with an equalizer and several f
 - The player is a state machine: `Empty -> Stopped -> Playing <-> Paused`.
 - Semantics:
   - `play`: starts or resumes. `pause`: holds the position. `stop`: halts and resets position to 0.
-  - `seek(ms)`: absolute seek. The UI's forward/backward buttons call seek relative to the current position (clicking = +/-10 seconds; holding repeats). Clamp to [0, duration].
+  - `seek(ms)`: absolute seek. Clamp to [0, duration]. The UI's forward/backward buttons split on press length. A press under 400 ms is a click: forward goes to the next track (nothing on the last track or with a single file), and backward restarts the song if more than 3 s in, otherwise goes to the previous track (on the first track or a single file it restarts). A press of 400 ms or more is a hold: it seeks -/+10 seconds relative to the current position, repeating every 200 ms.
   - When a track ends, emit `ended` and move to `Stopped`.
 - Errors (unsupported format, missing file, no output device) must be reported as protocol `error` events, never panics.
 - Include unit tests for the state machine and seek clamping, and one integration test that decodes a small bundled WAV fixture.
@@ -67,6 +67,7 @@ The long-term product is a lossless audio player with an equalizer and several f
 - The main process spawns and supervises the sidecar (restart on crash, surface the error in the UI) and owns the native "open file" dialog.
 - File import: an "Open" button (native dialog filtered to supported audio) and drag-and-drop of a file onto the window. Both result in a `load` command and then an automatic `play`.
 - Phase 1 window: one fixed-size, non-resizable window, standard OS frame is fine for now (custom frameless chrome comes with the multi-window phase).
+- Drag regions: a side window has exactly one childless drag strip, in its top bar left of minimize and close. Nothing else in its view sets `-webkit-app-region` (Chromium builds drag regions in DOM order, so a stray one swallows clicks). `app/test/dragRegions.test.ts` enforces this. No window goes full screen or maximizes, and double-click does nothing.
 - The UI shows the cassette, five buttons (play, pause, stop, backward, forward), the track name, and elapsed/total time. Buttons are disabled when they do not apply (e.g. nothing loaded).
 - Cassette animation: the reels rotate only while status is `Playing`, stop smoothly on pause or stop, and spin faster while a seek button is held. Use CSS or SVG transform animation, not canvas. Tape amount on each reel may shift with progress if the asset layers allow it (nice-to-have).
 - State comes from engine events only. Do not predict or keep a separate clock in the UI beyond smoothing the displayed position between `position` events.
@@ -115,3 +116,4 @@ Done means all of these are true:
 7. Keep code simple and commented where the reasoning is not obvious, especially anything real-time or cross-process.
 8. **Test-driven development (mandatory).** Every behaviour change or bug fix starts with a failing test that shows the problem (red), then the smallest code that passes (green), then refactor. Each plan task names the test that proves it. Logic inside Electron main/renderer code that is hard to test is extracted into pure modules with node:test tests (app/test/); engine logic gets Rust unit or integration tests. Behaviour that only shows in the running app is checked by driving the built app over the Chrome DevTools Protocol, and the check is described in the task report.
 9. **Pre-commit hook.** `scripts/git-hooks/pre-commit` runs typecheck, lint, JS tests, cargo test and clippy; a failure blocks the commit. It is enabled by `pnpm install` (the `prepare` script sets `core.hooksPath`). Never bypass it with `--no-verify`.
+10. **Window behaviour.** `docs/WINDOWS.md` holds the rules every window follows (frame, drag region, shade, docking and the OS-specific fixes). Read it before you add a window or touch window code. New windows follow it, and changes must not break it. Changing a rule needs my approval, plus an update to that file and to `docs/DECISIONS.md`.

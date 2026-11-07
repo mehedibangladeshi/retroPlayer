@@ -166,6 +166,13 @@ fn play_sound_unknown_name_is_an_error() {
 }
 
 #[test]
+fn loop_and_stop_sound_unknown_name_is_an_error() {
+    let (mut p, _rx) = Player::new();
+    assert!(p.loop_sound("nope").is_err());
+    assert!(p.stop_sound("nope").is_err());
+}
+
+#[test]
 fn load_sound_missing_file_is_an_error() {
     let (mut p, _rx) = Player::new();
     assert!(p.load_sound("click", std::path::Path::new("/nonexistent/click.wav")).is_err());

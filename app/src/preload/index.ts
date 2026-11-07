@@ -16,9 +16,15 @@ const api: RetroApi = {
   pathForFile: (file) => webUtils.getPathForFile(file),
   minimizeWindow: () => ipcRenderer.send(IPC.minimize),
   closeWindow: () => ipcRenderer.send(IPC.close),
-  toggleFullScreen: () => ipcRenderer.send(IPC.toggleFullScreen),
   showPlaylist: () => ipcRenderer.send(IPC.showPlaylist),
-  resizeWindow: (width, height) => ipcRenderer.send(IPC.resizeWindow, width, height)
+  toggleShade: () => ipcRenderer.send(IPC.toggleShade),
+  onShaded: (cb) => {
+    const listener = (_e: IpcRendererEvent, shaded: boolean): void => cb(shaded)
+    ipcRenderer.on(IPC.shaded, listener)
+    return () => {
+      ipcRenderer.removeListener(IPC.shaded, listener)
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('retro', api)

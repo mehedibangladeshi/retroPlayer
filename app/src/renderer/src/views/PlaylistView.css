@@ -1,24 +1,32 @@
 html, body, #root { margin: 0; height: 100%; }
 body { background: transparent; overflow: hidden; }
-.pl-stage { position: fixed; inset: 0; overflow: hidden; background: transparent; -webkit-app-region: drag; }
-.pl-grip { position: absolute; cursor: nwse-resize; touch-action: none; -webkit-app-region: no-drag; }
-.pl { position: absolute; transform-origin: 0 0; overflow: hidden; border-radius: 11px; user-select: none; -webkit-user-select: none; -webkit-app-region: drag; color: #111; }
+.pl-stage { position: fixed; inset: 0; overflow: hidden; background: transparent; }
+.pl-titlebar { position: absolute; left: 0; top: 0; -webkit-app-region: drag; }
+.pl { position: absolute; transform-origin: 0 0; overflow: hidden; border-radius: 11px; user-select: none; -webkit-user-select: none; color: #111; }
 .pl-layer { position: absolute; pointer-events: none; user-select: none; -webkit-user-drag: none; }
 .pl-cover { object-fit: cover; }
 .pl-heading { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 
-.pl-rows { position: absolute; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; -webkit-app-region: no-drag; scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.3) transparent; }
+.pl-rows { position: absolute; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.3) transparent; }
 .pl-rows::-webkit-scrollbar { width: 6px; }
 .pl-rows::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.3); border-radius: 3px; }
-.pl .pl-row { display: flex; gap: 8px; width: 100%; box-sizing: border-box; margin: 0; padding-right: 8px; border: 0; background: transparent; font-family: inherit; color: inherit; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; -webkit-app-region: no-drag; }
+.pl .pl-row { display: flex; gap: 8px; width: 100%; box-sizing: border-box; margin: 0; padding-right: 8px; border: 0; background: transparent; font-family: inherit; color: inherit; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .pl .pl-row:hover { background: rgba(0, 0, 0, 0.06); }
+.pl-empty { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; font-family: system-ui, sans-serif; font-size: 20px; color: #111; }
+.pl-empty p { margin: 0 0 6px; }
+.pl .pl-empty button { padding: 9px 18px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 9px; background: #2c2f38; color: #e8e8ec; font: inherit; font-size: 20px; cursor: pointer; }
+.pl .pl-empty button:hover { background: #3a3e49; }
+.pl .pl-empty button:focus-visible { outline: 2px solid rgba(0, 0, 0, 0.5); outline-offset: 2px; }
 .pl-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pl-dur { flex: none; font-variant-numeric: tabular-nums; }
 .pl .pl-row.selected { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
 .pl .pl-row.current { color: #733638; }
 .pl .pl-row:focus-visible { outline: 1px solid rgba(0, 0, 0, 0.4); }
 
-.pl .pl-chrome { position: absolute; margin: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; -webkit-app-region: no-drag; }
+.pl .pl-chrome { position: absolute; margin: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
 .pl .pl-chrome:hover { background: rgba(255, 255, 255, 0.12); }
 .pl .pl-chrome:active { background: rgba(0, 0, 0, 0.25); transform: translateY(1px); }
 .pl .pl-chrome:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); }
+/* Placeholder restore glyph (see ASSETS_TODO): a dark patch hides the baked minimize icon, an outlined square marks "restore". */
+.pl .pl-chrome.shaded, .pl .pl-chrome.shaded:hover { background: #2f3138; }
+.pl .pl-chrome.shaded::after { content: ''; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #ddd; border-top-width: 4px; }

@@ -1,14 +1,14 @@
 {
   "name": "app",
   "productName": "Cassette Player Retro",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "private": true,
   "description": "Cassette-tape music player",
   "author": "Mehedi Hasan <mehedipy@gmail.com>",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev -- --ozone-platform=x11",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder",

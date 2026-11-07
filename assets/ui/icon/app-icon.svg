@@ -1,0 +1,11 @@
+<!-- App icon. Traced from the supplied app_logo.jpeg (coin geometry measured in source px,
+     centred on 0,0), cropped off its grey backdrop and padded to 88% so it reads at every size. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-275 -275 550 550" width="1024" height="1024">
+  <circle r="239" fill="#F5D03A" stroke="#3F3A22" stroke-width="5"/>
+  <circle r="227.5" fill="none" stroke="#5A4B16" stroke-width="5"/>
+  <g stroke="#4B4220" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M-48.5-187.5V20.5M-38.5-137.5V70.5"/>
+    <path d="M-25.3-76.8L141.1 32.1M3-71.2L169.7 37.8"/>
+    <path d="M88.4 14.8L-78.2 113.5M53.3 48.7L-113.2 147.5"/>
+  </g>
+</svg>
