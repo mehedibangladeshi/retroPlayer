@@ -20,7 +20,7 @@ function realDrag(x0, y0, dx, dy, scale, steps = 25) {
 }
 
 const [appDir, ud, ...extra] = process.argv.slice(2)
-const electron = execFileSync('node', ['-e', "console.log(require('electron'))"], { cwd: appDir }).toString().trim()
+const electron = execFileSync('node', ['-e', "console.log(require('electron'))"], { cwd: appDir }).toString().trim().split(/\r?\n/).pop() // first use may print a download line first
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let failures = 0
 const check = (name, ok, info = '') => {
