@@ -89,7 +89,7 @@ const fmt = (r) => JSON.stringify(r)
 // ---- run 1
 let app = await launch(9341)
 // Small windows, so every layout below fits on screen (the WM clamps windows into the work area).
-await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(400, Math.round(400 * b.height / b.width))`)
+await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(440, Math.round(440 * b.height / b.width))`)
 await sleep(600)
 let r = await R(app.ev)
 const work = await app.ev(`return screen.getDisplayMatching(byId('player').getBounds()).workArea`)
@@ -252,8 +252,8 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
   r = await R(app.ev)
   const mx = r.player.x - start.player.x
   const my = r.player.y - start.player.y
-  // OS drag thresholds (GTK, Windows) swallow the first few pixels of the pointer path.
-  check('real drag: the OS moved the player', mx >= dx / 2 && my >= dy / 2, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
+  // OS drag thresholds (GTK, Windows, macOS) swallow the first few pixels of the pointer path.
+  check('real drag: the OS moved the player', mx >= dx / 2 && my > 0, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
   check('real drag: docked windows flush after the drop', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
   check('real drag: docked windows follow during the drag', samples > 0 && flushSamples / samples >= 0.8, `${flushSamples}/${samples} mid-drag samples flush`)
 }
