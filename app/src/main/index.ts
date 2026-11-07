@@ -117,8 +117,10 @@ function persistSatellite(s: Satellite): void {
 // the window sits at a position we asked for or left in the last second; any other position is a user drag, even
 // right after our own change (a drag can go on after a mid-drag snap).
 const expected = new Map<BrowserWindow, Array<{ x: number; y: number; until: number }>>()
+const dbg = (...a: unknown[]): void => { if (process.env.RETRO_DOCK_DEBUG) console.error('[dock]', Date.now() % 100000, ...a.map((x) => typeof x === 'object' ? JSON.stringify(x) : x)) }
 function programmatic(w: BrowserWindow, r: Rect): void {
   const b = w.getBounds()
+  dbg('set', w.webContents.getURL().split('#')[1] ?? 'player', b, r)
   const now = Date.now()
   const keep = (expected.get(w) ?? []).filter((p) => p.until >= now)
   expected.set(w, [...keep, { x: b.x, y: b.y, until: now + 1000 }, { x: r.x, y: r.y, until: now + 1000 }])
@@ -445,6 +447,7 @@ function createSatellite(s: Satellite): BrowserWindow {
   w.on('move', persistSoon)
   // A user drag tears the window off its dock (windows docked to it come along); dropping it snaps and re-docks.
   const dragged = (): void => {
+    dbg('event', s.hash, w.getBounds(), 'own', isOwn(w), 'docked', !!docks[s.hash])
     if (isOwn(w) || !w.isVisible() || !live(win) || win.isMinimized()) return
     const rects = rectsNow()
     const at = layout(rects, docks)[s.hash]
@@ -452,6 +455,7 @@ function createSatellite(s: Satellite): BrowserWindow {
     // Still where its dock puts it: a late event of ours, or a size the OS clamped to the window's minimum. Only a
     // changed position is a drag.
     if (docks[s.hash] && at && Math.abs(at.x - cur.x) <= 1 && Math.abs(at.y - cur.y) <= 1) return
+    dbg('TEAR', s.hash, cur, 'at', at)
     docks[s.hash] = undefined
     sync()
     settleSoon(s.hash)

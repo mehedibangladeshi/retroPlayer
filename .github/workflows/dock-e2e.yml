@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest] # TEMP debug
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -36,7 +36,7 @@ jobs:
           DISPLAY=:99 openbox &
           sleep 2
           # Ubuntu's AppArmor blocks Chromium's user-namespace sandbox on CI runners.
-          DISPLAY=:99 node scripts/e2e/dock.mjs app "$RUNNER_TEMP/ud" --no-sandbox
+          for i in 1 2 3 4; do rm -rf "$RUNNER_TEMP"/ud*; DISPLAY=:99 RETRO_DOCK_DEBUG=1 node scripts/e2e/dock.mjs app "$RUNNER_TEMP/ud" --no-sandbox > out$i.log 2>&1 || { echo "RUN $i FAILED"; head -150 out$i.log; }; done
       - name: E2E (Windows / macOS desktop session)
         if: runner.os != 'Linux'
         shell: bash

@@ -32,8 +32,9 @@ async function launch(port) {
   const child = spawn(electron, ['.', `--inspect=${port}`, `--user-data-dir=${ud}`, ...extra], {
     cwd: appDir,
     env: { ...process.env, RETRO_SIDECAR: process.env.RETRO_SIDECAR },
-    stdio: 'ignore'
+    stdio: ['ignore', 'ignore', 'pipe']
   })
+  child.stderr.on('data', (d) => { for (const l of String(d).split('\n')) if (l.includes('[dock]')) console.log(l) })
   let list
   for (let i = 0; i < 50 && !list; i++) {
     await sleep(200)
