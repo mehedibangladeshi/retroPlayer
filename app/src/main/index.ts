@@ -112,16 +112,16 @@ function persistSatellite(s: Satellite): void {
 }
 
 // Bounds changes we make ourselves: their move/resize events must not be read as user drags (feedback loop).
-// Linux delivers move/resize asynchronously (250 ms cap), some X11 window managers apply a new size before the new
+// Linux delivers move/resize asynchronously (a slow X server can take several hundred ms), some X11 window managers apply a new size before the new
 // position, and several changes can be in flight at once (a resize syncs on every step). So an event is ours while
-// the window sits at a position we asked for or left in the last 250 ms; any other position is a user drag, even
+// the window sits at a position we asked for or left in the last second; any other position is a user drag, even
 // right after our own change (a drag can go on after a mid-drag snap).
 const expected = new Map<BrowserWindow, Array<{ x: number; y: number; until: number }>>()
 function programmatic(w: BrowserWindow, r: Rect): void {
   const b = w.getBounds()
   const now = Date.now()
   const keep = (expected.get(w) ?? []).filter((p) => p.until >= now)
-  expected.set(w, [...keep, { x: b.x, y: b.y, until: now + 250 }, { x: r.x, y: r.y, until: now + 250 }])
+  expected.set(w, [...keep, { x: b.x, y: b.y, until: now + 1000 }, { x: r.x, y: r.y, until: now + 1000 }])
   // A pure move uses setPosition: on Windows at fractional display scaling, setBounds can drift the size by a pixel.
   if (b.width === r.width && b.height === r.height) w.setPosition(r.x, r.y)
   else w.setBounds(r)
