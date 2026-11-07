@@ -60,13 +60,13 @@ export const TEXT_MARKS: { brand: Rect; highQualityAudio: Rect } = {
 
 /** Album (cover-art) window. CSS px, art files are ASSET_SCALE (2x); measured with ImageMagick, see "Album cover deck" in assets/ui/MANIFEST.md. */
 export const ALBUM = {
-  WINDOW: { w: 937, h: 938.5 },
+  WINDOW: { w: 937, h: 937 },
   ASSET_SCALE: 2,
   /** Paint order: base, cover, buttons, top. */
   LAYERS: [
-    { id: 'base', file: 'album/album-base.png', rect: { x: 0, y: 0, w: 937, h: 938.5 } },
-    { id: 'buttons', file: 'album/album-buttons.png', rect: { x: 0, y: 0, w: 937, h: 938.5 } },
-    { id: 'top', file: 'album/album-top.png', rect: { x: 0, y: 0, w: 937, h: 938.5 } },
+    { id: 'base', file: 'album/album-base.png', rect: { x: 0, y: 0, w: 937, h: 937 } },
+    { id: 'buttons', file: 'album/album-buttons.png', rect: { x: 0, y: 0, w: 937, h: 937 } },
+    { id: 'top', file: 'album/album-top.png', rect: { x: 0, y: 0, w: 937, h: 937 } },
   ],
   // Alpha bbox of the artist's sample art (2x 165,169 1540x1540), the intended cover placement.
   COVER: { x: 82.5, y: 84.5, w: 770, h: 770 },
@@ -83,31 +83,31 @@ export const ALBUM = {
 
 /** Playlist window. CSS px, origin = top-left of the window; art files are ASSET_SCALE (2x) of their rect, paths relative to assets/ui. See "Playlist window" in assets/ui/MANIFEST.md. */
 export const PLAYLIST = {
-  // Layer canvas 1874x1885 px at 2x.
-  WINDOW: { w: 937, h: 943 },
+  // Layer canvas 1874x1874 px at 2x (cropped to the base body; y values below are 5.5 less than the 1874x1885 measurements in the notes).
+  WINDOW: { w: 937, h: 937 },
   ASSET_SCALE: 2,
   /** Paint order bottom to top; the album cover is drawn between base and paper. */
   LAYERS: [
-    { id: 'base', file: 'playlist/playlist-base.png', rect: { x: 0, y: 0, w: 937, h: 943 } },
-    { id: 'paper', file: 'playlist/playlist-paper.png', rect: { x: 0, y: 0, w: 937, h: 943 } },
-    { id: 'top', file: 'playlist/playlist-top.png', rect: { x: 0, y: 0, w: 937, h: 943 } },
+    { id: 'base', file: 'playlist/playlist-base.png', rect: { x: 0, y: 0, w: 937, h: 937 } },
+    { id: 'paper', file: 'playlist/playlist-paper.png', rect: { x: 0, y: 0, w: 937, h: 937 } },
+    { id: 'top', file: 'playlist/playlist-top.png', rect: { x: 0, y: 0, w: 937, h: 937 } },
   ],
   // Alpha bbox of reference/cover-example.png (2x 115,163 1621x1622).
-  COVER: { x: 57.5, y: 81.5, w: 810.5, h: 811 },
+  COVER: { x: 57.5, y: 76, w: 810.5, h: 811 },
   // Alpha bbox of playlist-paper.png (2x 141,183 1563x1581) inset by about 8 px for padding.
-  TEXT_AREA: { x: 78.5, y: 99.5, w: 765.5, h: 774.5 },
-  // Preview crop aligned to base (preview = art + (32,-3) px at 2x); baseline y, colour sampled (#733638).
-  TITLE: { x: 28, y: 50, fontSize: 36, color: '#733638' },
+  TEXT_AREA: { x: 78.5, y: 94, w: 765.5, h: 774.5 },
+  // Preview crop aligned to base (preview = art + (32,8) px at 2x on the cropped canvas); baseline y, colour sampled (#733638).
+  TITLE: { x: 28, y: 44.5, fontSize: 36, color: '#733638' },
   // Preview text left x 232 and baseline 278; underline bar 2x 185..705, y 296..301.
-  HEADING: { x: 100, y: 140, fontSize: 32, underline: { x: 92.5, y: 148, w: 260, h: 2.5 } },
+  HEADING: { x: 100, y: 134.5, fontSize: 32, underline: { x: 92.5, y: 142.5, w: 260, h: 2.5 } },
   // First row "01." left x 253 baseline 397 in preview; baselines 397..787 over 6 rows give 65 px at 2x.
   // Sizes 32/28 chosen by eye from a rendered preview; pitch 36 fits the rows.
-  ROW: { x: 110.5, y0: 200, pitch: 36, fontSize: 28 },
+  ROW: { x: 110.5, y0: 194.5, pitch: 36, fontSize: 28 },
   // Preview "Side A and B Included" left x 127, baseline 1840; grey sampled from the glyphs.
-  FOOTER: { x: 47.5, y: 921.5, fontSize: 10, color: '#5d5f66' },
+  FOOTER: { x: 47.5, y: 916, fontSize: 10, color: '#5d5f66' },
   // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60.
-  MINIMIZE: { x: 862, y: 20, w: 30, h: 30 },
-  CLOSE: { x: 895.5, y: 20, w: 30, h: 30 },
+  MINIMIZE: { x: 862, y: 14.5, w: 30, h: 30 },
+  CLOSE: { x: 895.5, y: 14.5, w: 30, h: 30 },
   // Another Typewriter (public domain), file assets/ui/playlist/fonts/AnotherTypewriter.ttf; it has no '-', '…' or accented glyphs, so the view joins with an en dash and falls back to monospace.
   FONT_FAMILY: 'Another Typewriter',
 } as const

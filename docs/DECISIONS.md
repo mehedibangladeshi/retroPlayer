@@ -408,3 +408,9 @@ Why: Without a version, old saved bounds would keep the old sizes forever. One v
 Decision: The playlist's album heading and song rows use "Another Typewriter", a public domain font, bundled as `assets/ui/playlist/fonts/AnotherTypewriter.ttf` with its licence in `AnotherTypewriter-EULA.txt`. It replaces "Sue Ellen Francisco" from the 2026-11-01 entry, which is superseded. The font file and its OFL licence are removed. The font applies only to the playlist window, through `PLAYLIST.FONT_FAMILY` in `app/src/shared/layout.ts`. Sizes are 32 px for the heading and 28 px for rows, with a 36 px row pitch, all in design px. The font stack is `'Another Typewriter', monospace`. The font has no '-', '…' or accented letters, so artist and title are joined with an en dash, and missing glyphs fall back to the system monospace font.
 
 Why: The user picked the font and the sizes from a rendered preview of four options. The OS text size was rejected: Electron cannot read it reliably (macOS has no such setting), the Rust core must stay free of UI concepts, and a per-OS text size would break the rule that the UI looks identical on every OS. Accepted by the user: the fallback glyphs may differ slightly per OS.
+
+## 2026-11-07 — Side-window art is cropped to its body
+
+Decision: The album and playlist layer PNGs are cropped to their 1874x1874 base body (album lost 3 transparent rows at the bottom, playlist 11 at the top), so both design sizes are 937x937 and every playlist y position moved up 5.5 design px (shade bar 80 to 74.5). `app/test/sideArt.test.ts` checks the sizes against the PNG headers. The playlist aspect is now 1:1, superseding the 1874:1885 in the playlist frame entry.
+
+Why: Side windows take the player's exact pixel height and the player art fills its canvas edge to edge, so transparent rows made the side windows' visible body slightly shorter than the player.

@@ -53,14 +53,14 @@ Reference geometry: player body at x 310-1077, y 329-945 in the JPEG; window ori
 
 ## Playlist window
 
-Canvas 1874x1885 px at 2x, so the design size is 937x943 CSS px. Constants are in `PLAYLIST` in `app/src/shared/layout.ts`, measured with ImageMagick (alpha bounding boxes and connected components); text positions were estimated from `reference/preview.png` aligned to the base layer (preview = art + (32,-3) px at 2x).
+Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (cropped to the base body so the window matches the player's height; positions measured on the old 1874x1885 canvas are 11 px at 2x lower). Constants are in `PLAYLIST` in `app/src/shared/layout.ts`, measured with ImageMagick (alpha bounding boxes and connected components); text positions were estimated from `reference/preview.png` aligned to the base layer (preview = art + (32,8) px at 2x on the cropped canvas). Crop each layer with `magick IN -crop 1874x1874+0+11 +repage -strip -define png:compression-level=9 PNG32:OUT` if re-exported from the old 1874x1885 canvas.
 
 | File | What | Anchor (CSS px) |
 |------|------|-----------------|
-| `playlist/playlist-base.png` | Dark window frame and background. 1874x1885: `source/playlist-base.png` (1874x1874, new "1st playlist base") pasted at y=11 to line up with the other layers | 0,0 937x943 |
-| `playlist/playlist-paper.png` | Paper sheet laid over the cover, cover shows around its border (was "3rd paper like texture") | 0,0 937x943; paper bbox 70.5,91.5 781.5x790.5 |
-| `playlist/playlist-top.png` | Minimize and close buttons, status dots, resize grip (was "4th top layers") | 0,0 937x943; minimize 862,20 30x30; close 895.5,20 30x30 (the resize grip is baked in, no longer used) |
-| `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,81.5 810.5x811, drawn between base and paper |
+| `playlist/playlist-base.png` | Dark window frame and background, from `source/playlist-base.png` (1874x1874, new "1st playlist base"); all playlist layers are cropped to this body | 0,0 937x937 |
+| `playlist/playlist-paper.png` | Paper sheet laid over the cover, cover shows around its border (was "3rd paper like texture") | 0,0 937x937; paper bbox 70.5,86 781.5x790.5 |
+| `playlist/playlist-top.png` | Minimize and close buttons, status dots, resize grip (was "4th top layers") | 0,0 937x937; minimize 862,14.5 30x30; close 895.5,14.5 30x30 (the resize grip is baked in, no longer used) |
+| `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,76 810.5x811, drawn between base and paper |
 | `playlist/fonts/AnotherTypewriter.ttf` | Typewriter font, public domain (1001fonts "Another Typewriter") | album heading and song rows (`PLAYLIST.FONT_FAMILY`) |
 | `playlist/fonts/AnotherTypewriter-EULA.txt` | Licence of the font (free for personal and commercial use, modification and redistribution) | n/a |
 | `playlist/reference/cover-example.png` | Example cover from the artist, reference only, not shipped | n/a |
@@ -70,11 +70,11 @@ Font choice: Another Typewriter replaces Sue Ellen Francisco (see `docs/DECISION
 
 ## Album cover deck
 
-Canvas 1874x1877 px at 2x, so the design size is 937x938.5 CSS px. Constants are in `ALBUM` in `app/src/shared/layout.ts`, measured with ImageMagick connected components (alpha). Layers are exported unresized from `source/album cover deck/album cover deck/` with `magick SRC -strip -define png:compression-level=9 PNG32:OUT`.
+Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (the 3 transparent bottom rows were cropped so the window matches the player's height). Constants are in `ALBUM` in `app/src/shared/layout.ts`, measured with ImageMagick connected components (alpha). Layers are exported unresized from `source/album cover deck/album cover deck/` with `magick SRC -crop 1874x1874+0+0 +repage -strip -define png:compression-level=9 PNG32:OUT` (the crop drops the 3 transparent bottom rows of the 1874x1877 sources).
 
 | File | What | Anchor (CSS px) |
 |------|------|-----------------|
-| `album/album-base.png` | Dark rounded panel (was `1. base.png`) | 0,0 937x938.5 |
+| `album/album-base.png` | Dark rounded panel (was `1. base.png`) | 0,0 937x937 |
 | `album/album-buttons.png` | Tabs "Cassette Box", "J-Flap", "Lyric", display only (was `3. buttons with shadow.png`) | 0,0; tabs at y 880.5, x 76.5 / 214.5 / 352.5, each 130.5x37 |
 | `album/album-top.png` | Window border, glass frame, minimize and close (was `4. top with glass and border and buttons.png`) | 0,0; glass hole 71.5,71.5 794.5x794; minimize 852.5,23.5 29.5x29; close 886,23.5 29x29 |
 
