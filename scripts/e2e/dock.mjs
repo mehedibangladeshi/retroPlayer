@@ -89,6 +89,7 @@ const fmt = (r) => JSON.stringify(r)
 
 // ---- run 1
 let app = await launch(9341)
+const r0 = await R(app.ev) // first launch: side windows open at the player's height
 // Windows small enough that two stacked ones fit the work area with a little room (CI screens are as small as
 // 1024x677, and macOS also keeps windows above the bottom of the work area), but not below the player's minimum.
 const H = await app.ev(`const w = byId('player'); const b = w.getBounds(); const a = screen.getDisplayMatching(b).workArea;
@@ -99,7 +100,14 @@ const work = await app.ev(`return screen.getDisplayMatching(byId('player').getBo
 console.log('work area', fmt(work), 'start', fmt(r))
 check('startup: playlist docked right of player', flush.right(r.player, r.playlist), fmt(r))
 check('startup: album docked left of player', flush.left(r.player, r.album), fmt(r))
-check('startup: side windows take the player height', r.playlist.height === r.player.height && r.album.height === r.player.height, fmt(r))
+check('startup: side windows open at the player height', r0.playlist.height === r0.player.height && r0.album.height === r0.player.height, fmt(r0))
+check('startup: a player resize leaves the side windows their own size', r.playlist.height === r0.playlist.height && r.album.height === r0.album.height, fmt(r))
+check('every window is user-resizable', await app.ev(`return ['player','playlist','album'].every((k) => byId(k).isResizable())`))
+// The checks below expect every window at the player's height: resize the side windows to it, as a user would.
+await app.ev(`for (const k of ['playlist', 'album']) { const w = byId(k); const b = w.getBounds(); w.setSize(Math.round(${H} * b.width / b.height), ${H}) }`)
+await sleep(700)
+r = await R(app.ev)
+check('side resize: both side windows take the new height, still docked', r.playlist.height === H && r.album.height === H && flush.right(r.player, r.playlist) && flush.left(r.player, r.album), fmt(r))
 
 // One taskbar/dock icon for the app, and activating it (it activates the player) brings every window forward.
 {
@@ -271,12 +279,13 @@ check('player drop: playlist now follows', flush.right(r.player, r.playlist), fm
 
 // Player resize: side windows take the new height and stay flush (room made first: the WM keeps windows on screen).
 r = await R(app.ev)
+const sizes = { playlist: r.playlist, album: r.album }
 const H2 = Math.min(Math.round(H * 1.05), Math.floor((work.height - 6) / 2))
 await dragTo('player', work.x + 60, work.y + H2 + 2)
 await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(${H2} * b.width / b.height), ${H2})`)
 await sleep(500)
 r = await R(app.ev)
-check('resize: playlist keeps the player height and stays flush', r.playlist.height === r.player.height && flush.right(r.player, r.playlist), fmt(r))
+check('resize: playlist keeps its own size and stays flush', r.playlist.height === sizes.playlist.height && flush.right(r.player, r.playlist), fmt(r))
 check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
 
 // Growing the player against the screen edge: the docked group shifts back onto the screen, still docked (a window
@@ -296,9 +305,33 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   await sleep(700)
   r = await R(app.ev)
   check('resize at the edge: the group shifts onto the screen', r.playlist.x + r.playlist.width <= work.x + work.width && r.player.x < start.x, fmt(r) + ' work ' + fmt(work))
-  check('resize at the edge: still docked and flush', flush.right(r.player, r.playlist) && flush.top(r.player, r.album) && r.playlist.height === r.player.height, fmt(r))
+  check('resize at the edge: still docked and flush', flush.right(r.player, r.playlist) && flush.top(r.player, r.album) && r.playlist.height === sizes.playlist.height, fmt(r))
   await dragTo('player', work.x + 60, r.player.y) // back from the edge for the checks below
 }
+
+// Each side window is resized on its own: it keeps its new size and its dock; the player keeps its size.
+{
+  const before = await R(app.ev)
+  const userResize = async (k, b) => {
+    await app.ev(`byId('${k}').setBounds(${JSON.stringify(b)})`)
+    await sleep(700)
+    return R(app.ev)
+  }
+  const pl = before.playlist
+  r = await userResize('playlist', { x: pl.x, y: pl.y, width: pl.width + 30, height: pl.height + 30 }) // its far corner
+  check('side resize: the playlist takes its new size, still flush right', r.playlist.width === pl.width + 30 && r.playlist.height === pl.height + 30 && flush.right(r.player, r.playlist) && r.playlist.y === r.player.y, fmt(r))
+  check('side resize: the player keeps its size', r.player.width === before.player.width && r.player.height === before.player.height, fmt(r))
+  const pl2 = r.playlist
+  r = await userResize('playlist', { x: pl2.x + 20, y: pl2.y, width: pl2.width - 20, height: pl2.height - 20 }) // its docked edge
+  check('side resize: dragging the docked edge keeps it docked', r.playlist.width === pl2.width - 20 && flush.right(r.player, r.playlist), fmt(r))
+  const al = r.album
+  r = await userResize('album', { x: al.x, y: al.y, width: al.width - 20, height: al.height - 20 })
+  check('side resize: the album above keeps its dock and new size', r.album.height === al.height - 20 && flush.top(r.player, r.album), fmt(r))
+  await drag(app.ev, 'player', -20, 0)
+  r = await R(app.ev)
+  check('side resize: both still follow the player', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
+}
+const shadeFrom = (await R(app.ev)).playlist
 
 // Shade the playlist and back (the bar stays docked).
 // The roll-up button's IPC, as the renderer sends it.
@@ -313,7 +346,7 @@ check('shade: shaded playlist follows', flush.right(r.player, r.playlist), fmt(r
 await app.ev(shadeIpc)
 await sleep(600)
 r = await R(app.ev)
-check('unshade: playlist back to the player height, docked', r.playlist.height === r.player.height && flush.right(r.player, r.playlist), fmt(r))
+check('unshade: playlist back to its size, docked', r.playlist.height === shadeFrom.height && r.playlist.width === shadeFrom.width && flush.right(r.player, r.playlist), fmt(r))
 // An OS minimize of a side window shades it instead (it has no taskbar entry), and must not leave it flagged minimized.
 await app.ev(`byId('playlist').minimize()`)
 await sleep(1500) // macOS animates the minimize before the app can bring the window back
@@ -389,6 +422,7 @@ await new Promise((res) => app.child.on('exit', res))
 app = await launch(9342)
 r = await R(app.ev)
 check('restart: playlist docked right again', flush.right(r.player, r.playlist), fmt(r))
+check('restart: side windows keep their own sizes', r.playlist.width === before.playlist.width && r.album.width === before.album.width, fmt(r) + ' before ' + fmt(before))
 check('restart: album docked on top again', flush.top(r.player, r.album) && r.album.x - r.player.x === before.album.x - before.player.x, fmt(r) + ' before ' + fmt(before))
 await drag(app.ev, 'player', -25, 15)
 r = await R(app.ev)

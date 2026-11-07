@@ -35,8 +35,10 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
    taskbars fold a transient window into its main window (KWin ignores `skipTaskbar` for XWayland windows). macOS has
    one Dock icon per app anyway, and there only docked windows are children (a child window moves with its parent).
    Closing it only hides it, and quitting closes it for real. Its bounds are saved under its settings key.
-4. Always the player's height (`matchHeight`), with its width from its design aspect ratio. Not user-resizable
-   (`resizable: false`): main sets the size. Its `minHeight` must not be more than the player's `MIN_HEIGHT` (308).
+4. User-resizable on its own (`resizable: true`), keeping its design aspect ratio (`setAspectRatio`). It opens at the
+   player's height the first time (`matchHeight`), then at its saved size. Resizing the player never resizes it. A
+   docked window keeps its dock while it is resized: it is placed flush against its anchor again (a drag on its docked
+   edge grows it the other way), and windows docked to it follow. A shaded window is not resizable.
 5. Exactly one drag region: a childless strip in its top bar, to the left of minimize and close. Nothing else in the
    view sets `-webkit-app-region`. `app/test/dragRegions.test.ts` enforces this, so add the new view to that test.
 6. Minimize does not minimize. It rolls the window up into its top bar (the window shade) and back. It needs a `SHADE`
@@ -68,7 +70,8 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 ## OS rules (keep these when you change window code)
 
 - **Own moves vs user drags:** the app records every position it sets or leaves, and ignores move and resize events
-  at those positions for 1 s (`programmatic` / `isOwn`). Every programmatic move must go through these helpers
+  at those positions for 1 s (`programmatic` / `isOwn`). A resize is ours only if the size matches too (`isOwn(w, true)`),
+  because a user resize from the far corner keeps the position. Every programmatic move must go through these helpers
   (`setRect`, `resizeFixed`, `sync`), or the app will read its own move as a user drag.
 - **Consequences are not drags:** a window's move or resize within 300 ms of a user change to another window is a
   consequence of it (a window manager keeps a side window on screen and moves it elsewhere than the app asked), never a
@@ -79,8 +82,8 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
   (`setParentWindow`). A side window that macOS minimizes is restored with retries.
 - **Linux:** native Wayland gives apps no window positions, so the app runs on XWayland (`--ozone-platform=x11`: a one-time
   relaunch in `app/src/main/platform.ts`, passed directly by `pnpm dev`). On KWin under X11, re-show a side window
-  with hide and `showInactive` instead of `restore()`. Set a fixed window's size inside `resizeFixed`, which lifts
-  the resize lock and sets the minimum size.
+  with hide and `showInactive` instead of `restore()`. Set a side window's size inside `resizeFixed`, which lifts
+  the resize lock of a shaded window and sets the minimum size.
 
 ## Checklist for a new window
 
