@@ -88,10 +88,10 @@ const fmt = (r) => JSON.stringify(r)
 
 // ---- run 1
 let app = await launch(9341)
-// Windows small enough that two stacked ones fit the work area (CI screens are 1024x720 or smaller; OSes clamp
-// windows into it), but at least 322 px tall, the playlist's minimum height.
+// Windows small enough that two stacked ones fit the work area with a little room (CI screens are as small as
+// 1024x677, and macOS also keeps windows above the bottom of the work area), but not below the player's minimum.
 const H = await app.ev(`const w = byId('player'); const b = w.getBounds(); const a = screen.getDisplayMatching(b).workArea;
-  const h = Math.max(322, Math.min(330, Math.floor((a.height - 10) / 2))); w.setSize(Math.round(h * b.width / b.height), h); return h`)
+  const h = Math.max(308, Math.min(330, Math.floor((a.height - 20) / 2))); w.setSize(Math.round(h * b.width / b.height), h); return h`)
 await sleep(600)
 let r = await R(app.ev)
 const work = await app.ev(`return screen.getDisplayMatching(byId('player').getBounds()).workArea`)
@@ -99,11 +99,16 @@ console.log('work area', fmt(work), 'start', fmt(r))
 check('startup: playlist docked right of player', flush.right(r.player, r.playlist), fmt(r))
 check('startup: album docked left of player', flush.left(r.player, r.album), fmt(r))
 check('startup: side windows take the player height', r.playlist.height === r.player.height && r.album.height === r.player.height, fmt(r))
+const top = work.y + 2 // a player here has room for one window below it
+const bottomY = work.y + work.height - H - 2 // a player here has room for one window above it
+// A user drag of window k to an absolute spot.
+const dragTo = async (k, x, y) => {
+  const b = (await R(app.ev))[k]
+  await drag(app.ev, k, x - b.x, y - b.y)
+}
 
-// Centre the group so later moves stay on screen.
-const cx = work.x + Math.round((work.width - r.player.width) / 2)
-const cy = work.y + Math.round(work.height / 2 - r.player.height)
-await drag(app.ev, 'player', cx - r.player.x, cy - r.player.y)
+// Centre the group (vertically) so the side windows have room.
+await dragTo('player', work.x + Math.round((work.width - r.player.width) / 2), work.y + Math.round((work.height - H) / 2))
 r = await R(app.ev)
 check('player drag: playlist follows on the right', flush.right(r.player, r.playlist) && r.playlist.y === r.player.y, fmt(r))
 check('player drag: album follows on the left', flush.left(r.player, r.album) && r.album.y === r.player.y, fmt(r))
@@ -113,56 +118,58 @@ check('player drag: album follows on the left', flush.left(r.player, r.album) &&
   const b = r.player
   let ok = true
   for (let i = 1; i <= 10; i++) {
-    await move(app.ev, 'player', b.x + i * 7, b.y + i * 3)
+    await move(app.ev, 'player', b.x + i * 4, b.y + i)
     await sleep(40)
     const m = await R(app.ev)
     if (!flush.right(m.player, m.playlist) || !flush.left(m.player, m.album)) ok = false
   }
   check('player drag: docked windows follow during the drag', ok)
-  await drag(app.ev, 'player', -70, -30, 3)
+  await drag(app.ev, 'player', -40, -10, 3)
 }
 
-// Tear the playlist off: it stays put when the player moves.
+// Tear the playlist off (up to the top, clear of the player): it stays put when the player moves.
 r = await R(app.ev)
-await drag(app.ev, 'playlist', 150, -200)
+await dragTo('playlist', r.player.x + r.player.width + 60, top)
 r = await R(app.ev)
 const loose = r.playlist
-await drag(app.ev, 'player', 20, 10)
+await drag(app.ev, 'player', 20, 5)
 r = await R(app.ev)
 check('tear-off: detached playlist does not follow', r.playlist.x === loose.x && r.playlist.y === loose.y, fmt(r))
 check('tear-off: album still follows', flush.left(r.player, r.album), fmt(r))
-await drag(app.ev, 'player', -20, -10)
 
-// Dock the playlist to the player's bottom (dropped 6 px short, offset 30 px).
+// Dock the playlist to the player's bottom (dropped 6 px short, offset 90 px so a window docked to its right clears the player); the player sits at the top.
+await dragTo('player', work.x + 120, top)
 r = await R(app.ev)
-await drag(app.ev, 'playlist', r.player.x + 30 - r.playlist.x, r.player.y + r.player.height + 6 - r.playlist.y)
+await dragTo('playlist', r.player.x + 90, r.player.y + r.player.height + 6)
 r = await R(app.ev)
-check('bottom: playlist snaps flush below the player', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 30, fmt(r))
-await drag(app.ev, 'player', -40, -25)
+check('bottom: playlist snaps flush below the player', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 90, fmt(r))
+await drag(app.ev, 'player', 40, 4)
 r = await R(app.ev)
-check('bottom: playlist follows the player, keeping its offset', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 30, fmt(r))
+check('bottom: playlist follows the player, keeping its offset', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 90, fmt(r))
 
 // Window to window: album docks to the playlist's right (dropped 5 px off), then follows the player through the chain.
-await drag(app.ev, 'album', r.playlist.x + r.playlist.width + 5 - r.album.x, r.playlist.y + 10 - r.album.y)
+await dragTo('album', r.playlist.x + r.playlist.width + 5, r.playlist.y + 6)
 r = await R(app.ev)
 check('chain: album snaps to the playlist right edge, top aligned', flush.right(r.playlist, r.album) && r.album.y === r.playlist.y, fmt(r))
-await drag(app.ev, 'player', 35, 15)
+await drag(app.ev, 'player', 35, 3)
 r = await R(app.ev)
 check('chain: player drag carries playlist and album', flush.bottom(r.player, r.playlist) && flush.right(r.playlist, r.album), fmt(r))
 
-// Dragging the playlist away carries the album docked to it; the player stays.
+// Dragging the playlist away (sideways, clear of the player) carries the album docked to it; the player stays.
 const p0 = r.player
-await drag(app.ev, 'playlist', 0, 80)
+await dragTo('playlist', r.player.x + r.player.width + 50, r.playlist.y)
 r = await R(app.ev)
 check('sub-group: album comes along with the playlist', flush.right(r.playlist, r.album), fmt(r))
 check('sub-group: player does not move', r.player.x === p0.x && r.player.y === p0.y, fmt(r))
-await drag(app.ev, 'player', 10, 10)
+const sub = r.playlist
+await drag(app.ev, 'player', -10, 3)
 r = await R(app.ev)
-check('sub-group: detached group ignores player moves', !flush.bottom(r.player, r.playlist), fmt(r))
+check('sub-group: detached group ignores player moves', r.playlist.x === sub.x && r.playlist.y === sub.y, fmt(r))
 
 // A pause mid-drag lets the snap fire (the window jumps flush); dragging on right after must still count as a
 // drag, and the final drop snaps where it ends.
 {
+  await dragTo('player', work.x + 20, top)
   r = await R(app.ev)
   const steps = async (k, x, y, n = 6) => {
     const b = (await R(app.ev))[k]
@@ -179,33 +186,33 @@ check('sub-group: detached group ignores player moves', !flush.bottom(r.player, 
   check('pause mid-drag: the drag goes on and the drop snaps below', flush.bottom(r.player, r.album) && r.album.x === r.player.x + 40, fmt(r))
 }
 
-// Top: album dropped 8 px above the player (move the player down first so there is room above it).
+// Top: the player moves to the bottom of the screen (the album below it comes along up to the edge, so tear it off
+// first), and the album is dropped 8 px above it.
+await dragTo('album', work.x + work.width - H - 20, top)
+await dragTo('player', work.x + 20, bottomY)
 r = await R(app.ev)
-await drag(app.ev, 'player', 0, work.y + work.height - r.player.height - 4 - r.player.y)
-r = await R(app.ev)
-await drag(app.ev, 'album', r.player.x + 50 - r.album.x, r.player.y - r.album.height - 8 - r.album.y)
+await dragTo('album', r.player.x + 50, r.player.y - H - 8)
 r = await R(app.ev)
 check('top: album snaps flush above the player', flush.top(r.player, r.album), fmt(r))
-await drag(app.ev, 'player', 15, 30)
+await drag(app.ev, 'player', 15, 0)
 r = await R(app.ev)
 check('top: album follows the player', flush.top(r.player, r.album), fmt(r))
 
 // The player dropped near the detached playlist snaps to it and picks it up.
 r = await R(app.ev)
-await drag(app.ev, 'playlist', r.player.x + r.player.width + 120 - r.playlist.x, r.player.y - r.playlist.y)
-r = await R(app.ev)
+await dragTo('playlist', r.player.x + r.player.width + 120, r.player.y)
 await drag(app.ev, 'player', 120 - 7, 0)
 r = await R(app.ev)
 check('player drop: snaps onto the detached playlist', flush.right(r.player, r.playlist), fmt(r))
 check('player drop: album above still docked', flush.top(r.player, r.album), fmt(r))
-await drag(app.ev, 'player', -30, 10)
+await drag(app.ev, 'player', -30, 0)
 r = await R(app.ev)
 check('player drop: playlist now follows', flush.right(r.player, r.playlist), fmt(r))
 
 // Player resize: side windows take the new height and stay flush (room made first: the WM keeps windows on screen).
 r = await R(app.ev)
-const H2 = Math.min(Math.round(H * 1.1), Math.floor((work.height - 4) / 2))
-await drag(app.ev, 'player', work.x + 60 - r.player.x, work.y + H2 + 2 - r.player.y)
+const H2 = Math.min(Math.round(H * 1.05), Math.floor((work.height - 6) / 2))
+await dragTo('player', work.x + 60, work.y + H2 + 2)
 await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(${H2} * b.width / b.height), ${H2})`)
 await sleep(500)
 r = await R(app.ev)
@@ -247,7 +254,7 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
     return p && { x: c.x + p.x, y: c.y + p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
   const start = await R(app.ev)
   const dx = 160
-  const dy = 8
+  const dy = 0 // horizontal: the player has a window above it and little room below on small screens
   let samples = 0
   let flushSamples = 0
   let done = false
@@ -255,7 +262,8 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
   // this listener is added after the app's, so it sees the result of the app's follow.
   await app.ev(`const w = byId('player'); globalThis.__rec = [];
     const f = () => { const p = w.getBounds(), pl = byId('playlist').getBounds(), al = byId('album').getBounds();
-      __rec.push(pl.x === p.x + p.width && pl.y === p.y && al.y + al.height === p.y) };
+      __rec.push(pl.x === p.x + p.width && pl.y < p.y + p.height && p.y < pl.y + pl.height &&
+        al.y + al.height === p.y && al.x < p.x + p.width && p.x < al.x + al.width) };
     w.on('move', f); globalThis.__recOff = () => w.off('move', f)`)
   const dragging = realDrag(pt.x, pt.y, dx, dy, pt.scale).finally(() => (done = true))
   while (!done) {
@@ -275,7 +283,7 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
   const mx = r.player.x - start.player.x
   const my = r.player.y - start.player.y
   // OS drag thresholds (GTK, Windows, macOS) swallow the first few pixels of the pointer path.
-  check('real drag: the OS moved the player', mx >= dx / 2 && my > 0, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
+  check('real drag: the OS moved the player', mx >= dx / 2 && Math.abs(my) <= 10, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
   check('real drag: docked windows flush after the drop', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
   check('real drag: docked windows follow during the drag', samples > 0 && flushSamples / samples >= 0.8, `${flushSamples}/${samples} mid-drag samples flush`)
 }

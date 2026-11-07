@@ -32,7 +32,7 @@ interface Satellite {
 const PL_ASPECT = PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h
 const PL_MIN_WIDTH = 320
 const playlist: Satellite = {
-  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 322, key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
+  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, minWidth: PL_MIN_WIDTH, minHeight: 308 /* the player's MIN_HEIGHT: a side window must always fit its height */, key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const album: Satellite = {
   hash: 'album', title: 'Cassette Player: Album', aspect: ALBUM.WINDOW.w / ALBUM.WINDOW.h, minWidth: 240, minHeight: 240, key: 'albumWindow', win: null, wanted: false, shaded: false, expanded: null
@@ -112,23 +112,24 @@ function persistSatellite(s: Satellite): void {
 }
 
 // Bounds changes we make ourselves: their move/resize events must not be read as user drags (feedback loop).
-// Linux delivers move/resize asynchronously (250 ms cap), and some X11 window managers apply a new size before the
-// new position. So an event is ours while the window sits at the position we asked for or the one it left; any
-// other position is a user drag, even right after our own change (a drag can go on after a mid-drag snap).
-const expected = new Map<BrowserWindow, { from: Rect; to: Rect; until: number }>()
+// Linux delivers move/resize asynchronously (250 ms cap), some X11 window managers apply a new size before the new
+// position, and several changes can be in flight at once (a resize syncs on every step). So an event is ours while
+// the window sits at a position we asked for or left in the last 250 ms; any other position is a user drag, even
+// right after our own change (a drag can go on after a mid-drag snap).
+const expected = new Map<BrowserWindow, Array<{ x: number; y: number; until: number }>>()
 function programmatic(w: BrowserWindow, r: Rect): void {
   const b = w.getBounds()
-  expected.set(w, { from: b, to: r, until: Date.now() + 250 })
+  const now = Date.now()
+  const keep = (expected.get(w) ?? []).filter((p) => p.until >= now)
+  expected.set(w, [...keep, { x: b.x, y: b.y, until: now + 250 }, { x: r.x, y: r.y, until: now + 250 }])
   // A pure move uses setPosition: on Windows at fractional display scaling, setBounds can drift the size by a pixel.
   if (b.width === r.width && b.height === r.height) w.setPosition(r.x, r.y)
   else w.setBounds(r)
 }
-const samePos = (a: Rect, b: Rect): boolean => Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1
 function isOwn(w: BrowserWindow): boolean {
-  const e = expected.get(w)
-  if (!e || Date.now() > e.until) return false
+  const now = Date.now()
   const b = w.getBounds()
-  return samePos(b, e.to) || samePos(b, e.from)
+  return (expected.get(w) ?? []).some((p) => p.until >= now && Math.abs(b.x - p.x) <= 1 && Math.abs(b.y - p.y) <= 1)
 }
 const sameRect = (a: Rect, b: Rect): boolean => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 
