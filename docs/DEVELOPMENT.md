@@ -37,7 +37,7 @@ The engine binary and the Electron app must be the same CPU type, which is why b
 
 ## Linux
 
-Needs the ALSA headers for the audio output crate (`libasound2-dev` on Debian/Ubuntu, `alsa-lib` on Arch/Fedora), plus Rust, Node 26 and pnpm 12 as above. `pnpm package` produces an AppImage and a tar.gz.
+Needs the ALSA headers for the audio output crate (`libasound2-dev` on Debian/Ubuntu, `alsa-lib` on Arch/Fedora), plus Rust, Node 26 and pnpm 12 as above. `pnpm package` produces an AppImage and a tar.gz. On a Wayland session the app runs on XWayland so it can dock windows: `pnpm dev` passes `--ozone-platform=x11`, and a built app relaunches itself once with that flag (`app/src/main/platform.ts`).
 
 ## Windows
 
