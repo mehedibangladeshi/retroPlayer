@@ -104,7 +104,8 @@ check('startup: side windows take the player height', r.playlist.height === r.pl
 // One taskbar/dock icon for the app, and activating it (it activates the player) brings every window forward.
 {
   const ids = await app.ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, Number(byId(k).getMediaSourceId().split(':')[1])]))`)
-  if (process.platform === 'linux') check('taskbar: one entry for all windows', taskbarEntries(Object.values(ids)) === 1)
+  const entries = taskbarEntries(Object.values(ids), app.child.pid)
+  check('taskbar: one entry for all windows', entries === 1, `${entries} entries`)
   // Another app's window covers all three and is in front.
   const box = await app.ev(`const bs = all.filter((w) => w.isVisible()).map((w) => w.getBounds());
     const x = Math.min(...bs.map((b) => b.x)), y = Math.min(...bs.map((b) => b.y));
