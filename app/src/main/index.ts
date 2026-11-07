@@ -446,19 +446,34 @@ function createSatellite(s: Satellite): BrowserWindow {
   w.on('resize', persistSoon)
   w.on('move', persistSoon)
   // A user drag tears the window off its dock (windows docked to it come along); dropping it snaps and re-docks.
-  const dragged = (): void => {
-    dbg('event', s.hash, w.getBounds(), 'own', isOwn(w), 'docked', !!docks[s.hash])
-    if (isOwn(w) || !w.isVisible() || !live(win) || win.isMinimized()) return
+  // Still where its dock puts it: a late event of ours, or a size the OS clamped to the window's minimum. Only a
+  // changed position is a drag.
+  const atDock = (): boolean => {
     const rects = rectsNow()
     const at = layout(rects, docks)[s.hash]
     const cur = rects[s.hash]
-    // Still where its dock puts it: a late event of ours, or a size the OS clamped to the window's minimum. Only a
-    // changed position is a drag.
-    if (docks[s.hash] && at && Math.abs(at.x - cur.x) <= 1 && Math.abs(at.y - cur.y) <= 1) return
-    dbg('TEAR', s.hash, cur, 'at', at)
-    docks[s.hash] = undefined
-    sync()
-    settleSoon(s.hash)
+    return !!docks[s.hash] && !!at && !!cur && Math.abs(at.x - cur.x) <= 1 && Math.abs(at.y - cur.y) <= 1
+  }
+  const ignored = (): boolean => isOwn(w) || !w.isVisible() || !live(win) || win.isMinimized() || atDock()
+  let tearTimer: NodeJS.Timeout | undefined
+  const dragged = (): void => {
+    dbg('event', s.hash, w.getBounds(), 'own', isOwn(w), 'docked', !!docks[s.hash])
+    if (ignored()) return
+    if (!docks[s.hash]) {
+      sync() // windows docked to it come along
+      settleSoon(s.hash)
+      return
+    }
+    // X11 window managers can report a bogus position for a moment (0,0 while reparenting a window being shown):
+    // tear a docked window off only if it is still away from its dock a moment later.
+    tearTimer ??= setTimeout(() => {
+      tearTimer = undefined
+      if (ignored()) return
+      dbg('TEAR', s.hash, w.getBounds())
+      docks[s.hash] = undefined
+      sync()
+      settleSoon(s.hash)
+    }, 50)
   }
   w.on('move', dragged)
   w.on('resize', dragged)
