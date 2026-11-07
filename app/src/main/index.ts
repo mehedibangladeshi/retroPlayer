@@ -133,6 +133,11 @@ function isOwn(w: BrowserWindow): boolean {
   const b = w.getBounds()
   return (expected.get(w) ?? []).some((p) => p.until >= now && Math.abs(b.x - p.x) <= 1 && Math.abs(b.y - p.y) <= 1)
 }
+// The last user move or resize: another window's event right after it is a consequence (a window manager keeping a
+// side window on screen moves it elsewhere than we asked), never a drag of that window.
+let userChange = { id: '', at: 0 }
+const userChanged = (id: string): void => void (userChange = { id, at: Date.now() })
+const busyElsewhere = (id: string): boolean => userChange.id !== id && Date.now() - userChange.at < 300
 const sameRect = (a: Rect, b: Rect): boolean => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 
 // Side windows are not user-resizable, and GTK ignores size changes on a fixed window: lift the lock around the change.
@@ -214,9 +219,20 @@ function settle(id: string): void {
   for (const s of satellites) if (!placed[s.hash]) next[s.hash] = docks[s.hash]
   docks = next
   parentDocked()
+  // A resize or drop at the screen edge must not leave docked windows off screen (or clamped over the player).
+  if (fitPlayerGroup(placed)) fitSoon()
+}
+// A window manager ignores our move while the user still holds the window (a resize paused mid-way): try again
+// until the group fits, or the user changes something.
+let fitTimer: NodeJS.Timeout | undefined
+function fitSoon(tries = 0): void {
+  fitTimer = setTimeout(() => {
+    if (fitPlayerGroup(sync()) && tries < 40) fitSoon(tries + 1)
+  }, 250)
 }
 const settleTimers = new Map<string, NodeJS.Timeout>()
 function settleSoon(id: string): void {
+  clearTimeout(fitTimer)
   clearTimeout(settleTimers.get(id))
   settleTimers.set(id, setTimeout(() => settle(id), 120))
 }
@@ -236,17 +252,23 @@ function showSatellite(s: Satellite): void {
 function dockOnShow(s: Satellite): void {
   if (!live(win) || !live(s.win)) return
   if (!docks[s.hash] && overlaps(win.getBounds(), s.win.getBounds())) docks[s.hash] = DEFAULT_DOCKS[s.hash]
-  const rects = sync({}, s)
+  fitPlayerGroup(sync({}, s), s)
+}
+
+// Nudge the player's docked group onto the screen (laid out in `rects`), unless that would push the player onto a
+// loose window. Returns whether it nudged.
+function fitPlayerGroup(rects: Record<string, Rect>, extra?: Satellite): boolean {
   const p = rects.player
-  if (!p) return
+  if (!p || !live(win)) return false
   const group = subtree(docks, 'player')
   const { dx, dy } = fitGroup([...group].filter((id) => rects[id]).map((id) => rects[id]), screen.getDisplayMatching(p).workArea)
-  if (!dx && !dy) return
+  if (!dx && !dy) return false
   const moved = { ...p, x: p.x + dx, y: p.y + dy }
   // Never nudge the player onto a detached window.
-  if (Object.entries(rects).some(([id, r]) => !group.has(id) && overlaps(moved, r))) return
+  if (Object.entries(rects).some(([id, r]) => !group.has(id) && overlaps(moved, r))) return false
   programmatic(win, moved) // the nudge
-  sync({ player: moved }, s)
+  sync({ player: moved }, extra)
+  return true
 }
 
 function lastOpenDir(): string | undefined {
@@ -326,13 +348,17 @@ function createWindow(): void {
   // Docked windows follow the player live (our own nudges and snaps already synced); a user drag snaps when dropped.
   const followPlayer = (): void => {
     if (w.isMinimized() || isOwn(w)) return
+    userChanged('player')
     sync()
   }
   w.on('resize', followPlayer)
   w.on('move', followPlayer)
-  w.on('move', () => {
+  // A drop or the end of a resize snaps the player and fits its group onto the screen.
+  const settlePlayer = (): void => {
     if (!w.isMinimized() && !isOwn(w)) settleSoon('player')
-  })
+  }
+  w.on('move', settlePlayer)
+  w.on('resize', settlePlayer)
   w.on('close', () => {
     clearTimeout(timer)
     persist()
@@ -462,10 +488,11 @@ function createSatellite(s: Satellite): BrowserWindow {
     const cur = rects[s.hash]
     return !!docks[s.hash] && !!at && !!cur && Math.abs(at.x - cur.x) <= 1 && Math.abs(at.y - cur.y) <= 1
   }
-  const ignored = (): boolean => isOwn(w) || !w.isVisible() || !live(win) || win.isMinimized() || atDock()
+  const ignored = (): boolean => isOwn(w) || busyElsewhere(s.hash) || !w.isVisible() || !live(win) || win.isMinimized() || atDock()
   let tearTimer: NodeJS.Timeout | undefined
   const dragged = (): void => {
     if (ignored()) return
+    userChanged(s.hash)
     if (!docks[s.hash]) {
       sync() // windows docked to it come along
       settleSoon(s.hash)

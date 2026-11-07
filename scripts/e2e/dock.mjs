@@ -279,6 +279,26 @@ r = await R(app.ev)
 check('resize: playlist keeps the player height and stays flush', r.playlist.height === r.player.height && flush.right(r.player, r.playlist), fmt(r))
 check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
 
+// Growing the player against the screen edge: the docked group shifts back onto the screen, still docked (a window
+// manager keeps a side window on screen, which used to read as a drag and tear it off, or leave it over the player).
+{
+  await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(308 * b.width / b.height), 308)`)
+  await sleep(500)
+  r = await R(app.ev)
+  await dragTo('player', work.x + work.width - 4 - r.playlist.width - r.player.width, r.player.y)
+  r = await R(app.ev)
+  const start = r.player
+  for (let i = 1; i <= 8; i++) {
+    const h = Math.round(308 + ((H2 - 308) * i) / 8)
+    await app.ev(`const w = byId('player'); w.setSize(Math.round(${h} * ${start.width / start.height}), ${h})`)
+    await sleep(30)
+  }
+  await sleep(700)
+  r = await R(app.ev)
+  check('resize at the edge: the group shifts onto the screen', r.playlist.x + r.playlist.width <= work.x + work.width && r.player.x < start.x, fmt(r) + ' work ' + fmt(work))
+  check('resize at the edge: still docked and flush', flush.right(r.player, r.playlist) && flush.top(r.player, r.album) && r.playlist.height === r.player.height, fmt(r))
+}
+
 // Shade the playlist and back (the bar stays docked).
 // The roll-up button's IPC, as the renderer sends it.
 const shadeIpc = `const { ipcMain } = process.mainModule.require('electron'); const w = byId('playlist'); ipcMain.emit('window:toggleShade', { sender: w.webContents, senderFrame: w.webContents.mainFrame })`

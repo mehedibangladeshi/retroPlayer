@@ -59,7 +59,9 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 6. Docks are not saved. They are rebuilt from the window positions (`inferDocks`) after every drop and at startup, so
    a layout survives a restart. A new window needs an entry in `DEFAULT_DOCKS` to set where it docks by default.
 7. A shaded window stays docked, and windows docked below it move up.
-8. When a side window is shown, the player's group is nudged onto the screen, unless that would push the player onto a loose window.
+8. When a side window is shown, and after a user drop or resize, the player's group is nudged onto the screen, unless
+   that would push the player onto a loose window. A window manager ignores the nudge while the user still holds the
+   window, so it is retried every 250 ms until the group fits (`fitSoon`).
 9. Pure geometry lives in `app/src/main/dock.ts` and is unit-tested in `app/test/dock.test.ts`. Window code calls it.
    Do not put geometry in `index.ts`.
 
@@ -68,6 +70,9 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 - **Own moves vs user drags:** the app records every position it sets or leaves, and ignores move and resize events
   at those positions for 1 s (`programmatic` / `isOwn`). Every programmatic move must go through these helpers
   (`setRect`, `resizeFixed`, `sync`), or the app will read its own move as a user drag.
+- **Consequences are not drags:** a window's move or resize within 300 ms of a user change to another window is a
+  consequence of it (a window manager keeps a side window on screen and moves it elsewhere than the app asked), never a
+  drag of that window (`busyElsewhere`). Otherwise growing the player at a screen edge tears a side window off its dock.
 - **Tear-off is confirmed 50 ms later**, because openbox briefly reports (0,0) while it reparents a window.
 - **Windows:** use `setPosition` for a pure move, because `setBounds` can drift the size at fractional scaling.
 - **macOS:** no move events arrive during a drag, so docked windows become the player's child windows
