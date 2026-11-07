@@ -36,6 +36,8 @@ interface Box { x: number; y: number; width: number; height: number }
 // A user resize (`cur`, from `rest`) brought back to the window's aspect and limits. The dimension the user changed most
 // leads; an edge the user moved stays where it is, so the opposite edge moves.
 export function proportional(cur: Box, rest: Box, aspect: number, l: { minHeight: number; maxHeight: number }): Box {
+  // Already in proportion (a window manager rounds the aspect by a pixel or two): leave it, or we would fight it.
+  if (cur.height >= l.minHeight && cur.height <= l.maxHeight && Math.abs(cur.width - cur.height * aspect) <= 2) return cur
   const byWidth = Math.abs(cur.width - rest.width) / rest.width > Math.abs(cur.height - rest.height) / rest.height
   const height = Math.max(l.minHeight, Math.min(l.maxHeight, Math.round(byWidth ? cur.width / aspect : cur.height)))
   const width = Math.round(height * aspect)

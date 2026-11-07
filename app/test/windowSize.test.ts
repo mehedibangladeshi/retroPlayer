@@ -60,3 +60,7 @@ test('proportional: clamped to the limits', () => {
 test('proportional: a size already in proportion is left alone', () => {
   assert.deepEqual(proportional({ x: 5, y: 6, width: 767, height: 616 }, { x: 5, y: 6, width: 384, height: 308 }, 767 / 616, sizeLimits(767 / 616)), { x: 5, y: 6, width: 767, height: 616 })
 })
+test('proportional: a window manager rounding (within 2 px of the aspect) is left alone', () => {
+  const cur = { x: 1, y: 2, width: 480, height: 387 } // openbox's aspect rounding of 480x386
+  assert.deepEqual(proportional(cur, { x: 1, y: 2, width: 480, height: 386 }, 767 / 616, sizeLimits(767 / 616)), cur)
+})

@@ -91,7 +91,7 @@ const fmt = (r) => JSON.stringify(r)
 let app = await launch(9341)
 const r0 = await R(app.ev) // first launch: side windows open at the player's height (or their minimum size)
 const mins = await app.ev(`return Object.fromEntries(['playlist','album'].map((k) => [k, byId(k).getMinimumSize()]))`)
-const atPlayerHeight = (k) => Math.abs(r0[k].height - r0.player.height) <= 1 || r0[k].width === mins[k][0]
+const atPlayerHeight = (k) => Math.abs(r0[k].height - r0.player.height) <= 2 || r0[k].width === mins[k][0]
 // Windows small enough that two stacked ones fit the work area with a little room (CI screens are as small as
 // 1024x677, and macOS also keeps windows above the bottom of the work area), but not below the player's minimum.
 const H = await app.ev(`const w = byId('player'); const b = w.getBounds(); const a = screen.getDisplayMatching(b).workArea;
@@ -340,7 +340,7 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   const lim = await app.ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, [...byId(k).getMinimumSize(), ...byId(k).getMaximumSize()]]))`)
   check('limits: player 384x308 to 1151x924', fmt(lim.player) === fmt([384, 308, 1151, 924]), fmt(lim))
   check('limits: side windows 308x308 to 924x924', fmt(lim.playlist) === fmt([308, 308, 924, 924]) && fmt(lim.album) === fmt([308, 308, 924, 924]), fmt(lim))
-  const near = (a, b) => Math.abs(a - b) <= 1
+  const near = (a, b) => Math.abs(a - b) <= 2 // openbox rounds the aspect itself
   const userResize = async (k, b) => {
     await app.ev(`byId('${k}').setBounds(${JSON.stringify(b)})`)
     await sleep(800)
