@@ -6,7 +6,7 @@ import { useEngine } from '../engine/useEngine'
 import fontUrl from '@assets/playlist/fonts/AnotherTypewriter.ttf?url'
 import defaultCover from '@assets/playlist/default-cover.svg?url'
 import { SHADE } from '@shared/shade'
-import { rowKeyAction } from './rowKeys'
+import { rowClickAction, rowKeyAction } from './rowKeys'
 import './PlaylistView.css'
 
 const urls = import.meta.glob<string>('@assets/playlist/*.png', { query: '?url', import: 'default', eager: true })
@@ -130,9 +130,10 @@ export default function PlaylistView() {
                 type="button"
                 className={`pl-row${t.path === trackInfo?.path ? ' current' : ''}${i === selected ? ' selected' : ''}`}
                 style={{ height: P.ROW.pitch, lineHeight: `${P.ROW.pitch}px`, fontSize: P.ROW.fontSize, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
-                onClick={() => {
+                onClick={(e) => {
                   setSel({ album, i })
-                  playIndex(i)
+                  // detail is 0 for a keyboard-fired click; Enter is handled by the keydown listener.
+                  if (rowClickAction(e.detail, i)?.type === 'play') playIndex(i)
                 }}
               >
                 <span className="pl-name">
