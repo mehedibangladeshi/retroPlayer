@@ -160,6 +160,25 @@ await drag(app.ev, 'player', 10, 10)
 r = await R(app.ev)
 check('sub-group: detached group ignores player moves', !flush.bottom(r.player, r.playlist), fmt(r))
 
+// A pause mid-drag lets the snap fire (the window jumps flush); dragging on right after must still count as a
+// drag, and the final drop snaps where it ends.
+{
+  r = await R(app.ev)
+  const steps = async (k, x, y, n = 6) => {
+    const b = (await R(app.ev))[k]
+    for (let i = 1; i <= n; i++) {
+      await move(app.ev, k, Math.round(b.x + ((x - b.x) * i) / n), Math.round(b.y + ((y - b.y) * i) / n))
+      await sleep(16)
+    }
+  }
+  await steps('album', r.player.x + r.player.width + 6, r.player.y) // 6 px right of the player
+  await sleep(180) // the drop timer fires: snaps flush
+  await steps('album', r.player.x + 40, r.player.y + r.player.height + 7) // carry on: 7 px below the player
+  await sleep(450)
+  r = await R(app.ev)
+  check('pause mid-drag: the drag goes on and the drop snaps below', flush.bottom(r.player, r.album) && r.album.x === r.player.x + 40, fmt(r))
+}
+
 // Top: album dropped 8 px above the player (move the player down first so there is room above it).
 r = await R(app.ev)
 await drag(app.ev, 'player', 0, work.y + work.height - r.player.height - 4 - r.player.y)

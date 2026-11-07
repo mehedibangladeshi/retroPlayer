@@ -112,17 +112,24 @@ function persistSatellite(s: Satellite): void {
 }
 
 // Bounds changes we make ourselves: their move/resize events must not be read as user drags (feedback loop).
-// Linux delivers move/resize asynchronously, and some X11 window managers apply a new size and position in two
-// steps, so every event within 250 ms of our own change counts as ours, whatever bounds it reports.
-const expected = new Map<BrowserWindow, number>()
+// Linux delivers move/resize asynchronously (250 ms cap), and some X11 window managers apply a new size before the
+// new position. So an event is ours while the window sits at the position we asked for or the one it left; any
+// other position is a user drag, even right after our own change (a drag can go on after a mid-drag snap).
+const expected = new Map<BrowserWindow, { from: Rect; to: Rect; until: number }>()
 function programmatic(w: BrowserWindow, r: Rect): void {
-  expected.set(w, Date.now() + 250)
   const b = w.getBounds()
+  expected.set(w, { from: b, to: r, until: Date.now() + 250 })
   // A pure move uses setPosition: on Windows at fractional display scaling, setBounds can drift the size by a pixel.
   if (b.width === r.width && b.height === r.height) w.setPosition(r.x, r.y)
   else w.setBounds(r)
 }
-const isOwn = (w: BrowserWindow): boolean => Date.now() <= (expected.get(w) ?? 0)
+const samePos = (a: Rect, b: Rect): boolean => Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1
+function isOwn(w: BrowserWindow): boolean {
+  const e = expected.get(w)
+  if (!e || Date.now() > e.until) return false
+  const b = w.getBounds()
+  return samePos(b, e.to) || samePos(b, e.from)
+}
 const sameRect = (a: Rect, b: Rect): boolean => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 
 // Side windows are not user-resizable, and GTK ignores size changes on a fixed window: lift the lock around the change.
