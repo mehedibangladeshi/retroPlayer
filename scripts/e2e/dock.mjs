@@ -141,7 +141,7 @@ check('startup: side windows take the player height', r.playlist.height === r.pl
     ;({ cover, id: coverId } = await coverUp())
     check('real click: cover window starts on top', order()[0] === coverId, fmt(order()))
     const [cmd, argv] = process.platform === 'win32'
-      ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'click-taskbar-win.ps1'), 'Cassette Player']]
+      ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'click-taskbar-win.ps1'), '^Electron']] // buttons are named after the app; ours launched first
       : ['swift', [join(here, 'click-dock-mac.swift'), '^Electron$', '0']] // ours launched before the cover, so it comes first
     let out = ''
     try {
@@ -150,7 +150,8 @@ check('startup: side windows take the player height', r.playlist.height === r.pl
       out = `exit ${e.status}\n${e.stdout}`
     }
     console.log(out.trim())
-    check('real click: the app has one taskbar button / Dock icon', /matches: 1\b/.test(out) || process.platform === 'darwin', 'see the list above')
+    // Ours and the cover each have one button/icon; on Windows ours counts its windows ("Electron - 1 running window").
+    check('real click: the app has one taskbar button / Dock icon', /matches: 2\b/.test(out) && !/Electron - [2-9]/.test(out), 'see the list above')
     await sleep(1000)
     const o3 = order()
     check('real click: clicking it brings every window above the cover', o3.indexOf(coverId) === 3, fmt(o3) + ' cover ' + coverId)
