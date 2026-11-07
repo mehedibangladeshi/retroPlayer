@@ -88,8 +88,10 @@ const fmt = (r) => JSON.stringify(r)
 
 // ---- run 1
 let app = await launch(9341)
-// Small windows, so every layout below fits on screen (the WM clamps windows into the work area).
-await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(440, Math.round(440 * b.height / b.width))`)
+// Windows small enough that two stacked ones fit the work area (CI screens are 1024x720 or smaller; OSes clamp
+// windows into it), but at least 322 px tall, the playlist's minimum height.
+const H = await app.ev(`const w = byId('player'); const b = w.getBounds(); const a = screen.getDisplayMatching(b).workArea;
+  const h = Math.max(322, Math.min(330, Math.floor((a.height - 10) / 2))); w.setSize(Math.round(h * b.width / b.height), h); return h`)
 await sleep(600)
 let r = await R(app.ev)
 const work = await app.ev(`return screen.getDisplayMatching(byId('player').getBounds()).workArea`)
@@ -160,7 +162,7 @@ check('sub-group: detached group ignores player moves', !flush.bottom(r.player, 
 
 // Top: album dropped 8 px above the player (move the player down first so there is room above it).
 r = await R(app.ev)
-await drag(app.ev, 'player', 0, work.y + work.height - r.player.height - 20 - r.player.y)
+await drag(app.ev, 'player', 0, work.y + work.height - r.player.height - 4 - r.player.y)
 r = await R(app.ev)
 await drag(app.ev, 'album', r.player.x + 50 - r.album.x, r.player.y - r.album.height - 8 - r.album.y)
 r = await R(app.ev)
@@ -183,8 +185,9 @@ check('player drop: playlist now follows', flush.right(r.player, r.playlist), fm
 
 // Player resize: side windows take the new height and stay flush (room made first: the WM keeps windows on screen).
 r = await R(app.ev)
-await drag(app.ev, 'player', work.x + 60 - r.player.x, work.y + Math.round(r.player.height * 1.1) + 20 - r.player.y)
-await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(b.width * 1.1), Math.round(b.height * 1.1))`)
+const H2 = Math.min(Math.round(H * 1.1), Math.floor((work.height - 4) / 2))
+await drag(app.ev, 'player', work.x + 60 - r.player.x, work.y + H2 + 2 - r.player.y)
+await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(${H2} * b.width / b.height), ${H2})`)
 await sleep(500)
 r = await R(app.ev)
 check('resize: playlist keeps the player height and stays flush', r.playlist.height === r.player.height && flush.right(r.player, r.playlist), fmt(r))
@@ -225,7 +228,7 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
     return p && { x: c.x + p.x, y: c.y + p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
   const start = await R(app.ev)
   const dx = 160
-  const dy = 25
+  const dy = 8
   let samples = 0
   let flushSamples = 0
   let done = false
