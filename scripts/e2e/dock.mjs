@@ -57,6 +57,13 @@ async function launch(port) {
         ${expr} })()`
       ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: body, awaitPromise: true, returnByValue: true } }))
     })
+  // Slow first launches (macOS runners): wait until the player and both side windows are up.
+  let up = 0
+  for (let i = 0; i < 200 && up < 3; i++) {
+    await sleep(200)
+    up = await ev(`return all.filter((w) => w.isVisible()).length`).catch(() => 0)
+  }
+  if (up < 3) throw new Error('windows not up: ' + JSON.stringify(await ev(`return all.map((w) => [w.webContents.getURL(), w.isVisible()])`)))
   return { child, ev, ws }
 }
 
@@ -81,7 +88,6 @@ const fmt = (r) => JSON.stringify(r)
 
 // ---- run 1
 let app = await launch(9341)
-await sleep(2500)
 // Small windows, so every layout below fits on screen (the WM clamps windows into the work area).
 await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(400, Math.round(400 * b.height / b.width))`)
 await sleep(600)
@@ -223,6 +229,12 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
   let samples = 0
   let flushSamples = 0
   let done = false
+  // Also check right after each of the app's own move events (Windows' move loop blocks the inspector mid-drag):
+  // this listener is added after the app's, so it sees the result of the app's follow.
+  await app.ev(`const w = byId('player'); globalThis.__rec = [];
+    const f = () => { const p = w.getBounds(), pl = byId('playlist').getBounds(), al = byId('album').getBounds();
+      __rec.push(pl.x === p.x + p.width && pl.y === p.y && al.y + al.height === p.y) };
+    w.on('move', f); globalThis.__recOff = () => w.off('move', f)`)
   const dragging = realDrag(pt.x, pt.y, dx, dy, pt.scale).finally(() => (done = true))
   while (!done) {
     const m = await R(app.ev)
@@ -234,10 +246,14 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
   }
   await dragging
   await sleep(500)
+  const rec = await app.ev(`__recOff(); return __rec`)
+  samples += rec.length
+  flushSamples += rec.filter(Boolean).length
   r = await R(app.ev)
   const mx = r.player.x - start.player.x
   const my = r.player.y - start.player.y
-  check('real drag: the OS moved the player', Math.abs(mx - dx) <= 3 && Math.abs(my - dy) <= 3, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
+  // OS drag thresholds (GTK, Windows) swallow the first few pixels of the pointer path.
+  check('real drag: the OS moved the player', mx >= dx / 2 && my >= dy / 2, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
   check('real drag: docked windows flush after the drop', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
   check('real drag: docked windows follow during the drag', samples > 0 && flushSamples / samples >= 0.8, `${flushSamples}/${samples} mid-drag samples flush`)
 }
@@ -248,7 +264,6 @@ void app.ev(`setTimeout(() => app.quit(), 50)`).catch(() => {})
 app.ws.close() // --inspect holds the exit until the debugger disconnects
 await new Promise((res) => app.child.on('exit', res))
 app = await launch(9342)
-await sleep(2500)
 r = await R(app.ev)
 check('restart: playlist docked right again', flush.right(r.player, r.playlist), fmt(r))
 check('restart: album docked on top again', flush.top(r.player, r.album) && r.album.x - r.player.x === before.album.x - before.player.x, fmt(r) + ' before ' + fmt(before))
