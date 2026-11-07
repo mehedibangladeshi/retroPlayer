@@ -3,7 +3,7 @@ Status: Complete
 
 ## Goal / Done when / Non-goals
 Goal: side windows dock to the player from any side, any window docks to any other, and everything docked to the player (directly or in a chain) stays docked while the player is dragged. Works on Windows, macOS and Linux, with OS-specific fixes where needed.
-Done when: pure dock geometry is unit tested; the built app passes a live E2E (scripts/e2e-dock.mjs) covering every side, chains, tear-off, sub-groups, player drop pick-up, resize, shade, OS minimize and restart; pnpm typecheck/lint/test, cargo test and clippy pass.
+Done when: pure dock geometry is unit tested; the built app passes a live E2E (scripts/e2e/dock.mjs) covering every side, chains, tear-off, sub-groups, player drop pick-up, resize, shade, OS minimize and restart; pnpm typecheck/lint/test, cargo test and clippy pass.
 Non-goals: user-resizable side windows, persisting docks as a separate setting (they are read back from the saved positions), docking on Linux without any X server.
 
 ## Design
@@ -13,6 +13,6 @@ Non-goals: user-resizable side windows, persisting docks as a separate setting (
 
 ## Verification
 - Red/green: `app/test/dock.test.ts` (16 tests), `app/test/platform.test.ts` (3 tests).
-- Live E2E on Linux (KDE Wayland session, app on XWayland): `scripts/e2e-dock.mjs` drives the main process over `--inspect`. External `setPosition` steps look like user drags to the app. 30/30 checks pass on 4 consecutive runs.
+- Live E2E on Linux (KDE Wayland session, app on XWayland): `scripts/e2e/dock.mjs` drives the main process over `--inspect`. External `setPosition` steps look like user drags to the app. 30/30 checks pass on 4 consecutive runs.
 - Checked by hand: `appendSwitch('ozone-platform')` from main is too late (the probe window was no X11 client), while the CLI flag works. A plain launch on Wayland relaunches with the flag and its windows appear in `_NET_CLIENT_LIST`. `electron-vite dev -- --ozone-platform=x11` gives X11 windows.
-- Not verified: macOS and Windows (no machines here). The macOS child-window path and Windows live-follow are reasoned from Electron's documented behaviour. Run `scripts/e2e-dock.mjs` on both before a release. Real mouse drags were not tested (no xdotool here): the E2E uses external `setPosition` steps.
+- Not verified: macOS and Windows (no machines here). The macOS child-window path and Windows live-follow are reasoned from Electron's documented behaviour. Run `scripts/e2e/dock.mjs` on both before a release. Real mouse drags were not tested (no xdotool here): the E2E uses external `setPosition` steps.

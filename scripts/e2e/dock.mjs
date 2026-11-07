@@ -1,9 +1,23 @@
 // E2E for window docking: drives the built app's main process over the Node inspector.
 // Moves made from here bypass the app's programmatic() bookkeeping, so the app sees them as user drags.
 // usage (after `pnpm build`, Linux X11/XWayland, Windows or macOS):
-//   node scripts/e2e-dock.mjs app /abs/path/to/throwaway-profile [--ozone-platform=x11]
+//   node scripts/e2e/dock.mjs app /abs/path/to/throwaway-profile [--ozone-platform=x11]
 // Set RETRO_SIDECAR to an engine binary. Uses a throwaway --user-data-dir (an absolute path), never the real profile.
 import { spawn, execFileSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const here = dirname(fileURLToPath(import.meta.url))
+// A real OS pointer drag (x0, y0 in DIP; converted to what each OS's input API expects). Resolves when the button is up.
+function realDrag(x0, y0, dx, dy, scale, steps = 25) {
+  const px = (v) => String(Math.round(v * (process.platform === 'darwin' ? 1 : scale)))
+  const args = [px(x0), px(y0), px(dx), px(dy), String(steps)]
+  const [cmd, argv] =
+    process.platform === 'win32' ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'drag-win.ps1'), ...args]]
+    : process.platform === 'darwin' ? ['swift', [join(here, 'drag-mac.swift'), ...args]]
+    : ['python3', [join(here, 'drag-linux.py'), ...args]]
+  return new Promise((res, rej) => spawn(cmd, argv, { stdio: 'inherit' }).on('exit', (c) => (c === 0 ? res() : rej(new Error(`${cmd} exited ${c}`)))))
+}
 
 const [appDir, ud, ...extra] = process.argv.slice(2)
 const electron = execFileSync('node', ['-e', "console.log(require('electron'))"], { cwd: appDir }).toString().trim()
@@ -193,6 +207,40 @@ check('OS minimize: shades, stays docked, not stuck minimized', !minFlag && r.pl
 await drag(app.ev, 'player', -20, 0)
 r = await R(app.ev)
 check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist), fmt(r))
+
+// A real OS pointer drag on the player's body (not a button): the window manager moves it, docked windows follow.
+{
+  r = await R(app.ev)
+  await drag(app.ev, 'player', work.x + 200 - r.player.x, 0)
+  const pt = await app.ev(`const w = byId('player'); const c = w.getContentBounds();
+    const p = await w.webContents.executeJavaScript(\`(() => { const cp = document.querySelector('.cp'); const r = cp.getBoundingClientRect();
+      for (let y = r.top + 40; y < r.bottom - 20; y += 8) for (let x = r.left + 40; x < r.right - 20; x += 8) {
+        const e = document.elementFromPoint(x, y); if (e && cp.contains(e) && !e.closest('button, .cp-menu')) return { x, y } } return null })()\`);
+    return p && { x: c.x + p.x, y: c.y + p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
+  const start = await R(app.ev)
+  const dx = 160
+  const dy = 25
+  let samples = 0
+  let flushSamples = 0
+  let done = false
+  const dragging = realDrag(pt.x, pt.y, dx, dy, pt.scale).finally(() => (done = true))
+  while (!done) {
+    const m = await R(app.ev)
+    if (m.player.x !== start.player.x || m.player.y !== start.player.y) {
+      samples++
+      if (flush.right(m.player, m.playlist) && flush.top(m.player, m.album)) flushSamples++
+    }
+    await sleep(40)
+  }
+  await dragging
+  await sleep(500)
+  r = await R(app.ev)
+  const mx = r.player.x - start.player.x
+  const my = r.player.y - start.player.y
+  check('real drag: the OS moved the player', Math.abs(mx - dx) <= 3 && Math.abs(my - dy) <= 3, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
+  check('real drag: docked windows flush after the drop', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
+  check('real drag: docked windows follow during the drag', samples > 0 && flushSamples / samples >= 0.8, `${flushSamples}/${samples} mid-drag samples flush`)
+}
 
 // Quit (saves settings), relaunch: docks come back from the saved positions.
 const before = await R(app.ev)
