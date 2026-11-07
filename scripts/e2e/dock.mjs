@@ -341,6 +341,9 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   check('limits: player 384x308 to 1151x924', fmt(lim.player) === fmt([384, 308, 1151, 924]), fmt(lim))
   check('limits: side windows 308x308 to 924x924', fmt(lim.playlist) === fmt([308, 308, 924, 924]) && fmt(lim.album) === fmt([308, 308, 924, 924]), fmt(lim))
   const near = (a, b) => Math.abs(a - b) <= 2 // openbox rounds the aspect itself
+  // Openbox enforces the aspect itself and may keep the other dimension, so only the proportion is checked here (which
+  // dimension leads is unit-tested in windowSize.test.ts).
+  const inProportion = (b) => near(b.width, Math.round((b.height * 767) / 616))
   const userResize = async (k, b) => {
     await app.ev(`byId('${k}').setBounds(${JSON.stringify(b)})`)
     await sleep(800)
@@ -348,13 +351,13 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   }
   let p = (await R(app.ev)).player
   r = await userResize('player', { ...p, width: p.width + 40 }) // its right edge only
-  check('proportion: a player width drag ends in proportion', near(r.player.width, p.width + 40) && near(r.player.height, Math.round((p.width + 40) * 616 / 767)) && flush.right(r.player, r.playlist), fmt(r))
+  check('proportion: a player width drag ends in proportion', inProportion(r.player) && r.player.width !== p.width && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(p))
   p = r.player
   r = await userResize('player', { ...p, height: p.height - 20 }) // its bottom edge only
-  check('proportion: a player height drag ends in proportion', near(r.player.height, p.height - 20) && near(r.player.width, Math.round((p.height - 20) * 767 / 616)), fmt(r))
+  check('proportion: a player height drag ends in proportion', inProportion(r.player) && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(p))
   const pl = r.playlist
   r = await userResize('playlist', { ...pl, width: pl.width + 24 })
-  check('proportion: a side window width drag ends in proportion, still docked', near(r.playlist.width, pl.width + 24) && near(r.playlist.height, r.playlist.width) && flush.right(r.player, r.playlist), fmt(r))
+  check('proportion: a side window width drag ends in proportion, still docked', near(r.playlist.height, r.playlist.width) && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(pl))
   r = await userResize('playlist', { ...r.playlist, width: 2000, height: 2000 })
   check('limits: a side window never grows past 924', r.playlist.width <= 924 && r.playlist.height <= 924 && near(r.playlist.width, r.playlist.height), fmt(r))
   r = await userResize('playlist', { ...r.playlist, width: 100, height: 100 })
