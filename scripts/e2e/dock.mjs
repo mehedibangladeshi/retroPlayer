@@ -105,22 +105,32 @@ check('startup: side windows take the player height', r.playlist.height === r.pl
 {
   const ids = await app.ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, Number(byId(k).getMediaSourceId().split(':')[1])]))`)
   if (process.platform === 'linux') check('taskbar: one entry for all windows', taskbarEntries(Object.values(ids)) === 1)
-  // Another window (not one of ours: no app behaviour) covers all three and takes focus.
-  const coverId = await app.ev(`const bs = all.map((w) => w.getBounds());
+  // Another app's window covers all three and is in front.
+  const box = await app.ev(`const bs = all.filter((w) => w.isVisible()).map((w) => w.getBounds());
     const x = Math.min(...bs.map((b) => b.x)), y = Math.min(...bs.map((b) => b.y));
-    const c = new BrowserWindow({ x, y, width: Math.max(...bs.map((b) => b.x + b.width)) - x, height: Math.max(...bs.map((b) => b.y + b.height)) - y, show: false });
-    globalThis.__cover = c; c.show(); c.focus(); await new Promise((r) => setTimeout(r, 800));
-    return Number(c.getMediaSourceId().split(':')[1])`)
+    return [x, y, Math.max(...bs.map((b) => b.x + b.width)) - x, Math.max(...bs.map((b) => b.y + b.height)) - y]`)
+  const cover = spawn(electron, [join(here, 'cover.cjs'), ...extra, ...box.map(String)], { stdio: ['ignore', 'pipe', 'ignore'] })
+  const coverId = await new Promise((res) => {
+    let out = ''
+    cover.stdout.on('data', (d) => {
+      out += d
+      const m = /COVER (\d+)/.exec(out)
+      if (m) res(Number(m[1]))
+    })
+  })
   const order = () => stackTopFirst([coverId, ...Object.values(ids)])
   const o1 = order()
   check('raise: cover window starts on top', o1[0] === coverId, fmt(o1))
-  // What a taskbar/dock click does: X11 taskbars ask the window manager to activate the window; elsewhere focus it.
+  // What a taskbar/Dock click does: X11 taskbars ask the window manager to activate the window, Windows switches
+  // to it, and macOS activates the app.
   if (process.platform === 'linux') execFileSync('python3', [join(here, 'activate-linux.py'), String(ids.player)])
-  else await app.ev(`byId('player').focus()`)
+  else if (process.platform === 'win32') execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'activate-win.ps1'), String(ids.player)])
+  else await app.ev(`app.focus({ steal: true })`)
   await sleep(800)
   const o2 = order()
   check('raise: activating the player brings every window above the cover', o2.indexOf(coverId) === 3, fmt(o2) + ' cover ' + coverId)
-  await app.ev(`globalThis.__cover.destroy(); await new Promise((r) => setTimeout(r, 300))`)
+  cover.kill()
+  await sleep(300)
 }
 const top = work.y + 2 // a player here has room for one window below it
 const bottomY = work.y + work.height - H - 2 // a player here has room for one window above it
@@ -260,8 +270,20 @@ check('unshade: playlist back to the player height, docked', r.playlist.height =
 await app.ev(`byId('playlist').minimize()`)
 await sleep(1500) // macOS animates the minimize before the app can bring the window back
 r = await R(app.ev)
+// Openbox minimizes a transient window's whole group (the side windows are the player's transients on Linux): that is
+// a minimize of the app, and restoring the player (a taskbar click) brings every window back, docked.
+if (await app.ev(`return byId('player').isMinimized()`)) {
+  console.log('the window manager minimized the whole group')
+  await app.ev(`byId('player').restore()`)
+  await sleep(1000)
+  r = await R(app.ev)
+  check('OS minimize (group): restoring the player brings both side windows back, docked', !!r.playlist && !!r.album && flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
+  await app.ev(shadeIpc) // shade it, as the rest of the run expects
+  await sleep(600)
+  r = await R(app.ev)
+}
 const minFlag = await app.ev(`return byId('playlist').isMinimized()`)
-check('OS minimize: shades, stays docked, not stuck minimized', !minFlag && r.playlist.height < 100 && flush.right(r.player, r.playlist), fmt(r) + ' minimized=' + minFlag)
+check('OS minimize: shades, stays docked, not stuck minimized', !minFlag && r.playlist?.height < 100 && flush.right(r.player, r.playlist), fmt(r) + ' minimized=' + minFlag)
 await drag(app.ev, 'player', -20, 0)
 r = await R(app.ev)
 check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist), fmt(r))

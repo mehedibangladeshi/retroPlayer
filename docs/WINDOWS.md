@@ -40,7 +40,8 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 5. Exactly one drag region: a childless strip in its top bar, to the left of minimize and close. Nothing else in the
    view sets `-webkit-app-region`. `app/test/dragRegions.test.ts` enforces this, so add the new view to that test.
 6. Minimize does not minimize. It rolls the window up into its top bar (the window shade) and back. It needs a `SHADE`
-   entry (design width and top-bar height) in `app/src/shared/shade.ts`. If the OS minimizes it anyway, main brings it back and shades it.
+   entry (design width and top-bar height) in `app/src/shared/shade.ts`. If the OS minimizes it anyway, main brings it back and shades it. If the window manager minimizes the player
+   with it (openbox minimizes a transient window's whole group), that is a minimize of the app, and restoring the player brings it back.
 7. Minimizing the player hides the visible side windows, and restoring the player shows them again.
 8. Closing the player saves every window's bounds, then closes them all.
 

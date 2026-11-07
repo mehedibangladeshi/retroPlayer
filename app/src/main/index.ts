@@ -424,7 +424,9 @@ function createSatellite(s: Satellite): BrowserWindow {
     // macOS can drop a restore that lands during its minimize animation, so retry until the window is back.
     let tries = 0
     const bringBack = (): void => {
-      if (!live(w)) return
+      // Openbox minimizes a transient's whole group, player included: that is a minimize of the app, and restoring
+      // the player brings this window back.
+      if (!live(w) || !live(win) || win.isMinimized()) return
       if (w.isMinimized()) {
         // KWin under X11 leaves a restored window flagged minimized (isMinimized() stays true, size changes are
         // ignored); hiding and re-showing it clears that.
