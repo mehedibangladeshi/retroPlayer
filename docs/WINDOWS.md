@@ -23,11 +23,16 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 6. Created with `show: false`, then shown on `ready-to-show`.
 7. Content size equals window size (`useContentSize: true`). The view scales its fixed design composition to the
    window, so its artwork coordinates stay in design px.
+8. User-resizable, in proportion and within fixed limits: every window's height stays within 308..924 px (50%..150% of
+   the player's design height), and its width follows its design aspect (`sizeLimits` in `windowSize.ts`, passed as
+   the window's min and max size, plus `setAspectRatio`). An X11 window manager (KWin) does not enforce the aspect on
+   an edge resize, so when a user resize ends the window is brought back in proportion (`proportional`): the dimension
+   the user changed most leads, and the edge the user moved stays put.
 
 ## Side windows
 
-1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, `minWidth`, `minHeight`
-   and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
+1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, size limits
+   (`...sizeLimits(aspect)`) and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
 2. Opens at launch with the player (after the player is shown, so it can dock), unless the user hid it.
 3. No taskbar or Dock entry of its own: the app has one icon, and activating it (a taskbar or Dock click) brings every
    visible window forward. Side windows are `skipTaskbar: true`, and on Windows and Linux they are always children of the
@@ -35,8 +40,10 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
    taskbars fold a transient window into its main window (KWin ignores `skipTaskbar` for XWayland windows). macOS has
    one Dock icon per app anyway, and there only docked windows are children (a child window moves with its parent).
    Closing it only hides it, and quitting closes it for real. Its bounds are saved under its settings key.
-4. Always the player's height (`matchHeight`), with its width from its design aspect ratio. Not user-resizable
-   (`resizable: false`): main sets the size. Its `minHeight` must not be more than the player's `MIN_HEIGHT` (308).
+4. User-resizable on its own (`resizable: true`), keeping its design aspect ratio (`setAspectRatio`). It opens at the
+   player's height the first time (`matchHeight`), then at its saved size. Resizing the player never resizes it. A
+   docked window keeps its dock while it is resized: it is placed flush against its anchor again (a drag on its docked
+   edge grows it the other way), and windows docked to it follow. A shaded window is not resizable.
 5. Exactly one drag region: a childless strip in its top bar, to the left of minimize and close. Nothing else in the
    view sets `-webkit-app-region`. `app/test/dragRegions.test.ts` enforces this, so add the new view to that test.
 6. Minimize does not minimize. It rolls the window up into its top bar (the window shade) and back. It needs a `SHADE`
@@ -59,23 +66,29 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 6. Docks are not saved. They are rebuilt from the window positions (`inferDocks`) after every drop and at startup, so
    a layout survives a restart. A new window needs an entry in `DEFAULT_DOCKS` to set where it docks by default.
 7. A shaded window stays docked, and windows docked below it move up.
-8. When a side window is shown, the player's group is nudged onto the screen, unless that would push the player onto a loose window.
+8. When a side window is shown, and after a user resize, the player's group is nudged onto the screen, unless
+   that would push the player onto a loose window. A window manager ignores the nudge while the user still holds the
+   window, so it is retried every 250 ms until the group fits (`fitSoon`).
 9. Pure geometry lives in `app/src/main/dock.ts` and is unit-tested in `app/test/dock.test.ts`. Window code calls it.
    Do not put geometry in `index.ts`.
 
 ## OS rules (keep these when you change window code)
 
 - **Own moves vs user drags:** the app records every position it sets or leaves, and ignores move and resize events
-  at those positions for 1 s (`programmatic` / `isOwn`). Every programmatic move must go through these helpers
+  at those positions for 1 s (`programmatic` / `isOwn`). A resize is ours only if the size matches too (`isOwn(w, true)`),
+  because a user resize from the far corner keeps the position. Every programmatic move must go through these helpers
   (`setRect`, `resizeFixed`, `sync`), or the app will read its own move as a user drag.
+- **Consequences are not drags:** a window's move or resize within 300 ms of a user change to another window is a
+  consequence of it (a window manager keeps a side window on screen and moves it elsewhere than the app asked), never a
+  drag of that window (`busyElsewhere`). Otherwise growing the player at a screen edge tears a side window off its dock.
 - **Tear-off is confirmed 50 ms later**, because openbox briefly reports (0,0) while it reparents a window.
 - **Windows:** use `setPosition` for a pure move, because `setBounds` can drift the size at fractional scaling.
 - **macOS:** no move events arrive during a drag, so docked windows become the player's child windows
   (`setParentWindow`). A side window that macOS minimizes is restored with retries.
 - **Linux:** native Wayland gives apps no window positions, so the app runs on XWayland (`--ozone-platform=x11`: a one-time
   relaunch in `app/src/main/platform.ts`, passed directly by `pnpm dev`). On KWin under X11, re-show a side window
-  with hide and `showInactive` instead of `restore()`. Set a fixed window's size inside `resizeFixed`, which lifts
-  the resize lock and sets the minimum size.
+  with hide and `showInactive` instead of `restore()`. Set a side window's size inside `resizeFixed`, which lifts
+  the resize lock of a shaded window and sets the minimum size.
 
 ## Checklist for a new window
 
@@ -84,6 +97,7 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 - [ ] It is in `satellites`, `DEFAULT_DOCKS`, `SHADE`, `Settings`, and the `fromAppWindow` / `Sidecar` window lists.
 - [ ] Its view is covered by `app/test/dragRegions.test.ts`.
 - [ ] `scripts/e2e/dock.mjs` covers it: it docks on each side, follows a player drag, tears off and snaps back, has no
-      taskbar entry of its own, and comes forward when the player is activated.
+      taskbar entry of its own, comes forward when the player is activated, keeps its dock when it or the player is
+      resized, and has the shared size limits and ends a resize in proportion.
       Run the script locally and on CI (`.github/workflows/dock-e2e.yml`) on Linux, Windows and macOS.
 - [ ] `docs/ARCHITECTURE.md` and this file are updated if anything changed.
