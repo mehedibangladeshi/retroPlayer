@@ -59,7 +59,7 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 6. Docks are not saved. They are rebuilt from the window positions (`inferDocks`) after every drop and at startup, so
    a layout survives a restart. A new window needs an entry in `DEFAULT_DOCKS` to set where it docks by default.
 7. A shaded window stays docked, and windows docked below it move up.
-8. When a side window is shown, and after a user drop or resize, the player's group is nudged onto the screen, unless
+8. When a side window is shown, and after a user resize, the player's group is nudged onto the screen, unless
    that would push the player onto a loose window. A window manager ignores the nudge while the user still holds the
    window, so it is retried every 250 ms until the group fits (`fitSoon`).
 9. Pure geometry lives in `app/src/main/dock.ts` and is unit-tested in `app/test/dock.test.ts`. Window code calls it.

@@ -219,9 +219,12 @@ function settle(id: string): void {
   for (const s of satellites) if (!placed[s.hash]) next[s.hash] = docks[s.hash]
   docks = next
   parentDocked()
-  // A resize or drop at the screen edge must not leave docked windows off screen (or clamped over the player).
-  if (fitPlayerGroup(placed)) fitSoon()
+  // A resize at the screen edge must not leave docked windows off screen (or clamped over the player). A drop is left
+  // where the user put it: off screen is allowed where the OS allows it.
+  if (resizedSinceSettle && fitPlayerGroup(placed)) fitSoon()
+  resizedSinceSettle = false
 }
+let resizedSinceSettle = false
 // A window manager ignores our move while the user still holds the window (a resize paused mid-way): try again
 // until the group fits, or the user changes something.
 let fitTimer: NodeJS.Timeout | undefined
@@ -354,8 +357,13 @@ function createWindow(): void {
   w.on('resize', followPlayer)
   w.on('move', followPlayer)
   // A drop or the end of a resize snaps the player and fits its group onto the screen.
+  let size = { width: w.getBounds().width, height: w.getBounds().height }
   const settlePlayer = (): void => {
-    if (!w.isMinimized() && !isOwn(w)) settleSoon('player')
+    if (w.isMinimized() || isOwn(w)) return
+    const b = w.getBounds()
+    if (b.width !== size.width || b.height !== size.height) resizedSinceSettle = true
+    size = b
+    settleSoon('player')
   }
   w.on('move', settlePlayer)
   w.on('resize', settlePlayer)

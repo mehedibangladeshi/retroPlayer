@@ -297,6 +297,7 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   r = await R(app.ev)
   check('resize at the edge: the group shifts onto the screen', r.playlist.x + r.playlist.width <= work.x + work.width && r.player.x < start.x, fmt(r) + ' work ' + fmt(work))
   check('resize at the edge: still docked and flush', flush.right(r.player, r.playlist) && flush.top(r.player, r.album) && r.playlist.height === r.player.height, fmt(r))
+  await dragTo('player', work.x + 60, r.player.y) // back from the edge for the checks below
 }
 
 // Shade the playlist and back (the bar stays docked).
