@@ -396,6 +396,11 @@ function createSatellite(s: Satellite): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
+    // One taskbar icon for the app, and activating it brings every window forward: on Windows an owned window has no
+    // taskbar button and rises with its owner; on Linux the taskbar folds a transient window into its main window
+    // (KWin ignores skipTaskbar for XWayland windows). macOS has one Dock icon anyway, and a child window would move
+    // with the player even when detached, so there only docked windows are children (parentDocked).
+    ...(process.platform !== 'darwin' && live(win) && { parent: win }),
     title: s.title,
     transparent: true,
     backgroundColor: '#00000000',
@@ -572,6 +577,12 @@ if (relaunch) {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.close()
   })
 
+  // macOS: a Dock icon click with no window in front brings the player (and so every window) back.
+  app.on('activate', () => {
+    if (!live(win)) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  })
   app.on('before-quit', () => {
     quitting = true
     sidecar.stop()

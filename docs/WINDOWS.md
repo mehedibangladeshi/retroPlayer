@@ -29,7 +29,12 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, `minWidth`, `minHeight`
    and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
 2. Opens at launch with the player (after the player is shown, so it can dock), unless the user hid it.
-3. `skipTaskbar: true`. Closing it only hides it, and quitting closes it for real. Its bounds are saved under its settings key.
+3. No taskbar or Dock entry of its own: the app has one icon, and activating it (a taskbar or Dock click) brings every
+   visible window forward. Side windows are `skipTaskbar: true`, and on Windows and Linux they are always children of the
+   player (`parent: win`): Windows gives an owned window no taskbar button and raises it with its owner, and Linux
+   taskbars fold a transient window into its main window (KWin ignores `skipTaskbar` for XWayland windows). macOS has
+   one Dock icon per app anyway, and there only docked windows are children (a child window moves with its parent).
+   Closing it only hides it, and quitting closes it for real. Its bounds are saved under its settings key.
 4. Always the player's height (`matchHeight`), with its width from its design aspect ratio. Not user-resizable
    (`resizable: false`): main sets the size. Its `minHeight` must not be more than the player's `MIN_HEIGHT` (308).
 5. Exactly one drag region: a childless strip in its top bar, to the left of minimize and close. Nothing else in the
@@ -77,6 +82,7 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
 - [ ] Every window rule and every side-window rule above holds.
 - [ ] It is in `satellites`, `DEFAULT_DOCKS`, `SHADE`, `Settings`, and the `fromAppWindow` / `Sidecar` window lists.
 - [ ] Its view is covered by `app/test/dragRegions.test.ts`.
-- [ ] `scripts/e2e/dock.mjs` covers it: it docks on each side, follows a player drag, tears off and snaps back.
+- [ ] `scripts/e2e/dock.mjs` covers it: it docks on each side, follows a player drag, tears off and snaps back, has no
+      taskbar entry of its own, and comes forward when the player is activated.
       Run the script locally and on CI (`.github/workflows/dock-e2e.yml`) on Linux, Windows and macOS.
 - [ ] `docs/ARCHITECTURE.md` and this file are updated if anything changed.

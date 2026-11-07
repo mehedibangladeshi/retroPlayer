@@ -6,6 +6,7 @@
 import { spawn, execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { stackTopFirst, taskbarEntries } from './zorder.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 // A real OS pointer drag (x0, y0 in DIP; converted to what each OS's input API expects). Resolves when the button is up.
@@ -99,6 +100,28 @@ console.log('work area', fmt(work), 'start', fmt(r))
 check('startup: playlist docked right of player', flush.right(r.player, r.playlist), fmt(r))
 check('startup: album docked left of player', flush.left(r.player, r.album), fmt(r))
 check('startup: side windows take the player height', r.playlist.height === r.player.height && r.album.height === r.player.height, fmt(r))
+
+// One taskbar/dock icon for the app, and activating it (it activates the player) brings every window forward.
+{
+  const ids = await app.ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, Number(byId(k).getMediaSourceId().split(':')[1])]))`)
+  if (process.platform === 'linux') check('taskbar: one entry for all windows', taskbarEntries(Object.values(ids)) === 1)
+  // Another window (not one of ours: no app behaviour) covers all three and takes focus.
+  const coverId = await app.ev(`const bs = all.map((w) => w.getBounds());
+    const x = Math.min(...bs.map((b) => b.x)), y = Math.min(...bs.map((b) => b.y));
+    const c = new BrowserWindow({ x, y, width: Math.max(...bs.map((b) => b.x + b.width)) - x, height: Math.max(...bs.map((b) => b.y + b.height)) - y, show: false });
+    globalThis.__cover = c; c.show(); c.focus(); await new Promise((r) => setTimeout(r, 800));
+    return Number(c.getMediaSourceId().split(':')[1])`)
+  const order = () => stackTopFirst([coverId, ...Object.values(ids)])
+  const o1 = order()
+  check('raise: cover window starts on top', o1[0] === coverId, fmt(o1))
+  // What a taskbar/dock click does: X11 taskbars ask the window manager to activate the window; elsewhere focus it.
+  if (process.platform === 'linux') execFileSync('python3', [join(here, 'activate-linux.py'), String(ids.player)])
+  else await app.ev(`byId('player').focus()`)
+  await sleep(800)
+  const o2 = order()
+  check('raise: activating the player brings every window above the cover', o2.indexOf(coverId) === 3, fmt(o2) + ' cover ' + coverId)
+  await app.ev(`globalThis.__cover.destroy(); await new Promise((r) => setTimeout(r, 300))`)
+}
 const top = work.y + 2 // a player here has room for one window below it
 const bottomY = work.y + work.height - H - 2 // a player here has room for one window above it
 // A user drag of window k to an absolute spot.
