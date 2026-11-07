@@ -402,3 +402,9 @@ Why: The 55% window was too big on the owner's screen. 25% is a value to test, n
 Decision: `settings.json` stores a `layoutVersion`. The current value is `LAYOUT_VERSION = 3` in `app/src/main/windowSize.ts`. When settings load with a missing or older version, the saved player, playlist and album-art window bounds are dropped once. `lastOpenDir` is kept. Every save writes the current version. To reset window sizes again, bump `LAYOUT_VERSION`.
 
 Why: Without a version, old saved bounds would keep the old sizes forever. One version number resets them once and leaves the user's Open folder alone.
+
+## 2026-11-07 — Playlist font is "Another Typewriter"
+
+Decision: The playlist's album heading and song rows use "Another Typewriter", a public domain font, bundled as `assets/ui/playlist/fonts/AnotherTypewriter.ttf` with its licence in `AnotherTypewriter-EULA.txt`. It replaces "Sue Ellen Francisco" from the 2026-11-01 entry, which is superseded. The font file and its OFL licence are removed. The font applies only to the playlist window, through `PLAYLIST.FONT_FAMILY` in `app/src/shared/layout.ts`. Sizes are 32 px for the heading and 28 px for rows, with a 36 px row pitch, all in design px. The font stack is `'Another Typewriter', monospace`. The font has no '-', '…' or accented letters, so artist and title are joined with an en dash, and missing glyphs fall back to the system monospace font.
+
+Why: The user picked the font and the sizes from a rendered preview of four options. The OS text size was rejected: Electron cannot read it reliably (macOS has no such setting), the Rust core must stay free of UI concepts, and a per-OS text size would break the rule that the UI looks identical on every OS. Accepted by the user: the fallback glyphs may differ slightly per OS.

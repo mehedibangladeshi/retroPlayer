@@ -61,12 +61,12 @@ Canvas 1874x1885 px at 2x, so the design size is 937x943 CSS px. Constants are i
 | `playlist/playlist-paper.png` | Paper sheet laid over the cover, cover shows around its border (was "3rd paper like texture") | 0,0 937x943; paper bbox 70.5,91.5 781.5x790.5 |
 | `playlist/playlist-top.png` | Minimize and close buttons, status dots, resize grip (was "4th top layers") | 0,0 937x943; minimize 862,20 30x30; close 895.5,20 30x30 (the resize grip is baked in, no longer used) |
 | `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,81.5 810.5x811, drawn between base and paper |
-| `playlist/fonts/SueEllenFrancisco-Regular.ttf` | Handwriting font, OFL 1.1 (Kimberly Geswein) | text in `TITLE`, `HEADING`, `ROW`, `FOOTER` |
-| `playlist/fonts/OFL.txt` | Licence of the font | n/a |
+| `playlist/fonts/AnotherTypewriter.ttf` | Typewriter font, public domain (1001fonts "Another Typewriter") | album heading and song rows (`PLAYLIST.FONT_FAMILY`) |
+| `playlist/fonts/AnotherTypewriter-EULA.txt` | Licence of the font (free for personal and commercial use, modification and redistribution) | n/a |
 | `playlist/reference/cover-example.png` | Example cover from the artist, reference only, not shipped | n/a |
 | `playlist/reference/preview.png` | Composed reference of the window, reference only, not shipped | n/a |
 
-Font choice: Sue Ellen Francisco was picked over Covered By Your Grace, Reenie Beanie, Gochi Hand and Shadows Into Light Two by rendering "Track list" and "01. The Hunna - Fugazi" next to the preview. It is the only one that is as tall and condensed as the artist's lettering; it is a bit wider and rounder. Font sizes in `PLAYLIST` are estimates (cap height about 0.9 em) and need a visual check.
+Font choice: Another Typewriter replaces Sue Ellen Francisco (see `docs/DECISIONS.md`, 2026-11-07). It is used only for the album heading and the song rows. "Track list" and the footer are painted in the artwork. Sizes are 32 px for the heading and 28 px for rows, with a 36 px row pitch, chosen from a rendered preview of four options.
 
 ## Album cover deck
 

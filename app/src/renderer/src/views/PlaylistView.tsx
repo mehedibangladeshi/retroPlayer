@@ -3,7 +3,7 @@ import { PLAYLIST as P, type Rect } from '@shared/layout'
 import { playIndex, stepTrack } from '../engine/commands'
 import { openAlbum, openFile } from '../input/openFile'
 import { useEngine } from '../engine/useEngine'
-import fontUrl from '@assets/playlist/fonts/SueEllenFrancisco-Regular.ttf?url'
+import fontUrl from '@assets/playlist/fonts/AnotherTypewriter.ttf?url'
 import defaultCover from '@assets/playlist/default-cover.svg?url'
 import { SHADE } from '@shared/shade'
 import { rowKeyAction } from './rowKeys'
@@ -52,7 +52,7 @@ export default function PlaylistView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   const fit = useFitScale(shaded)
-  const heading = album ? [album.artist, album.title].filter(Boolean).join(' - ') + (album.year ? ` (${album.year})` : '') : ''
+  const heading = album ? [album.artist, album.title].filter(Boolean).join(' – ') + (album.year ? ` (${album.year})` : '') : ''
   const ul = P.HEADING.underline
   // Selection is tied to the album it was made in, so a new album starts unselected.
   const [sel, setSel] = useState<{ album: unknown; i: number }>({ album: null, i: -1 })
@@ -88,7 +88,7 @@ export default function PlaylistView() {
   return (
     <div className="pl-stage">
       <style>{`@font-face { font-family: '${P.FONT_FAMILY}'; src: url(${fontUrl}) format('truetype'); }`}</style>
-      <div className="pl" style={{ width: P.WINDOW.w, height: P.WINDOW.h, left: fit.left, top: fit.top, transform: `scale(${fit.scale})`, fontFamily: `'${P.FONT_FAMILY}', sans-serif` }}>
+      <div className="pl" style={{ width: P.WINDOW.w, height: P.WINDOW.h, left: fit.left, top: fit.top, transform: `scale(${fit.scale})`, fontFamily: `'${P.FONT_FAMILY}', monospace` }}>
         {/* The only drag region: no children, ends 4px short of the Minimize button. */}
         <div className="pl-titlebar" style={{ width: P.MINIMIZE.x - 4, height: SHADE.playlist.barH }} />
         <img className="pl-layer" src={layerUrl('base')} alt="" draggable={false} style={rectStyle(layerRect('base'))} />
@@ -136,7 +136,7 @@ export default function PlaylistView() {
                 }}
               >
                 <span className="pl-name">
-                  {String(i + 1).padStart(2, '0')}. {artist ? `${artist} - ` : ''}
+                  {String(i + 1).padStart(2, '0')}. {artist ? `${artist} – ` : ''}
                   {t.title}
                 </span>
                 <span className="pl-dur">{fmt(t.durationMs)}</span>

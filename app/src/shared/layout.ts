@@ -101,13 +101,13 @@ export const PLAYLIST = {
   // Preview text left x 232 and baseline 278; underline bar 2x 185..705, y 296..301.
   HEADING: { x: 100, y: 140, fontSize: 32, underline: { x: 92.5, y: 148, w: 260, h: 2.5 } },
   // First row "01." left x 253 baseline 397 in preview; baselines 397..787 over 6 rows give 65 px at 2x.
-  // Sizes 32/30 match the preview letter height: Sue Ellen Francisco draws short for its size; pitch 36 fits the larger rows.
-  ROW: { x: 110.5, y0: 200, pitch: 36, fontSize: 30 },
+  // Sizes 32/28 chosen by eye from a rendered preview; pitch 36 fits the rows.
+  ROW: { x: 110.5, y0: 200, pitch: 36, fontSize: 28 },
   // Preview "Side A and B Included" left x 127, baseline 1840; grey sampled from the glyphs.
   FOOTER: { x: 47.5, y: 921.5, fontSize: 10, color: '#5d5f66' },
   // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60.
   MINIMIZE: { x: 862, y: 20, w: 30, h: 30 },
   CLOSE: { x: 895.5, y: 20, w: 30, h: 30 },
-  // Closest OFL match to the designer's condensed lettering (see MANIFEST); file assets/ui/playlist/fonts/SueEllenFrancisco-Regular.ttf.
-  FONT_FAMILY: 'Sue Ellen Francisco',
+  // Another Typewriter (public domain), file assets/ui/playlist/fonts/AnotherTypewriter.ttf; it has no '-', '…' or accented glyphs, so the view joins with an en dash and falls back to monospace.
+  FONT_FAMILY: 'Another Typewriter',
 } as const
