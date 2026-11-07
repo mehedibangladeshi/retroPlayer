@@ -5,7 +5,7 @@ name: dock-e2e
 on:
   workflow_dispatch:
   push:
-    branches: [feat/dock-any-side, feat/one-taskbar-icon]
+    branches: [dev]
 
 permissions:
   contents: read
