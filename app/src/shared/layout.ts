@@ -108,6 +108,6 @@ export const PLAYLIST = {
   // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60.
   MINIMIZE: { x: 862, y: 14.5, w: 30, h: 30 },
   CLOSE: { x: 895.5, y: 14.5, w: 30, h: 30 },
-  // Another Typewriter (public domain), file assets/ui/playlist/fonts/AnotherTypewriter.ttf; it has no '-', '…' or accented glyphs, so the view joins with an en dash and falls back to monospace.
-  FONT_FAMILY: 'Another Typewriter',
+  // Montserrat variable font (SIL OFL), file assets/ui/playlist/fonts/Montserrat-VariableFont_wght.ttf; falls back to sans-serif.
+  FONT_FAMILY: 'Montserrat',
 } as const

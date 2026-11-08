@@ -61,12 +61,12 @@ Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (cropped to the 
 | `playlist/playlist-paper.png` | Paper sheet laid over the cover, cover shows around its border (was "3rd paper like texture") | 0,0 937x937; paper bbox 70.5,86 781.5x790.5 |
 | `playlist/playlist-top.png` | Minimize and close buttons, status dots, resize grip (was "4th top layers") | 0,0 937x937; minimize 862,14.5 30x30; close 895.5,14.5 30x30 (the resize grip is baked in, no longer used) |
 | `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,76 810.5x811, drawn between base and paper |
-| `playlist/fonts/AnotherTypewriter.ttf` | Typewriter font, public domain (1001fonts "Another Typewriter") | album heading and song rows (`PLAYLIST.FONT_FAMILY`) |
-| `playlist/fonts/AnotherTypewriter-EULA.txt` | Licence of the font (free for personal and commercial use, modification and redistribution) | n/a |
+| `playlist/fonts/Montserrat-VariableFont_wght.ttf` | Montserrat variable font (weights 100..900), SIL Open Font License, from Google Fonts | album heading and song rows (`PLAYLIST.FONT_FAMILY`) |
+| `playlist/fonts/Montserrat-OFL.txt` | Licence of the font (SIL Open Font License 1.1) | n/a |
 | `playlist/reference/cover-example.png` | Example cover from the artist, reference only, not shipped | n/a |
 | `playlist/reference/preview.png` | Composed reference of the window, reference only, not shipped | n/a |
 
-Font choice: Another Typewriter replaces Sue Ellen Francisco (see `docs/DECISIONS.md`, 2026-11-07). It is used only for the album heading and the song rows. "Track list" and the footer are painted in the artwork. Sizes are 32 px for the heading and 28 px for rows, with a 36 px row pitch, chosen from a rendered preview of four options.
+Font choice: Montserrat replaces Another Typewriter (see `docs/DECISIONS.md`, 2026-11-08). It is used only for the album heading and the song rows, with a sans-serif fallback. "Track list" and the footer are painted in the artwork. Sizes are 32 px for the heading and 28 px for rows, with a 36 px row pitch.
 
 ## Album cover deck
 

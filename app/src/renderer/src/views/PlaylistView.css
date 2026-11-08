@@ -18,6 +18,10 @@ body { background: transparent; overflow: hidden; }
 .pl .pl-empty button:hover { background: #3a3e49; }
 .pl .pl-empty button:focus-visible { outline: 2px solid rgba(0, 0, 0, 0.5); outline-offset: 2px; }
 .pl-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pl-name.marquee { text-overflow: clip; }
+.pl-name.marquee .pl-text { display: inline-block; animation: pl-marquee var(--marquee-ms) linear infinite alternate; }
+/* Holds at each end so the start and the end of the name can be read. */
+@keyframes pl-marquee { 0%, 15% { transform: translateX(0); } 85%, 100% { transform: translateX(calc(-1 * var(--marquee-shift))); } }
 .pl-dur { flex: none; font-variant-numeric: tabular-nums; }
 .pl .pl-row.selected { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
 .pl .pl-row.current { color: #733638; }
@@ -30,3 +34,4 @@ body { background: transparent; overflow: hidden; }
 /* Placeholder restore glyph (see ASSETS_TODO): a dark patch hides the baked minimize icon, an outlined square marks "restore". */
 .pl .pl-chrome.shaded, .pl .pl-chrome.shaded:hover { background: #2f3138; }
 .pl .pl-chrome.shaded::after { content: ''; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #ddd; border-top-width: 4px; }
+@media (prefers-reduced-motion: reduce) { .pl-name.marquee .pl-text { animation: none; } }

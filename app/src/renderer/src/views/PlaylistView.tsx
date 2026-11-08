@@ -3,10 +3,11 @@ import { PLAYLIST as P, type Rect } from '@shared/layout'
 import { playIndex, stepTrack } from '../engine/commands'
 import { openAlbum, openFile } from '../input/openFile'
 import { useEngine } from '../engine/useEngine'
-import fontUrl from '@assets/playlist/fonts/AnotherTypewriter.ttf?url'
+import fontUrl from '@assets/playlist/fonts/Montserrat-VariableFont_wght.ttf?url'
 import defaultCover from '@assets/playlist/default-cover.svg?url'
 import { SHADE } from '@shared/shade'
 import { rowClickAction, rowKeyAction } from './rowKeys'
+import { MARQUEE_DELAY_MS, marquee } from './marquee'
 import './PlaylistView.css'
 
 const urls = import.meta.glob<string>('@assets/playlist/*.png', { query: '?url', import: 'default', eager: true })
@@ -27,6 +28,10 @@ const fmt = (ms: number | null): string => {
 }
 
 const rectStyle = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h })
+
+// The song list scrolls below the album heading, so the heading stays on top. y0 is a baseline, about 3/4 down a line box.
+const LIST_TOP = P.ROW.y0 - P.ROW.pitch * 0.75
+const LIST: Rect = { ...P.TEXT_AREA, y: LIST_TOP, h: P.TEXT_AREA.y + P.TEXT_AREA.h - LIST_TOP }
 
 /** Scale that fits the fixed composition inside the viewport (letterboxed), tracked on resize. */
 const compute = (shaded: boolean): { scale: number; left: number; top: number } => {
@@ -64,6 +69,22 @@ export default function PlaylistView() {
   useEffect(() => {
     if (selected >= 0) (rowsRef.current?.querySelectorAll<HTMLElement>('.pl-row')[selected])?.focus()
   }, [selected])
+  // A selected name that is cut off scrolls to its end and back, starting 400 ms after selection.
+  useEffect(() => {
+    const name = rowsRef.current?.querySelectorAll<HTMLElement>('.pl-name')[selected]
+    if (!name) return
+    const t = setTimeout(() => {
+      const m = marquee(name.scrollWidth, name.clientWidth) // layout px, which are design px
+      if (!m) return
+      name.style.setProperty('--marquee-shift', `${m.shift}px`)
+      name.style.setProperty('--marquee-ms', `${m.durationMs}ms`)
+      name.classList.add('marquee')
+    }, MARQUEE_DELAY_MS)
+    return () => {
+      clearTimeout(t)
+      name.classList.remove('marquee')
+    }
+  }, [selected, album])
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
       if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -87,8 +108,8 @@ export default function PlaylistView() {
 
   return (
     <div className="pl-stage">
-      <style>{`@font-face { font-family: '${P.FONT_FAMILY}'; src: url(${fontUrl}) format('truetype'); }`}</style>
-      <div className="pl" style={{ width: P.WINDOW.w, height: P.WINDOW.h, left: fit.left, top: fit.top, transform: `scale(${fit.scale})`, fontFamily: `'${P.FONT_FAMILY}', monospace` }}>
+      <style>{`@font-face { font-family: '${P.FONT_FAMILY}'; src: url(${fontUrl}) format('truetype'); font-weight: 100 900; }`}</style>
+      <div className="pl" style={{ width: P.WINDOW.w, height: P.WINDOW.h, left: fit.left, top: fit.top, transform: `scale(${fit.scale})`, fontFamily: `'${P.FONT_FAMILY}', sans-serif` }}>
         {/* The only drag region: no children, ends 4px short of the Minimize button. */}
         <div className="pl-titlebar" style={{ width: P.MINIMIZE.x - 4, height: SHADE.playlist.barH }} />
         <img className="pl-layer" src={layerUrl('base')} alt="" draggable={false} style={rectStyle(layerRect('base'))} />
@@ -112,7 +133,7 @@ export default function PlaylistView() {
           {heading}
         </div>
 
-        <div className="pl-rows" ref={rowsRef} style={rectStyle(P.TEXT_AREA)}>
+        <div className="pl-rows" ref={rowsRef} style={rectStyle(LIST)}>
           {!album && (
             <div className="pl-empty">
               <p>No album loaded</p>
@@ -120,14 +141,14 @@ export default function PlaylistView() {
               <button type="button" onClick={() => void openAlbum()}>Open album…</button>
             </div>
           )}
-          {/* y0 is a baseline; the baseline sits about 3/4 down a line box. */}
-          {album && <div style={{ height: P.ROW.y0 - P.TEXT_AREA.y - P.ROW.pitch * 0.75 }} />}
           {album?.tracks.map((t, i) => {
             const artist = t.artist ?? album.artist
+            const name = `${String(i + 1).padStart(2, '0')}. ${artist ? `${artist} – ` : ''}${t.title}`
             return (
               <button
                 key={t.path}
                 type="button"
+                title={name}
                 className={`pl-row${t.path === trackInfo?.path ? ' current' : ''}${i === selected ? ' selected' : ''}`}
                 style={{ height: P.ROW.pitch, lineHeight: `${P.ROW.pitch}px`, fontSize: P.ROW.fontSize, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
                 onClick={(e) => {
@@ -137,8 +158,7 @@ export default function PlaylistView() {
                 }}
               >
                 <span className="pl-name">
-                  {String(i + 1).padStart(2, '0')}. {artist ? `${artist} – ` : ''}
-                  {t.title}
+                  <span className="pl-text">{name}</span>
                 </span>
                 <span className="pl-dur">{fmt(t.durationMs)}</span>
               </button>
