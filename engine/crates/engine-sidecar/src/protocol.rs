@@ -32,10 +32,22 @@ pub enum Command {
     },
     StopSound { name: String },
     #[serde(rename_all = "camelCase")]
-    LoadAlbum { path: String },
+    LoadAlbum {
+        path: String,
+        /// First track to load (session restore); out of range falls back to 0.
+        #[serde(default)]
+        index: usize,
+        /// `false` loads without playing (session restore).
+        #[serde(default = "yes")]
+        play: bool,
+    },
     /// `usize` makes serde reject negatives and non-integers.
     #[serde(rename_all = "camelCase")]
     PlayIndex { index: usize },
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Commands accept any JSON number for millisecond fields and round to the
@@ -324,7 +336,11 @@ mod tests {
     fn album_messages_round_trip() {
         assert_eq!(
             parse_command(r#"{"v":1,"type":"loadAlbum","path":"/a"}"#).unwrap(),
-            Command::LoadAlbum { path: "/a".into() }
+            Command::LoadAlbum { path: "/a".into(), index: 0, play: true }
+        );
+        assert_eq!(
+            parse_command(r#"{"v":1,"type":"loadAlbum","path":"/a","index":3,"play":false}"#).unwrap(),
+            Command::LoadAlbum { path: "/a".into(), index: 3, play: false }
         );
         assert_eq!(parse_command(r#"{"v":1,"type":"playIndex","index":2}"#).unwrap(), Command::PlayIndex { index: 2 });
         assert_eq!(Event::Playlist { album: None }.to_line(), r#"{"v":1,"type":"playlist","album":null}"#);

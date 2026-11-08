@@ -112,14 +112,14 @@ Fields: `name` (string).
 
 Loads a folder as an album. The engine scans the folder (sub-folders are not read) for files with the extensions `flac`, `wav`, `mp3`, `m4a`, `aac`, `ogg` and `oga` (any case). It orders the tracks by disc number, then track number, then file name, and reads their tags and cover art.
 
-On success it emits `playlist` with the album, then loads track 0 and starts playing, so the usual `state` events follow. The UI does not send `play`.
+On success it emits `playlist` with the album, then loads track `index` and starts playing, so the usual `state` events follow. The UI does not send `play`. With `play` `false` the track is loaded and left in `Stopped`; the Electron main process uses this to restore the last session, then sends `seek` to the saved position.
 
 On failure it emits `error`: `file_not_found` if the folder is missing or cannot be read, `unsupported_format` if it has no playable tracks. Any current album stays unchanged.
 
-Fields: `path` (string, absolute path to the folder).
+Fields: `path` (string, absolute path to the folder), `index` (optional integer, zero-based track to load first, default 0; out of range loads track 0), `play` (optional boolean, default `true`).
 
 ```json
-{"v":1,"type":"loadAlbum","path":"/music/The Hunna - The Hunna (2022)"}
+{"v":1,"type":"loadAlbum","path":"/music/The Hunna - The Hunna (2022)","index":2,"play":false}
 ```
 
 ### playIndex
