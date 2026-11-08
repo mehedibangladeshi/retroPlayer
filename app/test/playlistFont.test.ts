@@ -12,10 +12,8 @@ test('playlist font family is Montserrat', () => {
   assert.equal(PLAYLIST.FONT_FAMILY, 'Montserrat')
 })
 
-test('playlist heading and row sizes match the rendered preview', () => {
-  assert.equal(PLAYLIST.HEADING.fontSize, 32)
-  assert.equal(PLAYLIST.ROW.fontSize, 28)
-  assert.equal(PLAYLIST.ROW.pitch, 36)
+test('playlist text has fixed screen sizes, picked from a preview: heading 16 px, songs 13 px', () => {
+  assert.deepEqual(PLAYLIST.TEXT_PX, { heading: 16, row: 13, lineHeight: 1.3 })
 })
 
 test('playlist joins artist and title with an en dash, not a hyphen', () => {

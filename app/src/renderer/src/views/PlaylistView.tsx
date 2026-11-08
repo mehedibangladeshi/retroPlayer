@@ -8,6 +8,7 @@ import defaultCover from '@assets/playlist/default-cover.svg?url'
 import { SHADE } from '@shared/shade'
 import { rowClickAction, rowKeyAction } from './rowKeys'
 import { MARQUEE_DELAY_MS, marquee } from './marquee'
+import { textMetrics } from './playlistText'
 import './PlaylistView.css'
 
 const urls = import.meta.glob<string>('@assets/playlist/*.png', { query: '?url', import: 'default', eager: true })
@@ -29,9 +30,8 @@ const fmt = (ms: number | null): string => {
 
 const rectStyle = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h })
 
-// The song list scrolls below the album heading, so the heading stays on top. y0 is a baseline, about 3/4 down a line box.
-const LIST_TOP = P.ROW.y0 - P.ROW.pitch * 0.75
-const LIST: Rect = { ...P.TEXT_AREA, y: LIST_TOP, h: P.TEXT_AREA.y + P.TEXT_AREA.h - LIST_TOP }
+// The song list scrolls below the album heading, so the heading stays on top.
+const LIST: Rect = { ...P.TEXT_AREA, y: P.LIST_TOP, h: P.TEXT_AREA.y + P.TEXT_AREA.h - P.LIST_TOP }
 
 /** Scale that fits the fixed composition inside the viewport (letterboxed), tracked on resize. */
 const compute = (shaded: boolean): { scale: number; left: number; top: number } => {
@@ -57,6 +57,8 @@ export default function PlaylistView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   const fit = useFitScale(shaded)
+  // Text keeps its screen size while the window (and so the artwork) is resized.
+  const text = textMetrics(fit.scale)
   const heading = album ? [album.artist, album.title].filter(Boolean).join(' – ') + (album.year ? ` (${album.year})` : '') : ''
   const ul = P.HEADING.underline
   // Selection is tied to the album it was made in, so a new album starts unselected.
@@ -74,9 +76,10 @@ export default function PlaylistView() {
     const name = rowsRef.current?.querySelectorAll<HTMLElement>('.pl-name')[selected]
     if (!name) return
     const t = setTimeout(() => {
-      const m = marquee(name.scrollWidth, name.clientWidth) // layout px, which are design px
+      // Measured in design px; timed in screen px so the speed is the same at every window size.
+      const m = marquee(name.scrollWidth * fit.scale, name.clientWidth * fit.scale)
       if (!m) return
-      name.style.setProperty('--marquee-shift', `${m.shift}px`)
+      name.style.setProperty('--marquee-shift', `${m.shift / fit.scale}px`)
       name.style.setProperty('--marquee-ms', `${m.durationMs}ms`)
       name.classList.add('marquee')
     }, MARQUEE_DELAY_MS)
@@ -84,7 +87,7 @@ export default function PlaylistView() {
       clearTimeout(t)
       name.classList.remove('marquee')
     }
-  }, [selected, album])
+  }, [selected, album, fit.scale])
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
       if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -122,12 +125,12 @@ export default function PlaylistView() {
           className="pl-heading"
           style={{
             left: ul.x,
-            top: P.HEADING.y - P.HEADING.fontSize,
+            top: P.HEADING.y - text.heading,
             maxWidth: P.TEXT_AREA.x + P.TEXT_AREA.w - ul.x - 20,
             padding: `0 12px ${ul.y - P.HEADING.y}px ${P.HEADING.x - ul.x}px`,
             borderBottom: `${ul.h}px solid #111`,
-            fontSize: P.HEADING.fontSize,
-            lineHeight: `${P.HEADING.fontSize}px`
+            fontSize: text.heading,
+            lineHeight: `${text.heading}px`
           }}
         >
           {heading}
@@ -150,7 +153,7 @@ export default function PlaylistView() {
                 type="button"
                 title={name}
                 className={`pl-row${t.path === trackInfo?.path ? ' current' : ''}${i === selected ? ' selected' : ''}`}
-                style={{ height: P.ROW.pitch, lineHeight: `${P.ROW.pitch}px`, fontSize: P.ROW.fontSize, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
+                style={{ height: text.pitch, lineHeight: `${text.pitch}px`, fontSize: text.row, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
                 onClick={(e) => {
                   setSel({ album, i })
                   // detail is 0 for a keyboard-fired click; Enter is handled by the keydown listener.

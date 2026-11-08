@@ -450,3 +450,9 @@ Why: The owner asked for fixed, proportional minimum and maximum sizes for all w
 Decision: The playlist's album heading and song rows use Montserrat, bundled as the variable font `assets/ui/playlist/fonts/Montserrat-VariableFont_wght.ttf` with its SIL Open Font License in `Montserrat-OFL.txt`. It replaces "Another Typewriter" from the 2026-11-07 entry, whose files are removed. The font stack is `'Montserrat', sans-serif`, and the sizes stay 32 px for the heading and 28 px for rows. Each row shows its full name as a tooltip (`title`). A selected row whose name is cut off scrolls to the end of the name and back (a marquee), starting 400 ms after selection (`marquee.ts`). The song list scrolls in a box that starts below the album heading, so the heading stays on top.
 
 Why: The owner picked the font and asked for the tooltip, the delayed marquee and the fixed heading. Montserrat has the glyphs the typewriter font lacked. The marquee is skipped when the OS asks for reduced motion.
+
+## 2026-11-08 — Playlist text keeps a fixed screen size
+
+Decision: The playlist's album heading is 16 px and its song rows are 13 px on screen (`PLAYLIST.TEXT_PX` in `app/src/shared/layout.ts`), at every window size. Rows are 17 px tall (13 px × 1.3, rounded). Only the artwork scales when the window is resized, so a bigger window shows more songs instead of bigger text. The view divides these sizes by its scale (`textMetrics` in `playlistText.ts`), and the marquee speed is timed in screen px. This replaces the design-px sizes (32 px heading, 28 px rows, 36 px pitch) from the 2026-11-07 and earlier 2026-11-08 entries. A future settings page can change `TEXT_PX`; `textMetrics` already takes the sizes as a parameter.
+
+Why: The owner wanted the text to stay the same size while the playlist is resized, and picked 13/16 px from an HTML preview of sizes 12/15, 14/17, 16/20 and 18/22 at the smallest, default and largest window.

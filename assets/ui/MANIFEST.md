@@ -66,7 +66,7 @@ Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (cropped to the 
 | `playlist/reference/cover-example.png` | Example cover from the artist, reference only, not shipped | n/a |
 | `playlist/reference/preview.png` | Composed reference of the window, reference only, not shipped | n/a |
 
-Font choice: Montserrat replaces Another Typewriter (see `docs/DECISIONS.md`, 2026-11-08). It is used only for the album heading and the song rows, with a sans-serif fallback. "Track list" and the footer are painted in the artwork. Sizes are 32 px for the heading and 28 px for rows, with a 36 px row pitch.
+Font choice: Montserrat replaces Another Typewriter (see `docs/DECISIONS.md`, 2026-11-08). It is used only for the album heading and the song rows, with a sans-serif fallback. "Track list" and the footer are painted in the artwork. Text sizes are fixed screen px (`PLAYLIST.TEXT_PX`): 16 px for the heading and 13 px for rows, the same at every window size.
 
 ## Album cover deck
 

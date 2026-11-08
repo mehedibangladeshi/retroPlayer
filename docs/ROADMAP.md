@@ -38,7 +38,7 @@ The playlist, the second window and cover-art extraction were added later at the
 ## Added after Phase 1: album import and playlist window (done)
 
 - [x] Import a whole album folder (Open popover, folder drop, Ctrl/Cmd+Shift+O). Tracks play in order, and playback advances to the next track when one ends.
-- [x] Playlist window: a second, frameless window styled from the playlist artwork. It shows the album's title, artist, cover and tracks. Clicking a track selects it; double-clicking or Enter plays it. Ctrl/Cmd+L shows it again.
+- [x] Playlist window: a second, frameless window styled from the playlist artwork. It shows the album's title, artist, cover and tracks. Clicking a track selects it; double-clicking or Enter plays it. Ctrl/Cmd+L shows it again. Text is Montserrat at a fixed screen size; a cut-off name shows in full on hover and scrolls when selected, and the album heading stays on top while the songs scroll.
 - [x] Tags and cover art are read by the engine. The cover is the embedded or folder image, or a default cover.
 
 Limits: one album at a time, read-only (no editing), and folders are not scanned recursively. The Open file action replaces the album.

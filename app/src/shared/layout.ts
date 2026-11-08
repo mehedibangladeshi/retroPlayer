@@ -99,10 +99,11 @@ export const PLAYLIST = {
   // Preview crop aligned to base (preview = art + (32,8) px at 2x on the cropped canvas); baseline y, colour sampled (#733638).
   TITLE: { x: 28, y: 44.5, fontSize: 36, color: '#733638' },
   // Preview text left x 232 and baseline 278; underline bar 2x 185..705, y 296..301.
-  HEADING: { x: 100, y: 134.5, fontSize: 32, underline: { x: 92.5, y: 142.5, w: 260, h: 2.5 } },
+  HEADING: { x: 100, y: 134.5, underline: { x: 92.5, y: 142.5, w: 260, h: 2.5 } },
   // First row "01." left x 253 baseline 397 in preview; baselines 397..787 over 6 rows give 65 px at 2x.
-  // Sizes 32/28 chosen by eye from a rendered preview; pitch 36 fits the rows.
-  ROW: { x: 110.5, y0: 194.5, pitch: 36, fontSize: 28 },
+  ROW: { x: 110.5, y0: 194.5 },
+  // Top of the scrolling song list, below the album heading (the first baseline less 3/4 of the old 36 px row pitch).
+  LIST_TOP: 167.5,
   // Preview "Side A and B Included" left x 127, baseline 1840; grey sampled from the glyphs.
   FOOTER: { x: 47.5, y: 916, fontSize: 10, color: '#5d5f66' },
   // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60.
@@ -110,4 +111,6 @@ export const PLAYLIST = {
   CLOSE: { x: 895.5, y: 14.5, w: 30, h: 30 },
   // Montserrat variable font (SIL OFL), file assets/ui/playlist/fonts/Montserrat-VariableFont_wght.ttf; falls back to sans-serif.
   FONT_FAMILY: 'Montserrat',
+  // Screen px, the same at every window size (not design px). Picked by the owner from a preview; a future setting.
+  TEXT_PX: { heading: 16, row: 13, lineHeight: 1.3 },
 } as const
