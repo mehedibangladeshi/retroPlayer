@@ -456,3 +456,9 @@ Why: The owner picked the font and asked for the tooltip, the delayed marquee an
 Decision: The playlist's album heading is 16 px and its song rows are 13 px on screen (`PLAYLIST.TEXT_PX` in `app/src/shared/layout.ts`), at every window size. Rows are 17 px tall (13 px × 1.3, rounded). Only the artwork scales when the window is resized, so a bigger window shows more songs instead of bigger text. The view divides these sizes by its scale (`textMetrics` in `playlistText.ts`), and the marquee speed is timed in screen px. This replaces the design-px sizes (32 px heading, 28 px rows, 36 px pitch) from the 2026-11-07 and earlier 2026-11-08 entries. A future settings page can change `TEXT_PX`; `textMetrics` already takes the sizes as a parameter.
 
 Why: The owner wanted the text to stay the same size while the playlist is resized, and picked 13/16 px from an HTML preview of sizes 12/15, 14/17, 16/20 and 18/22 at the smallest, default and largest window.
+
+## 2026-11-08 — Pressed keys use the disabled key's dark shade
+
+Decision: Every pressed player key is drawn in the same dark shade as an unavailable key (`--key-dark: brightness(0.8)` in `CassettePlayer.css`): a key held down with the mouse, Rewind or Forward while seeking, Play latched while playing and Pause latched while paused. It stays dark under the mouse pointer. A pressed key still moves down 3 px. Pause and Stop keep the shade while nothing is playing, as before. Rewind, Play and Forward are not darkened while nothing is loaded, so on first boot only Pause and Stop look dark. This extends the 2026-11-01 entry, where pressed and latched keys only moved down and kept their full brightness.
+
+Why: The owner asked for pressed keys to be darker, using the shade Pause and Stop show at startup, so one look says which key is down.
