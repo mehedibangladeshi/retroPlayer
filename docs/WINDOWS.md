@@ -22,7 +22,8 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
    Engine commands are accepted only from windows that need them (today the player and the playlist).
 6. Created with `show: false`, then shown on `ready-to-show`.
 7. Content size equals window size (`useContentSize: true`). The view scales its fixed design composition to the
-   window, so its artwork coordinates stay in design px.
+   window, so its artwork coordinates stay in design px. Text may keep a fixed screen size instead: the playlist divides
+   `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`).
 8. User-resizable, in proportion and within fixed limits: every window's height stays within 308..924 px (50%..150% of
    the player's design height), and its width follows its design aspect (`sizeLimits` in `windowSize.ts`, passed as
    the window's min and max size, plus `setAspectRatio`). An X11 window manager (KWin) does not enforce the aspect on

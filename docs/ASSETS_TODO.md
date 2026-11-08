@@ -23,7 +23,7 @@ No application icon exists, so bundles use the default Electron icon. Needed: a 
 ## Playlist window
 
 14. **`assets/ui/playlist/default-cover.svg` is a placeholder drawn by us** (abstract gradient with soft blobs and grain), shown when an album has no cover. Provide: a default cover if one is wanted.
-15. **Playlist font lacks some glyphs.** `assets/ui/playlist/fonts/AnotherTypewriter.ttf` (public domain, chosen 2026-11-07) is used for the album heading and song rows. It lacks '-', '…' and accented letters, so the artist and title are joined with an en dash, and those characters fall back to the system monospace font, which may differ slightly per OS. Optional: a matching typewriter font with those glyphs, licensed for bundling, added as a second family in the playlist font stack.
+15. ~~**Playlist font lacks some glyphs.**~~ Resolved 2026-11-08: the playlist uses Montserrat (SIL OFL), which has the dash, ellipsis and accented letters.
 16. **Playlist chrome has no hover or pressed states**; minimize, close, the status dots and the resize grip are baked into `playlist-top.png`. Workaround: transparent hit areas at `PLAYLIST.MINIMIZE` and `CLOSE` with a CSS highlight.
 17. **Album-art window uses the artist's layers** (`assets/ui/album/`); the tabs (Cassette Box, J-Flap, Lyric) are display only for now. Minimize and close are transparent hit areas over the baked art with a CSS hover, no real states (see item 7).
 18. **Restore glyph is missing.** While a playlist or album-art window is shaded, its minimize button shows a "restore" glyph. Workaround: a CSS placeholder glyph on the button. Provide: a restore glyph in the same style as minimize, with its hover and pressed states (see item 16).

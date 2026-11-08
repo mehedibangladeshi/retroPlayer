@@ -3,10 +3,12 @@ import { PLAYLIST as P, type Rect } from '@shared/layout'
 import { playIndex, stepTrack } from '../engine/commands'
 import { openAlbum, openFile } from '../input/openFile'
 import { useEngine } from '../engine/useEngine'
-import fontUrl from '@assets/playlist/fonts/AnotherTypewriter.ttf?url'
+import fontUrl from '@assets/playlist/fonts/Montserrat-VariableFont_wght.ttf?url'
 import defaultCover from '@assets/playlist/default-cover.svg?url'
 import { SHADE } from '@shared/shade'
 import { rowClickAction, rowKeyAction } from './rowKeys'
+import { MARQUEE_DELAY_MS, marquee } from './marquee'
+import { textMetrics } from './playlistText'
 import './PlaylistView.css'
 
 const urls = import.meta.glob<string>('@assets/playlist/*.png', { query: '?url', import: 'default', eager: true })
@@ -27,6 +29,9 @@ const fmt = (ms: number | null): string => {
 }
 
 const rectStyle = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h })
+
+// The song list scrolls below the album heading, so the heading stays on top.
+const LIST: Rect = { ...P.TEXT_AREA, y: P.LIST_TOP, h: P.TEXT_AREA.y + P.TEXT_AREA.h - P.LIST_TOP }
 
 /** Scale that fits the fixed composition inside the viewport (letterboxed), tracked on resize. */
 const compute = (shaded: boolean): { scale: number; left: number; top: number } => {
@@ -52,6 +57,8 @@ export default function PlaylistView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   const fit = useFitScale(shaded)
+  // Text keeps its screen size while the window (and so the artwork) is resized.
+  const text = textMetrics(fit.scale)
   const heading = album ? [album.artist, album.title].filter(Boolean).join(' – ') + (album.year ? ` (${album.year})` : '') : ''
   const ul = P.HEADING.underline
   // Selection is tied to the album it was made in, so a new album starts unselected.
@@ -64,6 +71,23 @@ export default function PlaylistView() {
   useEffect(() => {
     if (selected >= 0) (rowsRef.current?.querySelectorAll<HTMLElement>('.pl-row')[selected])?.focus()
   }, [selected])
+  // A selected name that is cut off scrolls to its end and back, starting 400 ms after selection.
+  useEffect(() => {
+    const name = rowsRef.current?.querySelectorAll<HTMLElement>('.pl-name')[selected]
+    if (!name) return
+    const t = setTimeout(() => {
+      // Measured in design px; timed in screen px so the speed is the same at every window size.
+      const m = marquee(name.scrollWidth * fit.scale, name.clientWidth * fit.scale)
+      if (!m) return
+      name.style.setProperty('--marquee-shift', `${m.shift / fit.scale}px`)
+      name.style.setProperty('--marquee-ms', `${m.durationMs}ms`)
+      name.classList.add('marquee')
+    }, MARQUEE_DELAY_MS)
+    return () => {
+      clearTimeout(t)
+      name.classList.remove('marquee')
+    }
+  }, [selected, album, fit.scale])
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
       if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -87,8 +111,8 @@ export default function PlaylistView() {
 
   return (
     <div className="pl-stage">
-      <style>{`@font-face { font-family: '${P.FONT_FAMILY}'; src: url(${fontUrl}) format('truetype'); }`}</style>
-      <div className="pl" style={{ width: P.WINDOW.w, height: P.WINDOW.h, left: fit.left, top: fit.top, transform: `scale(${fit.scale})`, fontFamily: `'${P.FONT_FAMILY}', monospace` }}>
+      <style>{`@font-face { font-family: '${P.FONT_FAMILY}'; src: url(${fontUrl}) format('truetype'); font-weight: 100 900; }`}</style>
+      <div className="pl" style={{ width: P.WINDOW.w, height: P.WINDOW.h, left: fit.left, top: fit.top, transform: `scale(${fit.scale})`, fontFamily: `'${P.FONT_FAMILY}', sans-serif` }}>
         {/* The only drag region: no children, ends 4px short of the Minimize button. */}
         <div className="pl-titlebar" style={{ width: P.MINIMIZE.x - 4, height: SHADE.playlist.barH }} />
         <img className="pl-layer" src={layerUrl('base')} alt="" draggable={false} style={rectStyle(layerRect('base'))} />
@@ -101,18 +125,18 @@ export default function PlaylistView() {
           className="pl-heading"
           style={{
             left: ul.x,
-            top: P.HEADING.y - P.HEADING.fontSize,
+            top: P.HEADING.y - text.heading,
             maxWidth: P.TEXT_AREA.x + P.TEXT_AREA.w - ul.x - 20,
             padding: `0 12px ${ul.y - P.HEADING.y}px ${P.HEADING.x - ul.x}px`,
             borderBottom: `${ul.h}px solid #111`,
-            fontSize: P.HEADING.fontSize,
-            lineHeight: `${P.HEADING.fontSize}px`
+            fontSize: text.heading,
+            lineHeight: `${text.heading}px`
           }}
         >
           {heading}
         </div>
 
-        <div className="pl-rows" ref={rowsRef} style={rectStyle(P.TEXT_AREA)}>
+        <div className="pl-rows" ref={rowsRef} style={rectStyle(LIST)}>
           {!album && (
             <div className="pl-empty">
               <p>No album loaded</p>
@@ -120,16 +144,16 @@ export default function PlaylistView() {
               <button type="button" onClick={() => void openAlbum()}>Open album…</button>
             </div>
           )}
-          {/* y0 is a baseline; the baseline sits about 3/4 down a line box. */}
-          {album && <div style={{ height: P.ROW.y0 - P.TEXT_AREA.y - P.ROW.pitch * 0.75 }} />}
           {album?.tracks.map((t, i) => {
             const artist = t.artist ?? album.artist
+            const name = `${String(i + 1).padStart(2, '0')}. ${artist ? `${artist} – ` : ''}${t.title}`
             return (
               <button
                 key={t.path}
                 type="button"
+                title={name}
                 className={`pl-row${t.path === trackInfo?.path ? ' current' : ''}${i === selected ? ' selected' : ''}`}
-                style={{ height: P.ROW.pitch, lineHeight: `${P.ROW.pitch}px`, fontSize: P.ROW.fontSize, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
+                style={{ height: text.pitch, lineHeight: `${text.pitch}px`, fontSize: text.row, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
                 onClick={(e) => {
                   setSel({ album, i })
                   // detail is 0 for a keyboard-fired click; Enter is handled by the keydown listener.
@@ -137,8 +161,7 @@ export default function PlaylistView() {
                 }}
               >
                 <span className="pl-name">
-                  {String(i + 1).padStart(2, '0')}. {artist ? `${artist} – ` : ''}
-                  {t.title}
+                  <span className="pl-text">{name}</span>
                 </span>
                 <span className="pl-dur">{fmt(t.durationMs)}</span>
               </button>

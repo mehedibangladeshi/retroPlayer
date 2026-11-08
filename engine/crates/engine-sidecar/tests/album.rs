@@ -208,3 +208,57 @@ fn artwork_is_sent_on_change_only() {
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&bare);
 }
+
+/// Every event (position ticks included) arriving within `ms`.
+fn drain(s: &Sidecar, ms: u64) -> Vec<Value> {
+    let mut out = vec![];
+    while let Ok(l) = s.lines.recv_timeout(Duration::from_millis(ms)) {
+        out.push(serde_json::from_str(&l).unwrap());
+    }
+    out
+}
+
+/// Session restore: `index` picks the track and `play: false` leaves it stopped, holding a later seek.
+#[test]
+fn load_album_at_index_without_play_stays_stopped() {
+    let dir = album_dir("restore");
+    let second = dir.join("02 b.wav").to_string_lossy().into_owned();
+    let mut s = Sidecar::spawn();
+    s.send(json!({"v":1,"type":"loadAlbum","path":dir,"index":1,"play":false}));
+    assert_eq!(s.next()["type"], "playlist");
+    let v = loop {
+        let v = s.next();
+        if v["type"] == "state" || v["type"] == "error" {
+            break v;
+        }
+    };
+    if v["type"] == "error" {
+        assert_eq!(v["code"], "no_output_device", "{v}");
+        return;
+    }
+    assert_eq!((v["status"].as_str(), v["trackInfo"]["path"].as_str()), (Some("stopped"), Some(second.as_str())), "{v}");
+    s.send(json!({"v":1,"type":"seek","positionMs":100}));
+    let events = drain(&s, 500);
+    assert!(events.iter().all(|e| e["status"] != "playing" && e["type"] != "position"), "{events:?}");
+    let last = events.iter().rev().find(|e| e["type"] == "state").expect("a state after the seek");
+    assert!(last["positionMs"].as_u64().unwrap() > 0, "{last}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn load_album_index_out_of_range_starts_at_first_track() {
+    let dir = album_dir("range");
+    let first = dir.join("01 a.wav").to_string_lossy().into_owned();
+    let mut s = Sidecar::spawn();
+    s.send(json!({"v":1,"type":"loadAlbum","path":dir,"index":9,"play":false}));
+    assert_eq!(s.next()["type"], "playlist");
+    let v = s.next();
+    if v["type"] == "state" {
+        assert_eq!((v["status"].as_str(), v["trackInfo"]["path"].as_str()), (Some("stopped"), Some(first.as_str())), "{v}");
+        let events = drain(&s, 500);
+        assert!(events.iter().all(|e| e["status"] != "playing"), "{events:?}");
+    } else {
+        assert_eq!(v["code"], "no_output_device", "{v}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -444,3 +444,27 @@ Why: The owner asked for every window to be resizable individually.
 Decision: Every window's height stays within 308..924 px, which is 50%..150% of the player's design height (616), and its width follows its own design aspect: the player is 384x308 to 1151x924, and the playlist and album-art windows are 308x308 to 924x924. The limits come from `sizeLimits` in `app/src/main/windowSize.ts` and are each window's min and max size. When a user resize ends, the window is brought back to its aspect and limits (`proportional`): the dimension the user changed most leads, and an edge the user moved stays where it is. The fix is retried until the window manager applies it, as the group nudge is. This replaces the playlist's 320 px and the album-art window's 240 px minimum widths. Saved bounds are clamped to the same limits.
 
 Why: The owner asked for fixed, proportional minimum and maximum sizes for all windows. One height range for every window keeps the side windows at the same scale as the player at both ends (a side window at the player's height is the intended look). `setAspectRatio` alone was not enough: with real pointer resizes on KDE (XWayland), a right-edge drag of the player gave 528x394 instead of its 767:616 aspect.
+
+## 2026-11-08 — Playlist font is Montserrat; long names scroll; the heading stays on top
+
+Decision: The playlist's album heading and song rows use Montserrat, bundled as the variable font `assets/ui/playlist/fonts/Montserrat-VariableFont_wght.ttf` with its SIL Open Font License in `Montserrat-OFL.txt`. It replaces "Another Typewriter" from the 2026-11-07 entry, whose files are removed. The font stack is `'Montserrat', sans-serif`, and the sizes stay 32 px for the heading and 28 px for rows. Each row shows its full name as a tooltip (`title`). A selected row whose name is cut off scrolls to the end of the name and back (a marquee), starting 400 ms after selection (`marquee.ts`). The song list scrolls in a box that starts below the album heading, so the heading stays on top.
+
+Why: The owner picked the font and asked for the tooltip, the delayed marquee and the fixed heading. Montserrat has the glyphs the typewriter font lacked. The marquee is skipped when the OS asks for reduced motion.
+
+## 2026-11-08 — Playlist text keeps a fixed screen size
+
+Decision: The playlist's album heading is 16 px and its song rows are 13 px on screen (`PLAYLIST.TEXT_PX` in `app/src/shared/layout.ts`), at every window size. Rows are 17 px tall (13 px × 1.3, rounded). Only the artwork scales when the window is resized, so a bigger window shows more songs instead of bigger text. The view divides these sizes by its scale (`textMetrics` in `playlistText.ts`), and the marquee speed is timed in screen px. This replaces the design-px sizes (32 px heading, 28 px rows, 36 px pitch) from the 2026-11-07 and earlier 2026-11-08 entries. A future settings page can change `TEXT_PX`; `textMetrics` already takes the sizes as a parameter.
+
+Why: The owner wanted the text to stay the same size while the playlist is resized, and picked 13/16 px from an HTML preview of sizes 12/15, 14/17, 16/20 and 18/22 at the smallest, default and largest window.
+
+## 2026-11-08 — Pressed keys use the disabled key's dark shade
+
+Decision: Every pressed player key is drawn in the same dark shade as an unavailable key (`--key-dark: brightness(0.8)` in `CassettePlayer.css`): a key held down with the mouse, Rewind or Forward while seeking, Play latched while playing and Pause latched while paused. It stays dark under the mouse pointer. A pressed key still moves down 3 px. Pause and Stop keep the shade while nothing is playing, as before. Rewind, Play and Forward are not darkened while nothing is loaded, so on first boot only Pause and Stop look dark. This extends the 2026-11-01 entry, where pressed and latched keys only moved down and kept their full brightness.
+
+Why: The owner asked for pressed keys to be darker, using the shade Pause and Stop show at startup, so one look says which key is down.
+
+## 2026-11-08 — The player remembers the last session
+
+Decision: Main saves the last track, its album folder (none for a single file), its index in the album and the position in `settings.json` as `session` (`app/src/main/session.ts`). It saves on every engine `state` event, every 5 s while playing and on quit. At startup it restores the session without playing: `loadAlbum` gained two optional fields, `index` (first track, default 0, out of range falls back to 0) and `play` (default `true`), and main sends `loadAlbum {index, play: false}` (or `load` for a single file) followed by `seek`. The player shows the track stopped at the saved position, and Play resumes there. Nothing is saved until the restore has reached the saved position (one track `state` per restore command, or an error), so quitting mid-restore cannot store the 0:00 of the load. A session whose file or folder no longer exists is dropped without an error. The session is not restored after an engine crash.
+
+Why: The owner asked for the player to remember the last playlist, song and position so they can resume where they left off. Restoring through the engine's own commands keeps state engine-owned (the renderer still only shows engine events). Not autoplaying avoids surprise sound at login. Loading without play needs an engine change because `loadAlbum` always played.

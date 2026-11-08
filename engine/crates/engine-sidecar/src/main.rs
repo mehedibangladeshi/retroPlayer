@@ -231,14 +231,15 @@ fn dispatch(
             load_track(player, Path::new(&path), None, art, send, false)
         }
         // Scanning blocks this thread briefly (tags, durations); acceptable for one album.
-        Command::LoadAlbum { path } => {
+        Command::LoadAlbum { path, index, play } => {
             let mut pl = Playlist::new(scan_album(Path::new(&path))?);
             send(Event::Playlist { album: Some(WireAlbum::from(pl.album())) });
-            let first = pl.select(0).map(Path::to_path_buf);
+            let index = if index < pl.album().tracks.len() { index } else { 0 };
+            let first = pl.select(index).map(Path::to_path_buf);
             let cover = pl.album().cover.clone();
             *playlist = Some(pl);
             match first {
-                Some(p) => load_track(player, &p, cover.as_ref(), art, send, true),
+                Some(p) => load_track(player, &p, cover.as_ref(), art, send, play),
                 None => Ok(()),
             }
         }

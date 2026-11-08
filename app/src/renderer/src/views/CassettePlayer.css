@@ -7,14 +7,15 @@ body { background: transparent; overflow: hidden; }
 .cp button { -webkit-app-region: no-drag; position: absolute; margin: 0; padding: 0; border: 0; font: inherit; color: inherit; cursor: pointer; }
 .cp button:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); outline-offset: 1px; }
 
-.cp-btn { background: transparent; border-radius: 10px; touch-action: none; transition: filter 80ms ease-out, transform 80ms ease-out; }
+.cp-btn { --key-dark: brightness(0.8); background: transparent; border-radius: 10px; touch-action: none; transition: filter 80ms ease-out, transform 80ms ease-out; }
 /* Key art (with baked shadow) is painted on a non-interactive layer padded right/bottom; the button rect stays the hit area. */
 .cp-btn::before { content: ''; position: absolute; top: 0; left: 0; right: calc(var(--pad-r) * -1); bottom: calc(var(--pad-b) * -1); pointer-events: none; background: var(--art) var(--pos) / 767px 616px no-repeat; }
 .cp-btn:not(:disabled):hover { filter: brightness(1.12); }
 .cp-btn:not(:disabled):active, .cp-btn.pressed:not(:disabled), .cp-btn.latched { transform: translateY(3px); }
-.cp-btn:not(:disabled):active:hover, .cp-btn.pressed:not(:disabled):hover, .cp-btn.latched:not(:disabled):hover { filter: none; }
-.cp-btn:disabled { cursor: default; filter: brightness(0.8); }
-.cp-btn.latched:disabled { filter: none; }
+.cp-btn:disabled { cursor: default; }
+/* One dark shade: unavailable Pause and Stop, and every pressed, held or latched key, also under hover.
+   Rewind, Play and Forward keep their normal look while nothing is loaded. */
+.cp-btn[aria-label="pause"]:disabled, .cp-btn[aria-label="stop"]:disabled, .cp-btn:active, .cp-btn.pressed, .cp-btn.latched, .cp-btn:not(:disabled):active:hover, .cp-btn.pressed:hover, .cp-btn.latched:hover { filter: var(--key-dark); }
 
 .cp-title { position: absolute; box-sizing: border-box; padding: 0 8px; pointer-events: none; color: #7f2a3c; font-size: 19px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 30px; text-align: center; }
 .cp-title.empty { opacity: 0.55; }

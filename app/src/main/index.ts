@@ -3,13 +3,14 @@ import { dirname, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/api'
 import { ALBUM, PLAYLIST, WINDOW } from '@shared/layout'
-import { SUPPORTED_EXTENSIONS, type Command } from '@shared/protocol'
+import { SUPPORTED_EXTENSIONS, type Album, type Command } from '@shared/protocol'
 import { SHADE } from '@shared/shade'
 import { clampInto, expandedAt, shadedBounds } from './shade'
 import { fitGroup, inferDocks, layout, matchHeight, overlaps, snap, subtree, type Docks, type Rect } from './dock'
 import { x11Relaunch } from './platform'
 import { isValidCommand } from './ndjson'
 import { loadSettings, saveSettings, type WindowState } from './settings'
+import { nextSession, restoreCommands, restoreStep, type Session } from './session'
 import { defaultPlayerSize, proportional, sizeLimits } from './windowSize'
 import { Sidecar } from './sidecar'
 // Bundled into out/ by electron-vite; packaged builds also get it as the .icns/.ico via electron-builder.
@@ -47,7 +48,30 @@ const satellites = [playlist, album]
 const DEFAULT_DOCKS: Docks = { playlist: { to: 'player', side: 'right', ratio: 0 }, album: { to: 'player', side: 'left', ratio: 0 } }
 let docks: Docks = { ...DEFAULT_DOCKS }
 const live = (w: BrowserWindow | null): w is BrowserWindow => w !== null && !w.isDestroyed()
-const sidecar = new Sidecar(() => [win, playlist.win, album.win].filter(live))
+// Last session (track, album, position): kept from engine events, saved on every state change, every few seconds
+// while playing and on quit, and restored at startup stopped at the saved position (Play resumes there).
+const SESSION_SAVE_MS = 5000
+let session: Session | undefined // read at whenReady: userData is set further down
+let sessionAlbum: Album | null = null
+let sessionSavedAt = 0
+let restoreLeft = 0 // restore states still to come (restoreStep)
+function saveSession(): void {
+  if (!session) return
+  saveSettings({ session })
+  sessionSavedAt = Date.now()
+}
+const sidecar = new Sidecar(
+  () => [win, playlist.win, album.win].filter(live),
+  (evt) => {
+    if (evt.type === 'playlist') sessionAlbum = evt.album
+    restoreLeft = restoreStep(restoreLeft, evt)
+    if (restoreLeft > 0) return
+    const next = nextSession(session, sessionAlbum, evt)
+    if (next === session) return
+    session = next
+    if (evt.type === 'state' || Date.now() - sessionSavedAt >= SESSION_SAVE_MS) saveSession()
+  }
+)
 const devUrl = process.env.ELECTRON_RENDERER_URL
 
 function fromAppWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
@@ -672,11 +696,22 @@ if (relaunch) {
   })
   app.on('before-quit', () => {
     quitting = true
+    if (restoreLeft === 0) saveSession() // mid-restore the file still holds the right spot
     sidecar.stop()
   })
   app.on('window-all-closed', () => app.quit())
   void app.whenReady().then(() => {
     createWindow()
+    session = loadSettings().session
     sidecar.start()
+    // A moved or deleted album or file is forgotten rather than reported as an error at every start.
+    if (session && existsSync(session.album ?? session.path)) {
+      const cmds = restoreCommands(session)
+      restoreLeft = cmds.length
+      for (const c of cmds) sidecar.send(c)
+    } else if (session) {
+      session = undefined
+      saveSettings({ session }) // JSON drops the undefined key
+    }
   })
 }

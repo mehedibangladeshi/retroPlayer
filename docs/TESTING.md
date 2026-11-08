@@ -23,7 +23,7 @@ Test builds are unsigned, so each OS warns before the first run. Bundles come fr
 
 ## Settings and reset
 
-The app saves its window size and position, full-screen state and last Open folder in `settings.json`. The file is in the app's user-data folder:
+The app saves its window sizes and positions, last Open folder and last session (track and position) in `settings.json`. The file is in the app's user-data folder:
 
 - Linux: `~/.config/Cassette Player Retro/`
 - Windows: `%APPDATA%\Cassette Player Retro\`
@@ -33,4 +33,4 @@ To reset these to defaults, quit the app and delete `settings.json`.
 
 ## What to test
 
-Follow the checklist in the hand-off message, or in short: open a FLAC, a WAV and an MP3 (click the cassette, use Ctrl/Cmd+O, or drag a file onto the window); try play, pause, stop, rewind and forward (click and hold); check the reels spin only while playing; try a broken file. Note your OS and version with any report.
+Follow the checklist in the hand-off message, or in short: open a FLAC, a WAV and an MP3 (click the cassette, use Ctrl/Cmd+O, or drag a file onto the window); try play, pause, stop, rewind and forward (click and hold); check the reels spin only while playing; try a broken file; quit while a song plays, reopen, and check it comes back on the same song and time and that Play resumes there. Note your OS and version with any report.
