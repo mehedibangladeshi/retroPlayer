@@ -26,7 +26,7 @@ Single tests:
 - `cargo test --manifest-path engine/Cargo.toml -p player-core state::tests`: unit tests by module path.
 - `cargo test --manifest-path engine/Cargo.toml -p engine-sidecar --test stdio`: the stdio integration tests.
 
-JS unit tests use Node's built-in `node:test` (no dependency); they live in `app/test/` and run with `pnpm test`. Renderer behaviour was verified by driving the built app over the Chrome DevTools Protocol (`electron . --remote-debugging-port=<port>`). Window docking has a live E2E: after `pnpm build`, `node scripts/e2e/dock.mjs app /abs/throwaway-profile [--ozone-platform=x11]` (CI: `.github/workflows/dock-e2e.yml` on Linux, Windows and macOS).
+JS unit tests use Node's built-in `node:test` (no dependency); they live in `app/test/` and run with `pnpm test`. Renderer behaviour was verified by driving the built app over the Chrome DevTools Protocol (`electron . --remote-debugging-port=<port>`). Window docking has a live E2E: after `pnpm build`, `node scripts/e2e/dock.mjs app /abs/throwaway-profile [--ozone-platform=x11]` (CI: `.github/workflows/dock-e2e.yml` on Linux, Windows and macOS). Session restore has one too, run by hand because it needs an audio device: `node scripts/e2e/session.mjs app /abs/throwaway-profile [--ozone-platform=x11]` (plays, quits and relaunches the app, and checks it comes back on the same track and time, never saves 0:00 mid-restore, resumes on Play, and forgets a deleted album).
 
 ## Layout notes
 
