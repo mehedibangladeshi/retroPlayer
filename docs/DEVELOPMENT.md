@@ -5,9 +5,14 @@ The same repo builds on Linux, macOS and Windows. Each machine builds the bundle
 ## macOS
 
 1. **Xcode Command Line Tools** (C linker for Rust): `xcode-select --install`
-2. **Rust** (stable, via rustup): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-3. **Node 26** (the version in `.nvmrc`): `brew install node@26`, or with a version manager: `fnm install` / `nvm install` in the repo.
-4. **pnpm 12** (the version pinned in `package.json`): `npm install -g pnpm@12.16.1`. Node 25+ no longer ships Corepack, so `corepack enable` won't work.
+2. **Rust** (stable, via rustup): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`, then `source "$HOME/.cargo/env"` (or open a new terminal). Without it `pnpm dev` fails with `cargo: command not found`.
+3. **Node 26** (the version in `.nvmrc`): `brew install node@26`, or with a version manager: `fnm install` / `nvm install` in the repo. With nvm:
+   ```sh
+   nvm install          # reads .nvmrc (26)
+   nvm use              # per terminal; run it each time, or:
+   nvm alias default 26 # make 26 the default in new terminals
+   ```
+4. **pnpm 12** (the version pinned in `package.json`): `npm install -g pnpm@12.16.1`. Node 25+ no longer ships Corepack, so `corepack enable` won't work. nvm keeps global packages per Node version, so install pnpm again under Node 26 even if another version already has it.
 5. **Git identity**, the same as on the other machine:
    `git config --global user.name "Mehedi Hasan"` and `git config --global user.email mehedipy@gmail.com`
 
@@ -19,6 +24,8 @@ pnpm install
 pnpm dev          # builds the engine (debug) and opens the app
 pnpm package      # .dmg and .zip for this Mac's CPU, in app/dist/
 ```
+
+If `pnpm dev` fails with `Error: Electron uninstall`, Electron's postinstall did not download its binary (usually an install run under the wrong Node). Reinstall under Node 26: `nvm use && rm -rf node_modules app/node_modules && pnpm install`.
 
 A bundle you build yourself is not quarantined, so it opens without the Gatekeeper prompt testers see.
 
