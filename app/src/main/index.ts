@@ -489,7 +489,10 @@ function toggleShade(s: Satellite, from?: Rect): void {
     s.shaded = true
     w.setAspectRatio(0) // the bar has its own shape; a shaded window is not resizable
     resizeFixed(w, r, [s.minWidth, r.height], false)
-    sync({ [s.hash]: r }) // windows docked below it move up
+    // Windows keeps a window at least about 39 px tall, taller than a narrow window's bar: dock the height it really got.
+    // (Linux applies bounds later, so getBounds() would still report the full size there.)
+    const got = process.platform === 'win32' ? { ...r, height: Math.max(r.height, w.getBounds().height) } : r
+    sync({ [s.hash]: got }) // windows docked below it move up
   } else {
     s.shaded = false
     const next = clampInto(expandedAt(cur, s.expanded ?? cur), screen.getDisplayMatching(cur).workArea)

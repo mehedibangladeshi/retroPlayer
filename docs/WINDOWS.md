@@ -88,6 +88,8 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
   drag of that window (`busyElsewhere`). Otherwise growing the player at a screen edge tears a side window off its dock.
 - **Tear-off is confirmed 50 ms later**, because openbox briefly reports (0,0) while it reparents a window.
 - **Windows:** use `setPosition` for a pure move, because `setBounds` can drift the size at fractional scaling.
+  Windows keeps a window at least about 39 px tall, so a narrow window's shade bar can come out taller than asked;
+  the shade docks the height the window really got.
 - **macOS:** no move events arrive during a drag, so docked windows become the player's child windows
   (`setParentWindow`). A side window that macOS minimizes is restored with retries.
 - **Linux:** native Wayland gives apps no window positions, so the app runs on XWayland (`--ozone-platform=x11`: a one-time
