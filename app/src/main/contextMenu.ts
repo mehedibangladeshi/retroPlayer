@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from 'electron'
+import { BOOST_STEPS } from '@shared/boost'
 
 // Every keyboard shortcut (renderer: input/useKeyboard.ts, input/powerKeys.ts, views/rowKeys.ts). Keep in step with them.
 const SHORTCUTS: ([label: string, key: string] | null)[] = [
@@ -27,7 +28,8 @@ const SHORTCUTS: ([label: string, key: string] | null)[] = [
 export function contextMenu(
   windows: { label: string; visible: boolean }[],
   toggle: (i: number, show: boolean) => void,
-  actions: { reset: () => void; fillGaps: () => void }
+  actions: { reset: () => void; fillGaps: () => void },
+  boost: { db: number; set: (db: number) => void }
 ): MenuItemConstructorOptions[] {
   return [
     {
@@ -38,6 +40,10 @@ export function contextMenu(
         { label: 'Reset Windows', click: actions.reset },
         { label: 'Fill Gaps', click: actions.fillGaps }
       ]
+    },
+    {
+      label: 'Volume boost',
+      submenu: BOOST_STEPS.map((db): MenuItemConstructorOptions => ({ label: db === 0 ? 'Off' : `+${db} dB`, type: 'radio', checked: db === boost.db, click: () => boost.set(db) }))
     },
     {
       label: 'Keyboard Shortcuts',

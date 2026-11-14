@@ -581,3 +581,21 @@ Decision: The single-click tracklist preview now waits the OS double-click time 
 The value is clamped to 150–1000 ms, and 500 ms is used when it cannot be read. A preview scan's `albumInfo` is never recorded, even when it arrives after the 5 s timeout. The waiter counts the scans it has sent per folder, because the engine answers them in order, and the count is cleared on `engine_crashed`. The preview slides in with a CSS transition, so closing it mid-slide reverses smoothly. Read-only rows are plain elements, with no focus and no hover highlight.
 
 Why: Chromium counts a second click as a double-click using the OS setting. Matching that setting means a double-click never flashes a preview, and a single click is no slower than it needs to be. Electron has no API for this value, so it is read from the OS. Previewing must never reshuffle Recent, so late scan answers are dropped.
+
+## 2026-11-14 — Track names: drop the artist except on mixtapes
+
+Decision: In the playlist and the rack preview, an album's rows read "01. Title". A mixtape is a folder whose tracks do not all share one artist, and its rows read "01. Artist – Title". A track's effective artist is its own artist, else the album artist, and unknown artists are ignored. `mixedArtists(album)` decides the folder kind, and `trackRowName(track, i, showArtist, albumArtist)` in `app/src/renderer/src/views/trackRowName.ts` builds the row. Single files have no playlist rows.
+
+Why: On a one-artist album the artist repeats on every row and is noise. On a mixtape the artist is the only thing that tells the tracks apart.
+
+## 2026-11-14 — Volume knob turns, not drags
+
+Decision: Dragging the volume knob turns it like a real dial. The angle the pointer travels around the knob's centre turns it (`pointerAngle` and `turnVolume` in `app/src/renderer/src/views/powerMath.ts`), and each move applies its own change. The knob stops at 0 and 10 with no wrap, and grabbing never jumps. This replaces the vertical drag (`dragVolume`, now removed), so it supersedes the vertical-drag part of "Volume knob: grab cursor and click to turn" above. A click without moving still points the knob at the click, and the wheel and arrow keys are unchanged.
+
+Why: A vertical drag does not match how a dial is turned. Following the pointer's angle does, and applying each move's change stops cleanly at the ends.
+
+## 2026-11-14 — Volume boost with a look-ahead limiter in the output callback
+
+Decision: Boost adds 0, +3, +6, +9 or +12 dB (Off by default) to the music, for quiet tracks. The gain goes through a look-ahead peak limiter so it never clips: look-ahead 1.5 ms, release 80 ms, ceiling -1 dBFS sample peak, gain ramped over 20 ms, channels linked (`engine/crates/player-core/src/limiter.rs`). It runs inside the cpal output callback on the music only, before key sounds are mixed and before the knob volume. It is preallocated, so the callback does no allocation, and it resets when the output buffer is cleared (seek, load, stop). At Off the music passes bit-identical, only delayed 1.5 ms. At exactly 0 dB nothing is limited, by design. The knob's curve (-40..0 dB, max 1.0) is unchanged, and the knob only attenuates. Protocol: the command `setBoost {boostDb}` (the engine clamps to [0,12]), and the `options` event gains `boostDb`. It is saved with the other options in `settings.json` (a file without it loads as Off) and re-sent after an engine restart. It is set from the right-click menu's "Volume boost" radio submenu or the BOOST lamp on the power deck.
+
+Why: Plain gain with a hard clip (what VLC does above 100%) distorts loud peaks. Rejected: extending `setVolume` to 0..2, which breaks the 1.0 = bit-perfect clamp. Rejected: placing the boost in the DspChain. The DspChain sits before the ~2 s output ring, so a change would be heard about 2 s late, and before the resampler, which can push peaks past any limiter. Auto-normalize (ReplayGain, an R128 scan, or compression) is deferred. Research and alternatives are in `docs/research/2026-11-14-volume-boost.md`.

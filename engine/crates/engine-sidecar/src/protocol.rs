@@ -48,6 +48,9 @@ pub enum Command {
     PlayIndex { index: usize },
     /// f64 so the doc example round-trips exactly; the engine clamps it.
     SetVolume { volume: f64 },
+    /// f64 for the same reason as `SetVolume`; the engine clamps it to [0, 12].
+    #[serde(rename_all = "camelCase")]
+    SetBoost { boost_db: f64 },
     SetLoop { on: bool },
     SetShuffle { on: bool },
     Next,
@@ -122,8 +125,10 @@ pub enum Event {
     AlbumInfo { path: String, album: Option<WireAlbum> },
     /// `data:<mime>;base64,...` URL of the current track's art, or `null`.
     Artwork { cover: Option<String> },
+    #[serde(rename_all = "camelCase")]
     Options {
         volume: f32,
+        boost_db: f32,
         #[serde(rename = "loop")]
         looped: bool,
         shuffle: bool,
@@ -374,6 +379,7 @@ mod tests {
     fn option_and_navigation_commands_parse() {
         let c = |l: &str| parse_command(l).unwrap();
         assert_eq!(c(r#"{"v":1,"type":"setVolume","volume":0.3}"#), Command::SetVolume { volume: 0.3 });
+        assert_eq!(c(r#"{"v":1,"type":"setBoost","boostDb":6}"#), Command::SetBoost { boost_db: 6.0 });
         assert_eq!(c(r#"{"v":1,"type":"setLoop","on":true}"#), Command::SetLoop { on: true });
         assert_eq!(c(r#"{"v":1,"type":"setShuffle","on":false}"#), Command::SetShuffle { on: false });
         assert_eq!(c(r#"{"v":1,"type":"next"}"#), Command::Next);
@@ -385,8 +391,8 @@ mod tests {
     #[test]
     fn options_and_levels_lines() {
         assert_eq!(
-            Event::Options { volume: 0.6, looped: false, shuffle: true }.to_line(),
-            r#"{"v":1,"type":"options","volume":0.6,"loop":false,"shuffle":true}"#
+            Event::Options { volume: 0.6, boost_db: 6.0, looped: false, shuffle: true }.to_line(),
+            r#"{"v":1,"type":"options","volume":0.6,"boostDb":6.0,"loop":false,"shuffle":true}"#
         );
         let line = Event::from(player_core::Levels::SILENT).to_line();
         let v: Value = serde_json::from_str(&line).unwrap();

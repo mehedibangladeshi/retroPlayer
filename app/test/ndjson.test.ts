@@ -112,6 +112,12 @@ test('isValidCommand accepts setVolume, setLoop, setShuffle, next and previous',
   }
 })
 
+test('isValidCommand accepts setBoost with a finite number only', () => {
+  assert.equal(isValidCommand({ v, type: 'setBoost', boostDb: 6 }), true)
+  for (const boostDb of [NaN, Infinity, '6', null]) assert.equal(isValidCommand({ v, type: 'setBoost', boostDb }), false, String(boostDb))
+  assert.equal(isValidCommand({ v, type: 'setBoost' }), false)
+})
+
 test('isValidCommand rejects bad setVolume values', () => {
   for (const volume of [NaN, Infinity, '0.5', null]) {
     assert.equal(isValidCommand({ v, type: 'setVolume', volume }), false, String(volume))

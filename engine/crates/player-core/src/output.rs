@@ -19,6 +19,17 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::error::{ErrorCode, PlayerError};
 use crate::levels::{FFT_SIZE, Levels, analyze};
+use crate::limiter::Limiter;
+
+/// Frames of f32 scratch the callback runs the limiter on. cpal does not tell
+/// us the callback buffer size up front, so this is generous (~170 ms at
+/// 48 kHz) and `Music::render` loops over it when a callback asks for more.
+const SCRATCH_FRAMES: usize = 8192;
+
+/// Boost in dB clamped to the limiter's 0..=12 range; NaN is 0 (no boost).
+pub(crate) fn clamp_boost_db(db: f32) -> f32 {
+    if db.is_nan() { 0.0 } else { db.clamp(0.0, 12.0) }
+}
 
 /// A short sound in the device's format (interleaved, device rate and channels),
 /// mixed on top of the music. The control side keeps its own reference to each
@@ -153,6 +164,8 @@ struct Shared {
     failed: AtomicBool,
     /// Output gain as `f32` bits (see `gain_for`).
     gain: AtomicU32,
+    /// Music boost in dB as `f32` bits (0..=12), applied by the limiter.
+    boost: AtomicU32,
 }
 
 impl Default for Shared {
@@ -164,6 +177,7 @@ impl Default for Shared {
             frames_played: AtomicU64::new(0),
             failed: AtomicBool::new(false),
             gain: AtomicU32::new(1.0f32.to_bits()),
+            boost: AtomicU32::new(0.0f32.to_bits()),
         }
     }
 }
@@ -259,7 +273,8 @@ impl Output {
         // thread's ~30 ms polling never lets it overflow in normal operation.
         let (tap, tap_rx) =
             RingBuffer::<f32>::new((config.sample_rate as usize / 10).max(4 * FFT_SIZE));
-        let io = (consumer, mixer, tap);
+        let music = Music::new(consumer, usize::from(channels), config.sample_rate, SCRATCH_FRAMES);
+        let io = (music, mixer, tap);
 
         let stream = match format {
             SampleFormat::F32 => build::<f32>(&device, config, io, &shared),
@@ -364,6 +379,13 @@ impl OutputHandle {
         self.shared.gain.store(gain.to_bits(), Ordering::Relaxed);
     }
 
+    /// Set the music boost in dB (clamped to 0..=12, NaN is 0); applies on the
+    /// next callback, ramped by the limiter. Key sounds are not boosted.
+    pub fn set_boost_db(&self, db: f32) {
+        // Relaxed: a lone value, nothing else is published through it.
+        self.shared.boost.store(clamp_boost_db(db).to_bits(), Ordering::Relaxed);
+    }
+
     /// Set the frame counter (used after a seek).
     pub fn reset_frames(&self, frames: u64) {
         self.shared.frames_played.store(frames, Ordering::Relaxed);
@@ -383,14 +405,13 @@ fn map_err(e: cpal::Error) -> PlayerError {
 fn build<T>(
     device: &cpal::Device,
     config: StreamConfig,
-    (mut consumer, mut mixer, mut tap): (Consumer<f32>, Mixer, Producer<f32>),
+    (mut music, mut mixer, mut tap): (Music, Mixer, Producer<f32>),
     shared: &Arc<Shared>,
 ) -> Result<Stream, PlayerError>
 where
     T: SizedSample + FromSample<f32>,
     f32: FromSample<T>,
 {
-    let channels = usize::from(config.channels);
     let cb_shared = Arc::clone(shared);
     let err_shared = Arc::clone(shared);
     device
@@ -401,9 +422,7 @@ where
                 // block. Any of those can stall the audio thread past its
                 // deadline and cause audible glitches. Atomics and the
                 // lock-free ring only.
-                render(&mut consumer, data, channels, &cb_shared);
-                mixer.mix(data);
-                post(data, channels, &cb_shared, &mut tap);
+                callback(&mut music, &mut mixer, &mut tap, data, &cb_shared);
             },
             move |err: cpal::Error| {
                 // Not the realtime audio callback, but we still avoid logging; the
@@ -419,46 +438,95 @@ where
         .map_err(map_err)
 }
 
-/// Device-independent callback body.
-fn render<T: Sample + FromSample<f32>>(
-    consumer: &mut Consumer<f32>,
-    out: &mut [T],
+/// Device-independent callback body: music (boosted and limited), then key
+/// sounds on top (not boosted), then the knob gain and meter tap over it all.
+fn callback<T>(music: &mut Music, mixer: &mut Mixer, tap: &mut Producer<f32>, data: &mut [T], shared: &Shared)
+where
+    T: Sample + FromSample<f32>,
+    f32: FromSample<T>,
+{
+    music.render(data, shared);
+    mixer.mix(data);
+    post(data, music.channels, shared, tap);
+}
+
+/// Callback-side music path: the ring consumer plus the boost limiter and its
+/// f32 scratch, all allocated up front in `new` (never in the callback).
+struct Music {
+    consumer: Consumer<f32>,
+    limiter: Limiter,
+    /// Whole frames only, so every chunk the limiter sees is frame-aligned.
+    scratch: Vec<f32>,
     channels: usize,
-    shared: &Shared,
-) {
-    // Acquire pairs with `clear`'s Release. Checked before `playing` so a clear
-    // is honoured while paused. Only this callback writes `clear_ack`.
-    let gen_seen = shared.clear_gen.load(Ordering::Acquire);
-    if gen_seen != shared.clear_ack.load(Ordering::Relaxed) {
-        let n = consumer.slots();
-        if let Ok(chunk) = consumer.read_chunk(n) {
-            chunk.commit_all();
+}
+
+impl Music {
+    fn new(consumer: Consumer<f32>, channels: usize, sample_rate: u32, scratch_frames: usize) -> Self {
+        let channels = channels.max(1);
+        Music {
+            consumer,
+            limiter: Limiter::new(channels, sample_rate),
+            scratch: vec![0.0; scratch_frames.max(1) * channels],
+            channels,
         }
-        out.fill(T::EQUILIBRIUM);
-        // Ack strictly after the drain (and with no frames_played update on this
-        // call): once the player sees ack == gen, no stale write can follow.
-        shared.clear_ack.store(gen_seen, Ordering::Release);
-        return;
     }
-    if !shared.playing.load(Ordering::Relaxed) {
-        out.fill(T::EQUILIBRIUM);
-        return;
-    }
-    let channels = channels.max(1);
-    let frames = (consumer.slots() / channels).min(out.len() / channels);
-    let n = frames * channels;
-    if n > 0
-        && let Ok(chunk) = consumer.read_chunk(n)
-    {
-        let (a, b) = chunk.as_slices();
-        for (dst, src) in out.iter_mut().zip(a.iter().chain(b.iter())) {
-            *dst = T::from_sample(*src);
+
+    /// Fill `out` with music. The limiter runs on f32 before conversion to the
+    /// device format (which may be integer, where boosted peaks would clip).
+    fn render<T: Sample + FromSample<f32>>(&mut self, out: &mut [T], shared: &Shared) {
+        // Acquire pairs with `clear`'s Release. Checked before `playing` so a clear
+        // is honoured while paused. Only this callback writes `clear_ack`.
+        let gen_seen = shared.clear_gen.load(Ordering::Acquire);
+        if gen_seen != shared.clear_ack.load(Ordering::Relaxed) {
+            let n = self.consumer.slots();
+            if let Ok(chunk) = self.consumer.read_chunk(n) {
+                chunk.commit_all();
+            }
+            // The look-ahead delay holds pre-clear audio; drop it with the ring.
+            self.limiter.reset();
+            out.fill(T::EQUILIBRIUM);
+            // Ack strictly after the drain (and with no frames_played update on this
+            // call): once the player sees ack == gen, no stale write can follow.
+            shared.clear_ack.store(gen_seen, Ordering::Release);
+            return;
         }
-        chunk.commit_all();
-    }
-    out[n..].fill(T::EQUILIBRIUM);
-    if frames > 0 {
-        shared.frames_played.fetch_add(frames as u64, Ordering::Relaxed);
+        // Paused: silence, and the limiter is left untouched so its delayed
+        // tail (unheard, already counted in frames_played) plays on resume.
+        if !shared.playing.load(Ordering::Relaxed) {
+            out.fill(T::EQUILIBRIUM);
+            return;
+        }
+        let boost = f32::from_bits(shared.boost.load(Ordering::Relaxed));
+        let ch = self.channels;
+        let mut played = 0;
+        // Underrun zero-fill goes through the limiter too, so its delay line
+        // stays continuous with device time: after an underrun (or at track
+        // end) the delayed tail comes out first, then silence.
+        for dst in out.chunks_mut(self.scratch.len()) {
+            let buf = &mut self.scratch[..dst.len()];
+            let frames = (self.consumer.slots() / ch).min(dst.len() / ch);
+            let n = frames * ch;
+            if n > 0
+                && let Ok(chunk) = self.consumer.read_chunk(n)
+            {
+                let (a, b) = chunk.as_slices();
+                buf[..a.len()].copy_from_slice(a);
+                buf[a.len()..n].copy_from_slice(b);
+                chunk.commit_all();
+            }
+            buf[n..].fill(0.0);
+            // A trailing partial frame (out not frame-aligned) would misalign
+            // the limiter, so it only processes whole frames; the rest stays 0.
+            let whole = dst.len() / ch * ch;
+            self.limiter.process(&mut buf[..whole], boost);
+            for (d, s) in dst.iter_mut().zip(buf.iter()) {
+                *d = T::from_sample(*s);
+            }
+            played += frames;
+        }
+        if played > 0 {
+            shared.frames_played.fetch_add(played as u64, Ordering::Relaxed);
+        }
     }
 }
 
@@ -547,13 +615,26 @@ mod tests {
         assert!(rx.pop().is_err());
     }
 
-    fn setup(samples: &[f32]) -> (Producer<f32>, Consumer<f32>, Shared) {
-        let (mut p, c) = RingBuffer::<f32>::new(64);
+    /// 600 Hz makes the limiter's look-ahead exactly one frame, so these
+    /// transport tests read as "the old output, one frame late".
+    const TEST_RATE: u32 = 600;
+
+    fn setup(samples: &[f32]) -> (Producer<f32>, Music, Shared) {
+        setup_with(samples, 2, TEST_RATE, 64, 64)
+    }
+
+    fn setup_with(
+        samples: &[f32],
+        channels: usize,
+        rate: u32,
+        capacity: usize,
+        scratch_frames: usize,
+    ) -> (Producer<f32>, Music, Shared) {
+        let (mut p, c) = RingBuffer::<f32>::new(capacity);
         for s in samples {
             p.push(*s).unwrap();
         }
-        let shared = Shared::default();
-        (p, c, shared)
+        (p, Music::new(c, channels, rate, scratch_frames), Shared::default())
     }
 
     #[test]
@@ -564,41 +645,43 @@ mod tests {
 
     #[test]
     fn paused_outputs_silence_and_consumes_nothing() {
-        let (_p, mut c, shared) = setup(&[0.5; 8]);
+        let (_p, mut m, shared) = setup(&[0.5; 8]);
         let mut out = [1.0f32; 8];
-        render(&mut c, &mut out, 2, &shared);
+        m.render(&mut out, &shared);
         assert_eq!(out, [0.0; 8]);
-        assert_eq!(c.slots(), 8);
+        assert_eq!(m.consumer.slots(), 8);
         assert_eq!(shared.frames_played.load(Ordering::Relaxed), 0);
     }
 
     #[test]
     fn playing_copies_whole_frames() {
         let src: Vec<f32> = (0..8).map(|i| i as f32 / 10.0).collect();
-        let (_p, mut c, shared) = setup(&src);
+        let (_p, mut m, shared) = setup(&src);
         shared.playing.store(true, Ordering::Relaxed);
         let mut out = [9.0f32; 8];
-        render(&mut c, &mut out, 2, &shared);
-        assert_eq!(out.as_slice(), src.as_slice());
+        m.render(&mut out, &shared);
+        // One frame of look-ahead delay.
+        assert_eq!(out[..2], [0.0, 0.0]);
+        assert_eq!(out[2..], src[..6]);
         assert_eq!(shared.frames_played.load(Ordering::Relaxed), 4);
-        assert_eq!(c.slots(), 0);
+        assert_eq!(m.consumer.slots(), 0);
     }
 
     #[test]
     fn underrun_copies_partial_then_zeros() {
         // 3 samples at 2 channels: 1 whole frame; the dangling sample is left.
-        let (_p, mut c, shared) = setup(&[0.1, 0.2, 0.3]);
+        let (_p, mut m, shared) = setup(&[0.1, 0.2, 0.3]);
         shared.playing.store(true, Ordering::Relaxed);
         let mut out = [9.0f32; 6];
-        render(&mut c, &mut out, 2, &shared);
-        assert_eq!(out, [0.1, 0.2, 0.0, 0.0, 0.0, 0.0]);
+        m.render(&mut out, &shared);
+        assert_eq!(out, [0.0, 0.0, 0.1, 0.2, 0.0, 0.0]);
         assert_eq!(shared.frames_played.load(Ordering::Relaxed), 1);
-        assert_eq!(c.slots(), 1);
+        assert_eq!(m.consumer.slots(), 1);
     }
 
     #[test]
     fn clear_drains_acks_and_is_silent() {
-        let (_p, mut c, shared) = setup(&[0.5; 8]);
+        let (_p, mut m, shared) = setup(&[0.5; 8]);
         shared.playing.store(true, Ordering::Relaxed);
         shared.clear_gen.fetch_add(1, Ordering::Release);
         assert_ne!(
@@ -606,9 +689,9 @@ mod tests {
             shared.clear_ack.load(Ordering::Relaxed)
         );
         let mut out = [1.0f32; 4];
-        render(&mut c, &mut out, 2, &shared);
+        m.render(&mut out, &shared);
         assert_eq!(out, [0.0; 4]);
-        assert_eq!(c.slots(), 0);
+        assert_eq!(m.consumer.slots(), 0);
         assert_eq!(
             shared.clear_gen.load(Ordering::Relaxed),
             shared.clear_ack.load(Ordering::Relaxed)
@@ -618,25 +701,25 @@ mod tests {
 
     #[test]
     fn clear_honoured_while_paused() {
-        let (_p, mut c, shared) = setup(&[0.5; 8]);
+        let (_p, mut m, shared) = setup(&[0.5; 8]);
         shared.clear_gen.fetch_add(1, Ordering::Release);
         let mut out = [1.0f32; 4];
-        render(&mut c, &mut out, 2, &shared);
-        assert_eq!(c.slots(), 0);
+        m.render(&mut out, &shared);
+        assert_eq!(m.consumer.slots(), 0);
         assert_eq!(shared.clear_ack.load(Ordering::Relaxed), 1);
     }
 
     #[test]
     fn push_after_ack_survives_next_render() {
-        let (mut p, mut c, shared) = setup(&[0.5; 8]);
+        let (mut p, mut m, shared) = setup(&[0.5; 8]);
         shared.playing.store(true, Ordering::Relaxed);
         shared.clear_gen.fetch_add(1, Ordering::Release);
         let mut out = [1.0f32; 4];
-        render(&mut c, &mut out, 2, &shared);
+        m.render(&mut out, &shared);
         p.push(0.25).unwrap();
         p.push(0.75).unwrap();
-        render(&mut c, &mut out, 2, &shared);
-        assert_eq!(out, [0.25, 0.75, 0.0, 0.0]);
+        m.render(&mut out, &shared);
+        assert_eq!(out, [0.0, 0.0, 0.25, 0.75]);
         assert_eq!(shared.frames_played.load(Ordering::Relaxed), 1);
     }
 
@@ -757,10 +840,85 @@ mod tests {
 
     #[test]
     fn i16_conversion_of_half_scale() {
-        let (_p, mut c, shared) = setup(&[0.5, 0.5]);
+        let (_p, mut m, shared) = setup(&[0.5, 0.5]);
         shared.playing.store(true, Ordering::Relaxed);
-        let mut out = [0i16; 2];
-        render(&mut c, &mut out, 2, &shared);
-        assert!((i32::from(out[0]) - 16383).abs() <= 1, "got {}", out[0]);
+        let mut out = [0i16; 4];
+        m.render(&mut out, &shared);
+        assert!((i32::from(out[2]) - 16383).abs() <= 1, "got {}", out[2]);
+    }
+
+    const SR: u32 = 48_000;
+    /// Limiter look-ahead at `SR`: 1.5 ms.
+    const LA: usize = 72;
+
+    /// Runs `callbacks` device callbacks of `frames` stereo frames each and
+    /// returns everything the device got.
+    fn run_callbacks(
+        m: &mut Music,
+        mixer: &mut Mixer,
+        shared: &Shared,
+        callbacks: usize,
+        frames: usize,
+    ) -> Vec<f32> {
+        let (mut tap, _rx) = RingBuffer::<f32>::new(1);
+        let mut all = Vec::new();
+        let mut out = vec![0.0f32; frames * 2];
+        for _ in 0..callbacks {
+            callback(m, mixer, &mut tap, &mut out, shared);
+            all.extend_from_slice(&out);
+        }
+        all
+    }
+
+    #[test]
+    fn boost_raises_music_but_not_key_sounds() {
+        // 100 ms of quiet stereo music.
+        let n = SR as usize / 10 * 2;
+        let (_p, mut m, shared) = setup_with(&vec![0.1; n], 2, SR, n, 8192);
+        shared.playing.store(true, Ordering::Relaxed);
+        shared.boost.store(6.0f32.to_bits(), Ordering::Relaxed);
+        let (mut keys, mut mixer) = mixer();
+        let out = run_callbacks(&mut m, &mut mixer, &shared, 4, 1024);
+        // Well past the look-ahead (and the boost is not ramped from a fresh
+        // limiter): 0.1 * 10^(6/20), about 2x.
+        let want = 0.1 * 10f32.powf(6.0 / 20.0);
+        assert!((out[4000] - want).abs() < 1e-5, "got {}, want {want}", out[4000]);
+
+        // A key click lands on top of the boosted music at its own level.
+        keys.push(voice(&[0.05; 8])).ok().unwrap();
+        let out = run_callbacks(&mut m, &mut mixer, &shared, 1, 4);
+        assert!((out[0] - (want + 0.05)).abs() < 1e-5, "got {}", out[0]);
+    }
+
+    #[test]
+    fn boost_zero_is_the_old_output_delayed_across_scratch_chunks() {
+        let src: Vec<f32> = (0..2000).map(|i| ((i * 37) % 200) as f32 / 100.0 - 1.0).collect();
+        // Scratch smaller than the callback buffer: render must chunk.
+        let (_p, mut m, shared) = setup_with(&src, 2, SR, src.len(), 50);
+        shared.playing.store(true, Ordering::Relaxed);
+        let (_keys, mut mixer) = mixer();
+        let out = run_callbacks(&mut m, &mut mixer, &shared, 2, 600);
+        assert!(out[..LA * 2].iter().all(|s| *s == 0.0));
+        for (o, i) in out[LA * 2..].iter().zip(&src) {
+            assert_eq!(o.to_bits(), i.to_bits());
+        }
+        assert_eq!(shared.frames_played.load(Ordering::Relaxed), 1000);
+    }
+
+    #[test]
+    fn clear_resets_the_limiter_delay() {
+        // Fewer frames than the look-ahead: all of it is still in the delay.
+        let (_p, mut m, shared) = setup_with(&[0.5; 20], 2, SR, 64, 8192);
+        shared.playing.store(true, Ordering::Relaxed);
+        let mut out = [1.0f32; 20];
+        m.render(&mut out, &shared);
+        assert_eq!(out, [0.0; 20]);
+        shared.clear_gen.fetch_add(1, Ordering::Release);
+        m.render(&mut out, &shared);
+        // Playing on an empty ring: without a reset the delayed 0.5s would
+        // come out here.
+        let mut out = [1.0f32; 400];
+        m.render(&mut out, &shared);
+        assert!(out.iter().all(|s| *s == 0.0));
     }
 }

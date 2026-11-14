@@ -152,6 +152,16 @@ Fields: `volume` (number, knob position 0 to 1).
 {"v":1,"type":"setVolume","volume":0.6}
 ```
 
+### setBoost
+
+Extra gain for quiet tracks, in dB: `0` (off), up to `12`. The engine clamps `boostDb` to `[0, 12]` (NaN becomes `0`). Boosted music passes a look-ahead peak limiter (ceiling -1 dBFS). Key sounds are not boosted. At `0` the music is bit-identical (delayed 1.5 ms). Default `0`. Answered with an `options` event.
+
+Fields: `boostDb` (number, dB, 0 to 12).
+
+```json
+{"v":1,"type":"setBoost","boostDb":6.0}
+```
+
 ### setLoop
 
 Loop Song. When on, a track that ends replays from the start instead of advancing to the next track. Manual `next` and `previous` are unaffected. Default off.
@@ -281,12 +291,12 @@ Fields: `cover` (string or `null`, always present): a `data:` URL (`data:<mime>;
 
 ### options
 
-Carries the engine's playback options. It is emitted once when the engine starts, and after every `setVolume`, `setLoop` and `setShuffle`. The engine owns these values. The Electron main process saves them in `settings.json` and sends them back as commands at startup and after a sidecar restart.
+Carries the engine's playback options. It is emitted once when the engine starts, and after every `setVolume`, `setBoost`, `setLoop` and `setShuffle`. The engine owns these values. The Electron main process saves them in `settings.json` and sends them back as commands at startup and after a sidecar restart.
 
-Fields: `volume` (number, 0 to 1), `loop` (boolean), `shuffle` (boolean).
+Fields: `volume` (number, 0 to 1), `boostDb` (number, dB, 0 to 12), `loop` (boolean), `shuffle` (boolean).
 
 ```json
-{"v":1,"type":"options","volume":0.6,"loop":false,"shuffle":true}
+{"v":1,"type":"options","volume":0.6,"boostDb":0.0,"loop":false,"shuffle":true}
 ```
 
 ### levels
@@ -350,7 +360,7 @@ Empty --load--> Stopped --play--> Playing <--pause/play--> Paused
 - If the engine panics while handling a command, it emits `error` with code `internal` and a message starting with `engine panic:`. It then resets the player, loads the key sounds again on the fresh player, and emits a fresh `state` (empty).
 - The audio device is opened on the first `load` or `playSound`. With no device, `load` fails with `no_output_device` and nothing else changes.
 - `loadSound` and `playSound` never produce events, including `error`: a missing file, an unknown name or no audio device is logged to stderr only, so a key sound can't put an error message in front of the user. A sound that can't play is skipped.
-- The Electron main process forwards a renderer command only if it passes validation: `load` needs a path with a supported audio extension (`flac`, `wav`, `mp3`, `m4a`, `aac`, `ogg`, `oga`, any case), and `playSound` needs a known sound name. `loadSound` is sent by main only. `setVolume` needs a finite number, and `setLoop` and `setShuffle` need a boolean `on`. Main logs a dropped command and sends no reply.
+- The Electron main process forwards a renderer command only if it passes validation: `load` needs a path with a supported audio extension (`flac`, `wav`, `mp3`, `m4a`, `aac`, `ogg`, `oga`, any case), and `playSound` needs a known sound name. `loadSound` is sent by main only. `setVolume` and `setBoost` need a finite number, and `setLoop` and `setShuffle` need a boolean `on`. Main logs a dropped command and sends no reply.
 
 ## Changing the protocol
 

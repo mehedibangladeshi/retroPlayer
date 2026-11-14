@@ -9,9 +9,19 @@ export function knobRotation(volume: number): number {
   return volume * KNOB_SWEEP - 225
 }
 
-/** Vertical drag: up is louder. 200 design px = full range. Clamped 0..1. */
-export function dragVolume(startVolume: number, dyDesignPx: number): number {
-  return clamp01(startVolume - dyDesignPx / 200)
+/** Pointer angle at (dx, dy) design px from the knob centre: degrees, 0 = straight up, clockwise positive, (-180, 180].
+ *  Null when too near the centre to have a direction. */
+export function pointerAngle(dx: number, dy: number): number | null {
+  if (Math.hypot(dx, dy) < 8) return null
+  return (Math.atan2(dx, -dy) * 180) / Math.PI
+}
+
+/** Knob turn: add the pointer's angle change (wrapped into (-180, 180]) as volume. Incremental, so the stops hold. */
+export function turnVolume(v: number, prevDeg: number, deg: number): number {
+  let d = deg - prevDeg
+  while (d > 180) d -= 360
+  while (d <= -180) d += 360
+  return clamp01(v + d / KNOB_SWEEP)
 }
 
 /** Click at (dx, dy) design px from the knob centre: the volume whose pointer points there (0 lower left, 10 lower

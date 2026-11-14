@@ -15,3 +15,9 @@ _Avoid_: view, filter
 **Preview**:
 The read-only tracklist that slides out of a spine on a single click in the rack.
 _Avoid_: popup, peek, details
+
+**Mixtape**:
+A folder whose tracks do not all share one artist. Its track rows read "01. Artist – Title"; an album's rows read "01. Title".
+
+**Boost**:
+Extra gain on the music for quiet tracks: Off, +3, +6, +9 or +12 dB. It is limited so it does not clip, and it is separate from the volume knob, which only lowers the level.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { POWER as R } from '@shared/layout'
 import { useEngine } from '../../engine/useEngine'
 import { setVolume } from '../../engine/commands'
-import { angleVolume, dragVolume, knobRotation, stepVolume } from '../powerMath'
+import { angleVolume, knobRotation, pointerAngle, stepVolume, turnVolume } from '../powerMath'
 import { PENDING_TIMEOUT_MS, settlePending, shownVolume, type Pending } from './knobValue'
 import './PowerKnob.css'
 
@@ -14,12 +14,12 @@ const { cx, cy, r } = R.KNOB
 const HIT_R = 140 // the knob plus its ring of scale dots (at ~131 design px), so a click beside the knob turns it too
 const CLICK_PX = 3 // a press that moves less than this (design px) is a click, not a drag
 
-/** Volume knob: a rotated copy of the knob disc over the static scale, driven by engine volume; drag up/down, wheel, or click on or around it to turn it to that spot. */
+/** Volume knob: a rotated copy of the knob disc over the static scale, driven by engine volume; grab and rotate, wheel, or click on or around it to turn it to that spot. */
 export default function PowerKnob({ scale }: { scale: number }) {
   const { options } = useEngine()
   const [pending, setPending] = useState<Pending>(null) // what the user just set, shown until the engine echoes
   const shown = shownVolume(pending, options.volume)
-  const drag = useRef<{ x: number; y: number; v: number; moved: boolean } | null>(null)
+  const drag = useRef<{ x: number; y: number; v: number; deg: number | null; moved: boolean } | null>(null)
   const queued = useRef<number | null>(null)
   const raf = useRef(0)
   useEffect(() => () => cancelAnimationFrame(raf.current), [])
@@ -54,14 +54,19 @@ export default function PowerKnob({ scale }: { scale: number }) {
         onPointerDown={(e) => {
           if (e.button !== 0) return
           e.currentTarget.setPointerCapture(e.pointerId)
-          drag.current = { x: e.clientX, y: e.clientY, v: shown, moved: false }
+          const box = e.currentTarget.getBoundingClientRect()
+          drag.current = { x: e.clientX, y: e.clientY, v: shown, deg: pointerAngle((e.clientX - box.left - box.width / 2) / scale, (e.clientY - box.top - box.height / 2) / scale), moved: false }
         }}
         onPointerMove={(e) => {
           const d = drag.current
           if (!d) return
           if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) / scale < CLICK_PX) return
           d.moved = true
-          set(dragVolume(d.v, (e.clientY - d.y) / scale))
+          const box = e.currentTarget.getBoundingClientRect()
+          const deg = pointerAngle((e.clientX - box.left - box.width / 2) / scale, (e.clientY - box.top - box.height / 2) / scale)
+          if (deg === null) return // near the centre: no direction, keep the last angle
+          if (d.deg !== null) { d.v = turnVolume(d.v, d.deg, deg); set(d.v) }
+          d.deg = deg
         }}
         onPointerUp={(e) => {
           const d = drag.current

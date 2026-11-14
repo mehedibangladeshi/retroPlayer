@@ -1,5 +1,5 @@
 import type { Album } from '@shared/protocol'
-import { formatDuration, trackRowName } from './trackRowName'
+import { formatDuration, mixedArtists, trackRowName } from './trackRowName'
 import './TrackRows.css'
 
 // The album's track rows (styles: TrackRows.css). Without onRowClick they are inert.
@@ -12,10 +12,11 @@ export default function TrackRows({ album, currentPath, selected = -1, pitch, ro
   padLeft: number
   onRowClick?: (e: React.MouseEvent, i: number) => void
 }) {
+  const showArtist = mixedArtists(album)
   return (
     <>
       {album.tracks.map((t, i) => {
-        const name = trackRowName(t, i, album.artist)
+        const name = trackRowName(t, i, showArtist, album.artist)
         const className = `pl-row${t.path === currentPath ? ' current' : ''}${i === selected ? ' selected' : ''}`
         const style = { height: pitch, lineHeight: `${pitch}px`, fontSize: rowFont, paddingLeft: padLeft }
         const body = (

@@ -32,7 +32,7 @@ export function parseEvent(line: string): EngineEvent | null {
 }
 
 // Commands the renderer may send. `loadSound` is main-process only, so it is not listed.
-const COMMAND_TYPES = new Set(['load', 'play', 'pause', 'stop', 'seek', 'seekRelative', 'playSound', 'stopSound', 'scanAlbum', 'loadAlbum', 'playIndex', 'setVolume', 'setLoop', 'setShuffle', 'next', 'previous'])
+const COMMAND_TYPES = new Set(['load', 'play', 'pause', 'stop', 'seek', 'seekRelative', 'playSound', 'stopSound', 'scanAlbum', 'loadAlbum', 'playIndex', 'setVolume', 'setLoop', 'setShuffle', 'setBoost', 'next', 'previous'])
 
 /** True if the path ends in a supported audio extension (case-insensitive). */
 function hasSupportedExtension(path: string): boolean {
@@ -51,6 +51,7 @@ export function isValidCommand(x: unknown): boolean {
   if (c.type === 'loadAlbum') return typeof c.path === 'string' && c.path.length > 0
   if (c.type === 'playIndex') return Number.isInteger(c.index) && (c.index as number) >= 0
   if (c.type === 'setVolume') return typeof c.volume === 'number' && Number.isFinite(c.volume)
+  if (c.type === 'setBoost') return typeof c.boostDb === 'number' && Number.isFinite(c.boostDb)
   if (c.type === 'setLoop' || c.type === 'setShuffle') return typeof c.on === 'boolean'
   if (c.type === 'seek') return typeof c.positionMs === 'number' && Number.isFinite(c.positionMs)
   if (c.type === 'seekRelative') return typeof c.deltaMs === 'number' && Number.isFinite(c.deltaMs)

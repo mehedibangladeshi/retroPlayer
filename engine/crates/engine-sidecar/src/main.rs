@@ -194,7 +194,7 @@ struct Opts {
 }
 
 fn options_event(player: &Player, opts: &Opts) -> Event {
-    Event::Options { volume: player.volume(), looped: opts.looped, shuffle: opts.shuffle }
+    Event::Options { volume: player.volume(), boost_db: player.boost_db(), looped: opts.looped, shuffle: opts.shuffle }
 }
 
 /// Shuffle seed from the clock, spread so close timestamps give unrelated orders.
@@ -306,6 +306,11 @@ fn dispatch(
         }
         Command::SetVolume { volume } => {
             player.set_volume(volume as f32);
+            send(options_event(player, opts));
+            Ok(())
+        }
+        Command::SetBoost { boost_db } => {
+            player.set_boost_db(boost_db as f32);
             send(options_event(player, opts));
             Ok(())
         }
@@ -436,6 +441,7 @@ fn main() {
                 // The player may be left half-updated (locks, streams), so discard it
                 // and start fresh rather than trust it; announce the fresh state.
                 let volume = player.volume();
+                let boost = player.boost_db();
                 let old = std::mem::replace(&mut player, {
                     let (p, ev) = Player::new();
                     spawn_forwarder(ev, tx.clone(), itx.clone());
@@ -453,6 +459,7 @@ fn main() {
                     }
                 }));
                 player.set_volume(volume);
+                player.set_boost_db(boost);
                 send(player.snapshot().into());
             }
         }

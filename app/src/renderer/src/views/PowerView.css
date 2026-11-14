@@ -19,3 +19,6 @@ body { background: transparent; overflow: hidden; }
 .pd-lamp { position: absolute; border-radius: 50%; pointer-events: none; }
 .pd-lamp.red { background: radial-gradient(circle, #ff8a80 0%, #ff3b30 60%); box-shadow: 0 0 6px 2px rgba(255, 59, 48, 0.7); }
 .pd-lamp.green { background: radial-gradient(circle, #a8f0bd 0%, #34c759 60%); box-shadow: 0 0 6px 2px rgba(52, 199, 89, 0.7); }
+/* BOOST lamp: dim when off (the only lamp with a visible off state) and its code-drawn label, in the app font. */
+.pd-lamp.off { background: #2a2f2a; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.7); }
+.pd-boost-text { position: absolute; text-align: center; font-size: 8px; line-height: 10px; letter-spacing: 1px; text-transform: uppercase; color: #8b9099; pointer-events: none; }

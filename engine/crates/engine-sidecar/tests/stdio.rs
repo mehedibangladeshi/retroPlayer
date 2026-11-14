@@ -94,6 +94,22 @@ fn startup_state_is_empty() {
     let v = s.next();
     assert_eq!((v["type"].as_str(), v["volume"].as_f64()), (Some("options"), Some(1.0)), "{v}");
     assert_eq!((v["loop"].as_bool(), v["shuffle"].as_bool()), (Some(false), Some(false)), "{v}");
+    assert_eq!(v["boostDb"].as_f64(), Some(0.0), "{v}");
+}
+
+#[test]
+fn set_boost_is_clamped_and_echoed() {
+    let mut s = Sidecar::spawn();
+    s.started();
+    s.send(r#"{"v":1,"type":"setBoost","boostDb":6}"#);
+    let v = s.next_event();
+    assert_eq!((v["type"].as_str(), v["boostDb"].as_f64()), (Some("options"), Some(6.0)), "{v}");
+    s.send(r#"{"v":1,"type":"setBoost","boostDb":99}"#);
+    assert_eq!(s.next_event()["boostDb"], 12.0, "clamped high");
+    s.send(r#"{"v":1,"type":"setBoost","boostDb":-3}"#);
+    assert_eq!(s.next_event()["boostDb"], 0.0, "clamped low");
+    s.send(r#"{"v":1,"type":"setBoost","boostDb":"x"}"#);
+    assert_error(&s.next_event(), "bad_message");
 }
 
 #[test]

@@ -530,7 +530,7 @@ function createWindow(): void {
       if (show) openSatellite(s)
       else s.win?.close()
     }
-    Menu.buildFromTemplate(contextMenu(items, toggle, { reset: () => void resetWindows(), fillGaps: fillGapsAction })).popup({ window: w })
+    Menu.buildFromTemplate(contextMenu(items, toggle, { reset: () => void resetWindows(), fillGaps: fillGapsAction }, { db: loadSettings().options?.boostDb ?? 0, set: (boostDb) => sidecar.send({ v: 1, type: 'setBoost', boostDb }) })).popup({ window: w })
   })
   // A right-click on a drag region also fires 'system-context-menu' (Windows, Linux) first, on the button press: only
   // suppress the OS window menu there. A menu shown from it is closed by the release, and two menus left none open on Windows.
