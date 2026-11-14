@@ -10,15 +10,17 @@ import { stackTopFirst, taskbarEntries } from './zorder.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 // A real OS pointer drag (x0, y0 in DIP; converted to what each OS's input API expects). Resolves when the button is up.
-function realDrag(x0, y0, dx, dy, scale, steps = 25) {
+// Runs the OS pointer script `name` (drag, rclick) with screen coordinates scaled to what that OS expects.
+function realPointer(name, coords, scale, ...rest) {
   const px = (v) => String(Math.round(v * (process.platform === 'darwin' ? 1 : scale)))
-  const args = [px(x0), px(y0), px(dx), px(dy), String(steps)]
+  const args = [...coords.map(px), ...rest.map(String)]
   const [cmd, argv] =
-    process.platform === 'win32' ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'drag-win.ps1'), ...args]]
-    : process.platform === 'darwin' ? ['swift', [join(here, 'drag-mac.swift'), ...args]]
-    : ['python3', [join(here, 'drag-linux.py'), ...args]]
+    process.platform === 'win32' ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, `${name}-win.ps1`), ...args]]
+    : process.platform === 'darwin' ? ['swift', [join(here, `${name}-mac.swift`), ...args]]
+    : ['python3', [join(here, `${name}-linux.py`), ...args]]
   return new Promise((res, rej) => spawn(cmd, argv, { stdio: 'inherit' }).on('exit', (c) => (c === 0 ? res() : rej(new Error(`${cmd} exited ${c}`)))))
 }
+const realDrag = (x0, y0, dx, dy, scale, steps = 25) => realPointer('drag', [x0, y0, dx, dy], scale, steps)
 
 const [appDir, ud, ...extra] = process.argv.slice(2)
 const electron = execFileSync('node', ['-e', "console.log(require('electron'))"], { cwd: appDir }).toString().trim().split(/\r?\n/).pop() // first use may print a download line first
@@ -461,15 +463,17 @@ r = await R(app.ev)
 
 // The player's right-click menu, live: the real 'context-menu' handler builds it; popup() is intercepted so the menu is
 // captured instead of shown. `click` picks the submenu item with that label.
-const menu = (click = '') => app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
+// Each call waits out the app's 300 ms one-menu-per-click guard (oncePerClick), so it counts as a new right-click.
+const menu = async (click = '') => (await sleep(350), app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
   Menu.prototype.popup = function () { m = this }
   try { byId('player').webContents.emit('context-menu', { preventDefault() {} }, {}) } finally { Menu.prototype.popup = orig }
   const items = m.items[0].submenu.items; items.find((i) => i.label === ${JSON.stringify(click)})?.click()
-  return items.map((i) => [i.label, i.checked])`)
+  return items.map((i) => [i.label, i.checked])`))
 const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), path = process.mainModule.require('path');
   return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8')).hiddenWindows ?? []`)
 {
   // The live menu's Keyboard Shortcuts submenu: Electron accepts every key, and shows them without binding them.
+  await sleep(350) // the app's one-menu-per-click guard
   const keys = await app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
     Menu.prototype.popup = function () { m = this }
     try { byId('player').webContents.emit('context-menu', { preventDefault() {} }, {}) } finally { Menu.prototype.popup = orig }
@@ -609,7 +613,7 @@ const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), p
     const p = await w.webContents.executeJavaScript(\`(() => { const cp = document.querySelector('.cp'); const r = cp.getBoundingClientRect();
       for (let y = r.top + 40; y < r.bottom - 20; y += 8) for (let x = r.left + 40; x < r.right - 20; x += 8) {
         const e = document.elementFromPoint(x, y); if (e && cp.contains(e) && !e.closest('button, .cp-menu')) return { x, y } } return null })()\`);
-    return p && { x: c.x + p.x, y: c.y + p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
+    return p && { x: c.x + p.x, y: c.y + p.y, ox: p.x, oy: p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
   const start = await R(app.ev)
   const dx = 100 // the five-window group is about 2.7 player heights wide: room for this on a 1024 px screen
   const dy = 0 // horizontal: the player has windows above it and little room below on small screens
@@ -642,6 +646,17 @@ const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), p
   check('real drag: the OS moved the player', mx >= dx / 2 && Math.abs(my) <= 10, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
   check('real drag: docked windows flush after the drop', fiveDocked(r), fmt(r))
   check('real drag: docked windows follow during the drag', samples > 0 && flushSamples / samples >= 0.8, `${flushSamples}/${samples} mid-drag samples flush`)
+
+  // A real right-click on the same spot of the body (a drag region) opens the app's menu exactly once: Windows and Linux
+  // report it twice (page and system menu), and two menus back to back left none open on Windows.
+  // popup() is recorded instead of shown so nothing blocks the main process.
+  await app.ev(`const { Menu } = process.mainModule.require('electron'); globalThis.__pops = [];
+    globalThis.__popOrig = Menu.prototype.popup; Menu.prototype.popup = function () { __pops.push(this.items.map((i) => i.label)) }`)
+  const at = await app.ev(`const w = byId('player'); const c = w.getContentBounds(); return { x: c.x + ${pt.ox}, y: c.y + ${pt.oy} }`)
+  await realPointer('rclick', [at.x, at.y], pt.scale)
+  await sleep(500)
+  const pops = await app.ev(`process.mainModule.require('electron').Menu.prototype.popup = __popOrig; return __pops`)
+  check('real right-click on the body: opens the app menu once', pops.length === 1 && pops[0][0] === 'Windows', `${fmt(pops)} at ${fmt(at)}`)
 }
 
 const quit = async () => {

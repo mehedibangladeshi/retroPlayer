@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { contextMenu, parseHidden, setHidden } from '../src/main/contextMenu.ts'
+import { contextMenu, oncePerClick, parseHidden, setHidden } from '../src/main/contextMenu.ts'
 
 const windows = [
   { label: 'Playlist', visible: true },
@@ -52,4 +52,14 @@ test('parseHidden: keeps only window ids from a hand-edited or corrupt file', ()
   assert.deepEqual(parseHidden(['album', 3, '', 'rack', null]), ['album', 'rack'])
   assert.equal(parseHidden('album'), undefined)
   assert.equal(parseHidden(undefined), undefined)
+})
+
+test('oncePerClick: one right-click that fires two events (page and system menu) opens the menu once', () => {
+  let shown = 0
+  const show = oncePerClick(() => shown++)
+  show(1000)
+  show(1040) // the same click's second event
+  assert.equal(shown, 1)
+  show(1400) // a new click
+  assert.equal(shown, 2)
 })

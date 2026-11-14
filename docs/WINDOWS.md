@@ -56,7 +56,9 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    lists every side window with a checkmark for visible; picking one shows or hides it (`app/src/main/contextMenu.ts`).
    Its Keyboard Shortcuts submenu lists every shortcut with its key, for display only (the windows handle the keys).
    Closed windows are saved (`hiddenWindows` in settings.json) and stay closed at the next launch until shown again.
-   On Windows the drag region's OS window menu (`system-context-menu`) is replaced by this menu.
+   On Windows the drag region's OS window menu (`system-context-menu`) is replaced by this menu. Windows and Linux report a
+   right-click on a drag region twice (`system-context-menu` and the page's `context-menu`), so the menu opens once per
+   click (`oncePerClick`): two menus back to back leave none open on Windows.
 
 ## Docking
 

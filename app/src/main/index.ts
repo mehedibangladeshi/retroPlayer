@@ -9,7 +9,7 @@ import { clampInto, expandedAt, shadedBounds } from './shade'
 import { fitGroup, inferDocks, layout, matchHeight, overlaps, snap, subtree, type Docks, type Rect } from './dock'
 import { x11Relaunch } from './platform'
 import { isValidCommand } from './ndjson'
-import { contextMenu, setHidden } from './contextMenu'
+import { contextMenu, oncePerClick, setHidden } from './contextMenu'
 import { loadSettings, saveSettings, type WindowState } from './settings'
 import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, type Session } from './session'
@@ -461,7 +461,7 @@ function createWindow(): void {
   w.webContents.on('did-start-loading', stopMotor)
   w.webContents.on('did-finish-load', () => sidecar.resendState(w))
   // Right-click anywhere on the player: native menu to show or hide the other windows (a closed one only hides).
-  const showMenu = (): void => {
+  const showMenu = oncePerClick((): void => {
     const items = satellites.map((s) => ({ label: s.title.replace('Cassette Player: ', ''), visible: live(s.win) && s.win.isVisible() }))
     const toggle = (i: number, show: boolean): void => {
       const s = satellites[i]
@@ -469,9 +469,10 @@ function createWindow(): void {
       else s.win?.close()
     }
     Menu.buildFromTemplate(contextMenu(items, toggle)).popup({ window: w })
-  }
-  w.webContents.on('context-menu', showMenu)
-  // Windows: a right-click on a drag region opens the OS window menu instead of reaching the page.
+  })
+  w.webContents.on('context-menu', () => showMenu())
+  // A right-click on a drag region also comes as 'system-context-menu' (Windows, Linux): replace the OS window menu.
+  // oncePerClick keeps it to one menu, as two back to back left none open on Windows.
   w.on('system-context-menu', (e) => {
     e.preventDefault()
     showMenu()

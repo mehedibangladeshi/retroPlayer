@@ -46,6 +46,17 @@ export function contextMenu(
   ]
 }
 
+// Linux reports one right-click on a drag region twice (the page's 'context-menu' and 'system-context-menu'):
+// calls within 300 ms of the last shown menu are the same click.
+export function oncePerClick(show: () => void): (now?: number) => void {
+  let last = -Infinity
+  return (now = Date.now()) => {
+    if (now - last < 300) return
+    last = now
+    show()
+  }
+}
+
 // Side windows the user closed (by their hash), saved so they stay closed at the next launch.
 export function setHidden(list: string[] | undefined, hash: string, hidden: boolean): string[] {
   const rest = (list ?? []).filter((h) => h !== hash)
