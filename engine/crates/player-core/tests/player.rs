@@ -188,3 +188,34 @@ fn load_then_play_sound_and_reload_while_playing() {
     p.load_sound("click", &fixture()).unwrap();
     p.play_sound("click").unwrap();
 }
+
+#[test]
+#[ignore = "needs an audio output device; run with --ignored"]
+fn device_volume_scales_the_measured_output() {
+    let Some((mut p, _rx)) = loaded() else { return };
+    assert_eq!(p.volume(), 1.0);
+    // Long enough to measure twice: the fixture is 250 ms, so restart for each.
+    p.play().unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    let loud = p.levels().expect("levels after playing").rms;
+    assert!(loud > 0.05, "rms at volume 1 was {loud}");
+
+    p.set_volume(0.0);
+    assert_eq!(p.volume(), 0.0);
+    p.stop().unwrap();
+    p.play().unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    let muted = p.levels().unwrap().rms;
+    assert!(muted < 1e-4, "rms at volume 0 was {muted}");
+}
+
+#[test]
+fn volume_defaults_to_one_and_levels_need_an_output() {
+    let (p, _rx) = Player::new();
+    assert_eq!(p.volume(), 1.0);
+    assert!(p.levels().is_none());
+    p.set_volume(0.25);
+    assert_eq!(p.volume(), 0.25);
+    p.set_volume(3.0);
+    assert_eq!(p.volume(), 1.0);
+}
