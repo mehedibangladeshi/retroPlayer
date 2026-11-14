@@ -94,6 +94,9 @@ export const RACK = {
   // Connected components of the top layer (2x 3081,22 59x59 and 3148,22 59x59).
   MINIMIZE: { x: 1540.5, y: 11, w: 29.5, h: 29.5 },
   CLOSE: { x: 1574, y: 11, w: 29.5, h: 29.5 },
+  /** Nine-slice borders (design px) for free resizing: they hold the title and top scratch (2x x<=679, y<=118), buttons,
+   *  lamps, grip and the panel's rounded corners (panel 2x 35,130 3172x1690); only plain frame and panel stretch. */
+  SLICE: { top: 90, right: 100, bottom: 60, left: 360 },
 } as const
 
 /** Playlist window. CSS px, origin = top-left of the window; art files are ASSET_SCALE (2x) of their rect, paths relative to assets/ui. See "Playlist window" in assets/ui/MANIFEST.md. */
@@ -124,6 +127,9 @@ export const PLAYLIST = {
   // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60.
   MINIMIZE: { x: 862, y: 14.5, w: 30, h: 30 },
   CLOSE: { x: 895.5, y: 14.5, w: 30, h: 30 },
+  /** Nine-slice borders (design px) for free resizing: they hold "Track List" and its dashes (x<=228), the buttons,
+   *  footer, lamps and grip, and every edge of TEXT_AREA, COVER and the paper, so those grow exactly with the window. */
+  SLICE: { top: 100, right: 100, bottom: 75, left: 240 },
   // Montserrat variable font (SIL OFL), file assets/ui/playlist/fonts/Montserrat-VariableFont_wght.ttf; falls back to sans-serif.
   FONT_FAMILY: 'Montserrat',
   // Screen px, the same at every window size (not design px). Picked by the owner from a preview; a future setting.

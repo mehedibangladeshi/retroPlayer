@@ -34,6 +34,16 @@ export function sizeLimits(aspect: number): { minWidth: number; minHeight: numbe
   return { minWidth: Math.round(MIN_H * aspect), minHeight: MIN_H, maxWidth: Math.round(MAX_H * aspect), maxHeight: MAX_H }
 }
 
+type Limits = { minWidth: number; maxWidth: number; minHeight: number; maxHeight: number }
+const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(lo, hi), Math.max(lo, Math.round(v)))
+// A saved size brought inside the window's limits and the work area: a corrupt or hand-edited settings.json must not
+// open a window larger than the screen. `aspect` null is a free window (playlist, rack): width and height on their own.
+export function fitSize(saved: { width: number; height: number }, aspect: number | null, l: Limits, area: { width: number; height: number }): { width: number; height: number } {
+  if (aspect === null) return { width: clamp(saved.width, l.minWidth, Math.min(l.maxWidth, area.width)), height: clamp(saved.height, l.minHeight, Math.min(l.maxHeight, area.height)) }
+  const width = clamp(saved.width, l.minWidth, Math.min(l.maxWidth, area.width, Math.floor(area.height * aspect)))
+  return { width, height: Math.round(width / aspect) }
+}
+
 interface Box { x: number; y: number; width: number; height: number }
 // A user resize (`cur`, from `rest`) brought back to the window's aspect and limits. The dimension the user changed most
 // leads; an edge the user moved stays where it is, so the opposite edge moves.

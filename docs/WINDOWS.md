@@ -22,17 +22,21 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    Engine commands are accepted only from windows that need them (today the player and the playlist).
 6. Created with `show: false`, then shown on `ready-to-show`.
 7. Content size equals window size (`useContentSize: true`). The view scales its fixed design composition to the
-   window, so its artwork coordinates stay in design px. Text may keep a fixed screen size instead: the playlist divides
+   window, so its artwork coordinates stay in design px. A free window (rule 8) scales by its tighter side and grows the
+   composition to fill the rest (`stretchFit`): its art layers are drawn nine-slice (`nineSlice`, borders in `SLICE` in
+   `layout.ts`) so the corners keep the title, buttons, lamps and grip, and only plain frame stretches. Text may keep a fixed screen size instead: the playlist divides
    `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`).
-8. User-resizable, in proportion and within fixed limits: every window's height stays within 308..924 px (50%..150% of
-   the player's design height), and its width follows its design aspect (`sizeLimits` in `windowSize.ts`, passed as
-   the window's min and max size, plus `setAspectRatio`). An X11 window manager (KWin) does not enforce the aspect on
-   an edge resize, so when a user resize ends the window is brought back in proportion (`proportional`): the dimension
-   the user changed most leads, and the edge the user moved stays put.
+8. User-resizable within fixed limits: every window's height stays within 308..924 px (50%..150% of the player's
+   design height), and its width within the widths its design aspect gives at those heights (`sizeLimits` in
+   `windowSize.ts`, passed as the window's min and max size). The player, album and power deck keep their design
+   aspect (`setAspectRatio`). An X11 window manager (KWin) does not enforce the aspect on an edge resize, so when a user
+   resize ends the window is brought back in proportion (`proportional`): the dimension the user changed most leads,
+   and the edge the user moved stays put. The playlist and the cassette rack are **free** (`free: true` in
+   `satellites`): their width and height change independently, with no aspect lock and no proportion fix.
 
 ## Side windows
 
-1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, size limits
+1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, `free`, size limits
    (`...sizeLimits(aspect)`) and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
 2. Opens at launch with the player (after the player is shown, so it can dock), unless the user hid it.
 3. No taskbar or Dock entry of its own: the app has one icon, and activating it (a taskbar or Dock click) brings every
@@ -41,10 +45,12 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    taskbars fold a transient window into its main window (KWin ignores `skipTaskbar` for XWayland windows). macOS has
    one Dock icon per app anyway, and there only docked windows are children (a child window moves with its parent).
    Closing it only hides it, and quitting closes it for real. Its bounds are saved under its settings key.
-4. User-resizable on its own (`resizable: true`), keeping its design aspect ratio (`setAspectRatio`). It opens at the
-   player's height the first time (`matchHeight`), then at its saved size. Resizing the player never resizes it. A
-   docked window keeps its dock while it is resized: it is placed flush against its anchor again (a drag on its docked
-   edge grows it the other way), and windows docked to it follow. A shaded window is not resizable.
+4. User-resizable on its own (`resizable: true`), keeping its design aspect ratio (`setAspectRatio`) unless it is free
+   (rule 8 above). It opens at the player's height and its design shape the first time (`matchHeight`), then at its
+   saved size. A shaded free window's bar is drawn at the scale its art had (`shadedBounds` with the design height).
+   Resizing the player never resizes it. A docked window keeps its dock while it is resized: it is placed flush against
+   its anchor again (a drag on its docked edge grows it the other way), and windows docked to it follow. A shaded
+   window is not resizable.
 5. Exactly one drag region: a childless strip in its top bar, to the left of minimize and close. Nothing else in the
    view sets `-webkit-app-region`. `app/test/dragRegions.test.ts` enforces this, so add the new view to that test.
 6. Minimize does not minimize. It rolls the window up into its top bar (the window shade) and back. It needs a `SHADE`
@@ -110,6 +116,7 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
 - [ ] Its view is covered by `app/test/dragRegions.test.ts`.
 - [ ] `scripts/e2e/dock.mjs` covers it: it docks on each side, follows a player drag, tears off and snaps back, has no
       taskbar entry of its own, comes forward when the player is activated, keeps its dock when it or the player is
-      resized, and has the shared size limits and ends a resize in proportion.
+      resized, and has the shared size limits and ends a resize in proportion (or, if free, keeps its new width and
+      height).
       Run the script locally and on CI (`.github/workflows/dock-e2e.yml`) on Linux, Windows and macOS.
 - [ ] `docs/ARCHITECTURE.md` and this file are updated if anything changed.

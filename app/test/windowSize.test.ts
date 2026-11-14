@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { defaultPlayerSize, migrateSettings, proportional, sizeLimits, LAYOUT_VERSION } from '../src/main/windowSize.ts'
+import { defaultPlayerSize, fitSize, migrateSettings, proportional, sizeLimits, LAYOUT_VERSION } from '../src/main/windowSize.ts'
 
 const A = 767 / 616
 
@@ -63,4 +63,18 @@ test('proportional: a size already in proportion is left alone', () => {
 test('proportional: a window manager rounding (within 2 px of the aspect) is left alone', () => {
   const cur = { x: 1, y: 2, width: 480, height: 387 } // openbox's aspect rounding of 480x386
   assert.deepEqual(proportional(cur, { x: 1, y: 2, width: 480, height: 386 }, 767 / 616, sizeLimits(767 / 616)), cur)
+})
+
+const area = { width: 1920, height: 1040 }
+test('fitSize: a proportional window keeps its aspect, clamped to its limits and the work area', () => {
+  const l = sizeLimits(1)
+  assert.deepEqual(fitSize({ width: 600, height: 400 }, 1, l, area), { width: 600, height: 600 })
+  assert.deepEqual(fitSize({ width: 5000, height: 5000 }, 1, l, area), { width: 924, height: 924 })
+  assert.deepEqual(fitSize({ width: 900, height: 900 }, 1, l, { width: 1920, height: 700 }), { width: 700, height: 700 })
+})
+test('fitSize: a free window (no aspect) keeps its own width and height, each clamped', () => {
+  const l = sizeLimits(1623 / 936) // the rack: 534..1602 wide, 308..924 tall
+  assert.deepEqual(fitSize({ width: 1200, height: 320 }, null, l, area), { width: 1200, height: 320 })
+  assert.deepEqual(fitSize({ width: 100, height: 5000 }, null, l, area), { width: 534, height: 924 })
+  assert.deepEqual(fitSize({ width: 1500, height: 900 }, null, l, { width: 1000, height: 600 }), { width: 1000, height: 600 })
 })
