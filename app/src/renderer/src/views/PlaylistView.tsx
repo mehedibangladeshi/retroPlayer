@@ -9,6 +9,7 @@ import { SHADE } from '@shared/shade'
 import { rowClickAction, rowKeyAction } from './rowKeys'
 import { MARQUEE_DELAY_MS, marquee } from './marquee'
 import { textMetrics } from './playlistText'
+import TrackRows from './TrackRows'
 import TitleText from './TitleText'
 import { nineSlice } from './stretchFit'
 import { useStretchFit } from './useStretchFit'
@@ -20,14 +21,6 @@ const layerUrl = (id: string): string => {
   const hit = Object.entries(urls).find(([k]) => k.endsWith(`/${file}`))
   if (!hit) throw new Error(`missing artwork ${file}`)
   return hit[1]
-}
-
-const fmt = (ms: number | null): string => {
-  if (ms == null) return ''
-  const s = Math.floor(ms / 1000)
-  const h = Math.floor(s / 3600)
-  const ss = String(s % 60).padStart(2, '0')
-  return h ? `${h}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${ss}` : `${Math.floor(s / 60)}:${ss}`
 }
 
 const rectStyle = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h })
@@ -135,29 +128,21 @@ export default function PlaylistView() {
               <button type="button" onClick={() => void openAlbum()}>Open album…</button>
             </div>
           )}
-          {album?.tracks.map((t, i) => {
-            const artist = t.artist ?? album.artist
-            const name = `${String(i + 1).padStart(2, '0')}. ${artist ? `${artist} – ` : ''}${t.title}`
-            return (
-              <button
-                key={t.path}
-                type="button"
-                title={name}
-                className={`pl-row${t.path === trackInfo?.path ? ' current' : ''}${i === selected ? ' selected' : ''}`}
-                style={{ height: text.pitch, lineHeight: `${text.pitch}px`, fontSize: text.row, paddingLeft: P.ROW.x - P.TEXT_AREA.x }}
-                onClick={(e) => {
-                  setSel({ album, i })
-                  // detail is 0 for a keyboard-fired click; Enter is handled by the keydown listener.
-                  if (rowClickAction(e.detail, i)?.type === 'play') playIndex(i)
-                }}
-              >
-                <span className="pl-name">
-                  <span className="pl-text">{name}</span>
-                </span>
-                <span className="pl-dur">{fmt(t.durationMs)}</span>
-              </button>
-            )
-          })}
+          {album && (
+            <TrackRows
+              album={album}
+              currentPath={trackInfo?.path}
+              selected={selected}
+              pitch={text.pitch}
+              rowFont={text.row}
+              padLeft={P.ROW.x - P.TEXT_AREA.x}
+              onRowClick={(e, i) => {
+                setSel({ album, i })
+                // detail is 0 for a keyboard-fired click; Enter is handled by the keydown listener.
+                if (rowClickAction(e.detail, i)?.type === 'play') playIndex(i)
+              }}
+            />
+          )}
         </div>
 
         <button type="button" className={`pl-chrome${shaded ? ' shaded' : ''}`} aria-label={shaded ? 'Restore' : 'Roll up'} style={rectStyle(right(P.MINIMIZE, dw))} onClick={() => window.retro.toggleShade()} />

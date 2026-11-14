@@ -31,11 +31,12 @@ test('no view but the playlist picks another font', () => {
   }
 })
 
-test('the rack spine text is Montserrat, loaded like the playlist does', () => {
+test('the rack spine text and tracklist preview are Montserrat, loaded like the playlist does', () => {
   assert.match(read('views/RackView.tsx'), /Montserrat-VariableFont_wght\.ttf\?url/)
   assert.match(read('views/RackView.tsx'), /@font-face \{ font-family: 'Montserrat'/)
   assert.match(read('views/RackView.css'), /\.rk-spine-text\s*\{[^}]*font-family:\s*'Montserrat'/)
-  assert.doesNotMatch(read('views/RackView.css').replace(/\.rk-spine-text[^}]*\}/, ''), /font-family:\s*(?!inherit)/)
+  assert.match(read('views/RackView.css'), /\.rk-preview\s*\{[^}]*font-family:\s*'Montserrat'/)
+  assert.doesNotMatch(read('views/RackView.css').replace(/\.rk-(spine-text|preview)\s*\{[^}]*\}/g, ''), /font-family:\s*(?!inherit)/)
 })
 
 test('Hillside Sans is not bundled or named in the app', () => {

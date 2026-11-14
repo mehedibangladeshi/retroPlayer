@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { IPC, type RetroApi } from '@shared/api'
-import type { EngineEvent } from '@shared/protocol'
+import type { Album, EngineEvent } from '@shared/protocol'
 import type { RackState } from '@shared/rack'
 
 const api: RetroApi = {
@@ -28,6 +28,7 @@ const api: RetroApi = {
     }
   },
   getRack: () => ipcRenderer.invoke(IPC.rackGet) as Promise<RackState>,
+  doubleClickMs: () => ipcRenderer.invoke(IPC.doubleClickMs) as Promise<number>,
   onRack: (cb) => {
     const listener = (_e: IpcRendererEvent, s: RackState): void => cb(s)
     ipcRenderer.on(IPC.rackChanged, listener)
@@ -38,7 +39,8 @@ const api: RetroApi = {
   rackPlay: (dir) => ipcRenderer.send(IPC.rackPlay, dir),
   rackAdd: (dirs) => ipcRenderer.send(IPC.rackAdd, dirs),
   rackReorder: (dirs) => ipcRenderer.send(IPC.rackReorder, dirs),
-  rackMenu: (dir) => ipcRenderer.send(IPC.rackMenu, dir)
+  rackMenu: (dir) => ipcRenderer.send(IPC.rackMenu, dir),
+  rackTracks: (dir) => ipcRenderer.invoke(IPC.rackTracks, dir) as Promise<Album | null>
 }
 
 contextBridge.exposeInMainWorld('retro', api)

@@ -11,3 +11,7 @@ _Avoid_: tile, card
 **Sort mode**:
 The ordering of the rack: Recent (by when each album was last loaded) or Custom (the order the owner dragged the spines into).
 _Avoid_: view, filter
+
+**Preview**:
+The read-only tracklist that slides out of a spine on a single click in the rack.
+_Avoid_: popup, peek, details

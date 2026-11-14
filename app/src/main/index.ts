@@ -18,6 +18,8 @@ import { Sidecar } from './sidecar'
 import { record, remove, reorder, setSort, view, type RackFile } from './rack'
 import { loadRack, makeSpine, saveRack } from './rackStore'
 import { dirArg, dirsArg, rackMenuTemplate } from './rackIpc'
+import { scanWaiter } from './rackTracks'
+import { DOUBLE_CLICK_FALLBACK_MS, readDoubleClickMs } from './dblclick'
 // Bundled into out/ by electron-vite; packaged builds also get it as the .icns/.ico via electron-builder.
 import icon from '../../build/icon.png?asset'
 
@@ -94,7 +96,11 @@ const sidecar = new Sidecar(
     if (o.save) saveSettings({ options: o.save })
     if (o.sync) for (const c of optionsCommands(loadSettings().options)) sidecar.send(c)
     if (evt.type === 'playlist') sessionAlbum = evt.album
-    if ((evt.type === 'playlist' || evt.type === 'albumInfo') && evt.album) setRack(record(rackFile, makeSpine(evt.album), Date.now()))
+    if (evt.type === 'error' && evt.code === 'engine_crashed') previewScans.reset()
+    // A rack preview's answer must not bump the album in Recent.
+    const preview = evt.type === 'albumInfo' && previewScans.answer(evt.path, evt.album)
+    if (preview && !evt.album) setRack(remove(rackFile, evt.path)) // unreadable folder (a timeout keeps the spine)
+    if ((evt.type === 'playlist' || evt.type === 'albumInfo') && evt.album && !preview) setRack(record(rackFile, makeSpine(evt.album), Date.now()))
     restoreLeft = restoreStep(restoreLeft, evt)
     if (restoreLeft > 0) return
     const next = nextSession(session, sessionAlbum, evt)
@@ -103,6 +109,7 @@ const sidecar = new Sidecar(
     if (evt.type === 'state' || Date.now() - sessionSavedAt >= SESSION_SAVE_MS) saveSession()
   }
 )
+const previewScans = scanWaiter((path) => sidecar.send({ v: 1, type: 'scanAlbum', path }), 5000)
 const devUrl = process.env.ELECTRON_RENDERER_URL
 
 function fromAppWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
@@ -832,6 +839,16 @@ if (relaunch) {
     return dir
   })
   ipcMain.handle(IPC.rackGet, (e) => (fromAppWindow(e) ? view(rackFile) : null))
+  const doubleClickMs = readDoubleClickMs()
+  ipcMain.handle(IPC.doubleClickMs, (e) => (fromAppWindow(e) ? doubleClickMs : DOUBLE_CLICK_FALLBACK_MS))
+  ipcMain.handle(IPC.rackTracks, async (e, arg: unknown) => {
+    const dir = dirArg(arg)
+    if (!fromAppWindow(e) || !dir || !rackFile.entries.some((x) => x.dir === dir)) return null
+    // The preview lists tracks only, so don't ship the (up to ~10 MB) cover data URL to the renderer.
+    if (existsSync(dir)) return previewScans.request(dir).then((a) => a && { ...a, cover: null })
+    setRack(remove(rackFile, dir))
+    return null
+  })
   ipcMain.on(IPC.rackPlay, (e, arg: unknown) => {
     const dir = dirArg(arg)
     if (!fromAppWindow(e) || !dir || !rackFile.entries.some((x) => x.dir === dir)) return
