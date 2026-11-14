@@ -24,8 +24,8 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
 7. Content size equals window size (`useContentSize: true`). The view scales its fixed design composition to the
    window, so its artwork coordinates stay in design px. A free window (rule 8) scales by its tighter side and grows the
    composition to fill the rest (`stretchFit`): its art layers are drawn nine-slice (`nineSlice`, borders in `SLICE` in
-   `layout.ts`) so the corners keep the title, buttons, lamps and grip, and only plain frame stretches. Text may keep a fixed screen size instead: the playlist divides
-   `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`).
+   `layout.ts`) so the corners keep the title, buttons, lamps and grip, and only plain frame stretches. Text may keep a
+   fixed screen size instead: the playlist divides `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`).
 8. User-resizable within limits that depend on the display the window is on. With `H` the work-area height of that
    display: the height stays within `minHeight = clamp(round(0.30·H), 200, 308)` and
    `maxHeight = max(minHeight, min(round(0.90·H), 2 × the window's design height))`, and the width within the widths its
