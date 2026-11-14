@@ -14,6 +14,15 @@ export function dragVolume(startVolume: number, dyDesignPx: number): number {
   return clamp01(startVolume - dyDesignPx / 200)
 }
 
+/** Click at (dx, dy) design px from the knob centre: the volume whose pointer points there (0 lower left, 10 lower
+ *  right, 5 straight up). The dead zone at the bottom snaps to the nearer end; too near the centre gives null. */
+export function angleVolume(dx: number, dy: number): number | null {
+  if (Math.hypot(dx, dy) < 8) return null
+  const deg = (Math.atan2(dx, -dy) * 180) / Math.PI // 0 = up, clockwise positive, -180..180
+  if (Math.abs(deg) > 135) return dx < 0 ? 0 : 1
+  return (deg + 135) / KNOB_SWEEP
+}
+
 /** Wheel / arrow keys: one VOLUME_STEP up or down, clamped, rounded to avoid float drift. */
 export function stepVolume(volume: number, dir: -1 | 1): number {
   return Math.round(clamp01(volume + dir * VOLUME_STEP) * 1000) / 1000

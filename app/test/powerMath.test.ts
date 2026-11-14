@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  knobRotation, dragVolume, stepVolume, seekAt, needleAngle, decay,
+  knobRotation, dragVolume, stepVolume, seekAt, needleAngle, decay, angleVolume,
 } from '../src/renderer/src/views/powerMath.ts'
 
 test('knobRotation maps 0..1 to -225..45 with the baked pointer at 0.8333', () => {
@@ -50,4 +50,15 @@ test('decay rises at once and falls gradually', () => {
   const d = decay(0.8, 0.1, 100, 0.001)
   assert.ok(Math.abs(d - 0.7) < 1e-9)
   assert.equal(decay(0.5, 0.1, 1e6, 0.001), 0.1)
+})
+
+test('angleVolume: a click around the knob turns it to that angle', () => {
+  const near = (a: number, b: number): void => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`)
+  near(angleVolume(0, -50) as number, 0.5) // straight up = 5
+  near(angleVolume(50, 0) as number, 225 / 270) // 3 o'clock = the baked pointer
+  near(angleVolume(-50, 50) as number, 0) // 0 mark (lower left)
+  near(angleVolume(50, 50) as number, 1) // 10 mark (lower right)
+  assert.equal(angleVolume(-10, 100), 0) // dead zone at the bottom snaps to the nearer end
+  assert.equal(angleVolume(10, 100), 1)
+  assert.equal(angleVolume(1, 1), null) // too close to the centre to have an angle
 })

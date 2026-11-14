@@ -540,3 +540,9 @@ Why: The owner wants windows arranged as tiles. Aligning either edge and snappin
 Decision: `Windows → Reset Windows` (`resetWindows`) does what a first launch does. All four side windows are shown and unshaded, `hiddenWindows` is cleared, the player goes to its default size on its display, the side windows go to the player's height, `DEFAULT_DOCKS` applies, the group is nudged onto the work area, and the bounds are saved once every window is shown.
 
 Why: The owner chose to show closed windows too, so one action gives a known layout after windows have been closed or moved out of reach.
+
+## 2026-11-14 — Volume knob: grab cursor and click to turn
+
+Decision: The volume knob shows the grab cursor (grabbing while held). A press that moves less than 3 design px is a click, and it turns the knob to point at the click (`angleVolume`): straight up is 5, the lower-left mark 0, the lower-right mark 10, the gap at the bottom snaps to the nearer end, and the centre does nothing. The clickable circle is 140 design px in radius, covering the knob and its ring of scale dots. Vertical drag, wheel and arrow keys stay as they were. Only the left button turns it, so a right-click still opens the menu.
+
+Why: The owner wants to grab the knob and to set the volume by clicking on or around it, like a real dial.
