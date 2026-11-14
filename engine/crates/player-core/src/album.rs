@@ -266,11 +266,13 @@ pub fn scan_album(dir: &Path) -> Result<Album, PlayerError> {
 pub struct Playlist {
     album: Album,
     current: Option<usize>,
+    /// Album indices in play order; empty means album order (Shuffle off).
+    order: Vec<usize>,
 }
 
 impl Playlist {
     pub fn new(album: Album) -> Self {
-        Self { album, current: None }
+        Self { album, current: None, order: Vec::new() }
     }
 
     pub fn album(&self) -> &Album {
@@ -288,7 +290,69 @@ impl Playlist {
     }
 
     pub fn advance(&mut self) -> Option<&Path> {
-        self.select(self.current? + 1)
+        self.next()
+    }
+
+    /// Turn Shuffle on or off; the current track stays. On: it plays first, the rest follow
+    /// in an order drawn from `seed`. Off: album order.
+    pub fn set_shuffle(&mut self, on: bool, seed: u64) {
+        self.order = if on { self.shuffled(self.current.unwrap_or(0), seed) } else { Vec::new() };
+    }
+
+    pub fn shuffle(&self) -> bool {
+        !self.order.is_empty()
+    }
+
+    /// Select `index` and rebuild the shuffled order with it first.
+    pub fn reshuffle_from(&mut self, index: usize, seed: u64) {
+        if self.select(index).is_some() {
+            self.order = self.shuffled(index, seed);
+        }
+    }
+
+    /// Next track in play order; None at its end.
+    #[allow(clippy::should_implement_trait)] // returns the path and moves the cursor, not an Iterator
+    pub fn next(&mut self) -> Option<&Path> {
+        let pos = self.position()?;
+        self.select_at(pos + 1)
+    }
+
+    /// Previous track in play order; on the first, the current track again (caller restarts it).
+    pub fn previous(&mut self) -> Option<&Path> {
+        let pos = self.position()?;
+        self.select_at(pos.saturating_sub(1))
+    }
+
+    /// Where the current track sits in the play order.
+    fn position(&self) -> Option<usize> {
+        let cur = self.current?;
+        if self.order.is_empty() {
+            Some(cur)
+        } else {
+            self.order.iter().position(|&i| i == cur)
+        }
+    }
+
+    fn select_at(&mut self, pos: usize) -> Option<&Path> {
+        let index = if self.order.is_empty() { pos } else { *self.order.get(pos)? };
+        self.select(index)
+    }
+
+    /// `first`, then every other index in random order (Fisher-Yates over xorshift64).
+    fn shuffled(&self, first: usize, seed: u64) -> Vec<usize> {
+        let n = self.album.tracks.len();
+        let mut rest: Vec<usize> = (0..n).filter(|&i| i != first).collect();
+        let mut x = seed | 1; // xorshift must not start at 0
+        for i in (1..rest.len()).rev() {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            rest.swap(i, (x % (i as u64 + 1)) as usize);
+        }
+        if first >= n {
+            return rest;
+        }
+        std::iter::once(first).chain(rest).collect()
     }
 }
 
@@ -335,5 +399,109 @@ mod tests {
         assert_eq!(p.advance(), Some(Path::new("1.wav")));
         assert_eq!(p.advance(), None); // past the last
         assert_eq!(p.current(), Some(1));
+    }
+
+    /// Play the whole order with next(), returning album indices.
+    fn walk(p: &mut Playlist) -> Vec<usize> {
+        let mut v = vec![p.current().unwrap()];
+        while p.next().is_some() {
+            v.push(p.current().unwrap());
+        }
+        v
+    }
+
+    #[test]
+    fn shuffle_order_is_a_permutation_starting_at_current() {
+        let mut p = playlist(8);
+        p.select(3);
+        p.set_shuffle(true, 42);
+        assert!(p.shuffle());
+        let w = walk(&mut p);
+        assert_eq!(w[0], 3);
+        let mut sorted = w.clone();
+        sorted.sort();
+        assert_eq!(sorted, (0..8).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn shuffle_without_current_starts_at_zero() {
+        let mut p = playlist(5);
+        p.set_shuffle(true, 1);
+        p.select(0);
+        assert_eq!(walk(&mut p).len(), 5);
+    }
+
+    #[test]
+    fn same_seed_same_order_and_seeds_differ() {
+        let order = |seed| {
+            let mut p = playlist(16);
+            p.select(0);
+            p.set_shuffle(true, seed);
+            walk(&mut p)
+        };
+        assert_eq!(order(7), order(7));
+        assert_ne!(order(7), order(8));
+    }
+
+    #[test]
+    fn previous_walks_back_and_stays_on_first() {
+        let mut p = playlist(4);
+        p.select(2);
+        p.set_shuffle(true, 9);
+        let w = walk(&mut p);
+        for want in w.iter().rev().skip(1) {
+            p.previous();
+            assert_eq!(p.current(), Some(*want));
+        }
+        assert_eq!(p.previous(), Some(Path::new("2.wav"))); // first in order: restart it
+        assert_eq!(p.current(), Some(2));
+    }
+
+    #[test]
+    fn shuffle_off_restores_album_order_from_current() {
+        let mut p = playlist(6);
+        p.select(1);
+        p.set_shuffle(true, 3);
+        p.next();
+        let cur = p.current().unwrap();
+        p.set_shuffle(false, 0);
+        assert!(!p.shuffle());
+        assert_eq!(p.current(), Some(cur));
+        if cur + 1 < 6 {
+            assert_eq!(p.next(), Some(Path::new(&format!("{}.wav", cur + 1))));
+        }
+    }
+
+    #[test]
+    fn select_with_shuffle_keeps_order() {
+        let mut p = playlist(6);
+        p.select(0);
+        p.set_shuffle(true, 5);
+        let w = walk(&mut p);
+        p.select(w[0]);
+        p.set_shuffle(true, 5); // rebuilt identically from track w[0]
+        p.select(w[2]);
+        p.next();
+        assert_eq!(p.current(), Some(w[3]));
+    }
+
+    #[test]
+    fn reshuffle_from_selects_and_puts_it_first() {
+        let mut p = playlist(6);
+        p.select(0);
+        p.set_shuffle(true, 5);
+        p.reshuffle_from(4, 11);
+        assert_eq!(p.current(), Some(4));
+        let w = walk(&mut p);
+        assert_eq!(w[0], 4);
+        assert_eq!(w.len(), 6);
+    }
+
+    #[test]
+    fn empty_album_has_no_next_or_previous() {
+        let mut p = playlist(0);
+        p.set_shuffle(true, 1);
+        assert_eq!(p.next(), None);
+        assert_eq!(p.previous(), None);
     }
 }
