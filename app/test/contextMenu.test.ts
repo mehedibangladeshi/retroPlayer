@@ -25,9 +25,20 @@ test('contextMenu: clicking a window asks to flip its visibility', () => {
   assert.deepEqual(calls, [[0, false], [1, true]])
 })
 
-test('contextMenu: Settings, About and Check for Updates follow as placeholder items', () => {
+test('contextMenu: Keyboard Shortcuts, then Settings, About and Check for Updates as placeholder items', () => {
   const labels = contextMenu(windows, () => {}).filter((i) => i.type !== 'separator').map((i) => i.label)
-  assert.deepEqual(labels, ['Windows', 'Settings…', 'Check for Updates…', 'About'])
+  assert.deepEqual(labels, ['Windows', 'Keyboard Shortcuts', 'Settings…', 'Check for Updates…', 'About'])
+})
+
+test('contextMenu: Keyboard Shortcuts lists every app shortcut with its key, shown only (never bound)', () => {
+  const sub = contextMenu(windows, () => {})[1].submenu as { label?: string; accelerator?: string; registerAccelerator?: boolean; type?: string }[]
+  const rows = sub.filter((i) => i.type !== 'separator')
+  for (const r of rows) assert.equal(r.registerAccelerator, false, r.label)
+  const keys = rows.map((r) => r.accelerator)
+  for (const k of ['Space', 'Left', 'Right', 'N', 'P', 'Up', 'Down', 'L', 'S', 'V', 'CmdOrCtrl+O', 'CmdOrCtrl+Shift+O', 'CmdOrCtrl+L', 'Enter']) {
+    assert.ok(keys.includes(k), `missing ${k}`)
+  }
+  assert.equal(rows.find((r) => r.accelerator === 'Space')?.label, 'Play / Pause')
 })
 
 test('setHidden: hiding adds the window once, showing removes it', () => {

@@ -469,6 +469,16 @@ const menu = (click = '') => app.ev(`const { Menu } = process.mainModule.require
 const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), path = process.mainModule.require('path');
   return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8')).hiddenWindows ?? []`)
 {
+  // The live menu's Keyboard Shortcuts submenu: Electron accepts every key, and shows them without binding them.
+  const keys = await app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
+    Menu.prototype.popup = function () { m = this }
+    try { byId('player').webContents.emit('context-menu', { preventDefault() {} }, {}) } finally { Menu.prototype.popup = orig }
+    const k = m.items.find((i) => i.label === 'Keyboard Shortcuts');
+    return k ? k.submenu.items.filter((i) => i.type !== 'separator').map((i) => [i.label, i.accelerator, i.registerAccelerator]) : null`)
+  check('menu: Keyboard Shortcuts lists the shortcuts with their keys, display only',
+    !!keys && keys.length >= 14 && keys.every(([l, a, reg]) => l && a && reg === false) && keys.some(([l, a]) => l === 'Play / Pause' && a === 'Space'), fmt(keys))
+}
+{
   const hashOf = { Playlist: 'playlist', Album: 'album', 'Cassette Rack': 'rack', 'Power Deck': 'power' }
   const marksMatch = (items, v) => items.length === 4 && items.every(([l, c]) => hashOf[l] && c === !!v[hashOf[l]])
   let items = await menu()

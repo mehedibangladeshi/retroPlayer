@@ -54,6 +54,7 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
 8. Closing the player saves every window's bounds, then closes them all.
 9. Closing a side window only hides it. A right-click anywhere on the player opens a native menu whose Windows submenu
    lists every side window with a checkmark for visible; picking one shows or hides it (`app/src/main/contextMenu.ts`).
+   Its Keyboard Shortcuts submenu lists every shortcut with its key, for display only (the windows handle the keys).
    Closed windows are saved (`hiddenWindows` in settings.json) and stay closed at the next launch until shown again.
    On Windows the drag region's OS window menu (`system-context-menu`) is replaced by this menu.
 
