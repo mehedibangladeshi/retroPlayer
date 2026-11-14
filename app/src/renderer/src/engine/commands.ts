@@ -43,12 +43,16 @@ export function togglePlayPause(): void {
   else if (status === 'stopped' || status === 'paused') pressPlay()
 }
 
-/** Play the next (+1) or previous (-1) album track relative to the one playing; no-op at the ends. */
+export const setVolume = (volume: number): void => send({ type: 'setVolume', volume })
+export const setLoop = (on: boolean): void => send({ type: 'setLoop', on })
+export const setShuffle = (on: boolean): void => send({ type: 'setShuffle', on })
+export const next = (): void => send({ type: 'next' })
+export const previous = (): void => send({ type: 'previous' })
+
+/** Next (+1) or previous (-1) track; the engine owns play order and shuffle. */
 export function stepTrack(delta: 1 | -1): void {
-  const { album } = getSnapshot()
-  const i = currentIndex()
-  if (!album || i === null || i + delta < 0 || i + delta >= album.tracks.length) return
-  playIndex(i + delta)
+  if (delta === 1) next()
+  else previous()
 }
 
 /** Index of the playing track in the album, or null with no album or an unlisted track. */

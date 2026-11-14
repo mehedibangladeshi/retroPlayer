@@ -468,3 +468,45 @@ Why: The owner asked for pressed keys to be darker, using the shade Pause and St
 Decision: Main saves the last track, its album folder (none for a single file), its index in the album and the position in `settings.json` as `session` (`app/src/main/session.ts`). It saves on every engine `state` event, every 5 s while playing and on quit. At startup it restores the session without playing: `loadAlbum` gained two optional fields, `index` (first track, default 0, out of range falls back to 0) and `play` (default `true`), and main sends `loadAlbum {index, play: false}` (or `load` for a single file) followed by `seek`. The player shows the track stopped at the saved position, and Play resumes there. Nothing is saved until the restore has reached the saved position (one track `state` per restore command, or an error), so quitting mid-restore cannot store the 0:00 of the load. A session whose file or folder no longer exists is dropped without an error. The session is not restored after an engine crash.
 
 Why: The owner asked for the player to remember the last playlist, song and position so they can resume where they left off. Restoring through the engine's own commands keeps state engine-owned (the renderer still only shows engine events). Not autoplaying avoids surprise sound at login. Loading without play needs an engine change because `loadAlbum` always played.
+
+## 2026-11-14 — A cassette rack window
+
+Decision: A fourth window, the cassette rack (`rack`), is a side window built from the designer's "updated cassette rack" layers (`assets/ui/rack/`, design size 1623x936). It follows every rule in `docs/WINDOWS.md` through the shared satellite code: it opens at launch docked above the player (left edges aligned), at the player's height the first time; it snaps, tears off, shades to a 64 px bar, resizes in proportion within 534x308..1602x924, has no taskbar entry, and its bounds are saved as `rackWindow`. It shows only its frame and empty shelf for now: the sample cassette spines are a reference, and what the rack lists is not decided. It receives engine events like every window but sends no commands.
+
+Why: The owner asked for the rack window's UI with all window behaviour first. Docking it above the player matches the designer's full preview, where the rack sits above the player and playlist.
+
+## 2026-11-14 — A power deck window
+
+Decision: A fifth window, the power deck (`power`), is a side window built from the designer's "updated power deck" layers (`assets/ui/power/`, design size 451x934). It follows every rule in `docs/WINDOWS.md` through the shared satellite code: it opens at launch docked to the right of the playlist (top edges aligned), so it follows the player through the playlist; at the player's height the first time; it snaps, tears off, shades to a 48 px bar, resizes in proportion within 149x308..446x924, has no taskbar entry, and its bounds are saved as `powerWindow`. Its controls (volume, seek bar, visualizer, loop, shuffle, import, power, meter) are artwork only for now. It sends no commands.
+
+Why: The owner asked for the power deck's UI with all window behaviour first. The player already has windows on its left (album art), right (playlist) and top (rack), and the tall, narrow deck fits beside the playlist at the same height.
+
+## 2026-11-14 — Power deck controls are engine-owned
+
+Decision: Volume, Loop Song and Shuffle live in the engine. New commands: `setVolume {volume}` (0..1), `setLoop {on}` and `setShuffle {on}`. The engine sends `options {volume, loop, shuffle}` at start and after every set command. Volume is a gain of 0 at 0, otherwise 10^(2·(v−1)), so −40..0 dB. It is applied in the audio callback after the key-sound mix, so it changes the whole output. The `Playlist` keeps a play order. Shuffle puts the current track first and shuffles the rest, using a small xorshift seeded from the clock (no `rand` crate). `next` and `previous` moved into the engine, so the renderer's Forward and Backward clicks send them. Previous on the first track of the order restarts it. Loop Song reloads the same track when it ends, for an album or a single file. Main saves the options in `settings.json` (`Settings.options`, `app/src/main/options.ts`). When a fresh engine sends its first `options` event, main re-sends them as `setVolume`, `setLoop` and `setShuffle`. The three echoes of those commands are not saved, so a half-applied state is never written. Keyboard: Up/Down change the volume by ±0.05, L toggles Loop Song, S toggles Shuffle (player and power windows), and V switches the visualizer mode (power window). Space, Left and Right are unchanged. This supersedes the statement in the 2026-11-14 "A power deck window" entry that the controls are artwork only and that the window sends no commands.
+
+Why: The engine already owns the transport and the queue, and the renderer must hold no authoritative state. Volume and the play order therefore belong with the audio, so they stay right when the renderer is frozen or reloaded. Main owns `settings.json`, so the renderer never writes files.
+
+## 2026-11-14 — Output levels for the meter and visualizer
+
+Decision: The audio callback pushes the post-gain output, mixed to mono, into a pre-allocated `rtrb` tap. When the tap is full, samples are dropped. The callback does no allocation, locking or logging. A thread owned by the `Output` reads the tap and runs a hand-written radix-2, 1024-point FFT (`player-core/src/levels.rs`), about every 30 ms. The thread is joined when the `Output` is dropped. The sidecar reads the latest levels on each position tick and sends a `levels {rms, peak, bands[16], wave[64]}` event, only while Playing (about 20 Hz).
+
+Why: The VU meter and the visualizer must show what is actually being output, not a timer. A hand-written FFT for one size avoids adding `rustfft`, under the rule that a dependency is added only when needed. Sending levels with the position tick adds no new timer.
+
+## 2026-11-14 — Code-drawn power deck states
+
+Decision: Some power deck states have no artwork, so they are drawn in code over the baked layers. The seek bar fill and thumb are CSS. The Loop Song and Shuffle lamps are CSS glows, green when on and red when off. The Import Album lamp glows while its button is pressed. The VU needle is SVG, driven by rms and mapped from −40 dB at the "20" mark to 0 dB at the "100" mark. It covers the baked needle with the face colour `#b1ad9f` and redraws the pivot. The volume knob turns only its disc: a circular clip of `power-volume.png` rotates, so the printed 0–10 scale stays still. The baked pointer is part of that disc and turns with it. Each placeholder is listed in `docs/ASSETS_TODO.md` item 21, with the art that would replace it.
+
+Why: The controls need to work now, and the art for their states was not supplied. Keeping each placeholder in its own view code means real art can replace it without changing the engine or the protocol.
+
+## 2026-11-14 — Power button quits the app
+
+Decision: The power button on the deck quits the app. It calls `RetroApi.quit()`, which sends IPC `app:quit`. Main accepts that only from an app window. The session is saved on quit, as before.
+
+Why: The button needs a clear meaning, and quitting through the normal path keeps the session save that the 2026-11-08 entry relies on.
+
+## 2026-11-14 — A native right-click menu on the player
+
+Decision: A right-click anywhere on the player opens a native Electron menu (`Menu.popup`, built in `app/src/main/contextMenu.ts`). Its first item, Windows, lists every side window as a checkbox (ticked when visible); picking one shows or hides that window, so a closed window can be brought back. Closed side windows are saved as `hiddenWindows` in settings.json and stay closed at the next launch; showing one (from the menu or Ctrl+L) removes it from the list. Quitting does not count as closing. Settings, Check for Updates and About follow as placeholders that do nothing yet. On Windows, a right-click on the drag region raises `system-context-menu`, which is prevented and shows this menu instead of the OS window menu.
+
+Why: This is an owner-approved exception to the "no native controls" rule. Most of the player is a drag region, and on Windows a right-click there never reaches the page, so an HTML menu would not open everywhere. A native menu also is never clipped by the window edge and gives checkboxes and submenus for free. The menu will grow, so only the template lives in the tested module.

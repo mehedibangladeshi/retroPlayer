@@ -1,0 +1,3 @@
+.pk-disc { position: absolute; left: 0; top: 0; width: 451px; height: 934px; pointer-events: none; user-select: none; }
+.pk-hit { position: absolute; border-radius: 50%; cursor: ns-resize; touch-action: none; outline: none; }
+.pk-hit:focus-visible { box-shadow: 0 0 0 2px rgba(255, 170, 60, 0.7); }

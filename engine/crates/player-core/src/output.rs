@@ -8,14 +8,17 @@
 //! Short UI sounds (key clicks) are mixed on top in the same callback: each one
 //! is a pre-converted `Clip` handed over through a second small ring.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, I24, Sample, SampleFormat, SizedSample, Stream, StreamConfig, U24};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::error::{ErrorCode, PlayerError};
+use crate::levels::{FFT_SIZE, Levels, analyze};
 
 /// A short sound in the device's format (interleaved, device rate and channels),
 /// mixed on top of the music. The control side keeps its own reference to each
@@ -123,8 +126,18 @@ pub struct OutputConfig {
     pub channels: u16,
 }
 
+/// Knob position 0..1 to linear gain: 0 is mute, otherwise 10^(2(v-1)), i.e.
+/// -40 dB..0 dB. Out-of-range values clamp; NaN is treated as 0 (mute), the
+/// safe choice for a corrupted input.
+pub fn gain_for(volume: f32) -> f32 {
+    if volume.is_nan() || volume <= 0.0 {
+        return 0.0;
+    }
+    10f32.powf(2.0 * (volume.min(1.0) - 1.0))
+}
+
 /// State shared between the control side and the audio callback. Atomics only.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Shared {
     /// False: callback emits silence and leaves the ring untouched.
     playing: AtomicBool,
@@ -138,6 +151,70 @@ struct Shared {
     frames_played: AtomicU64,
     /// Set by the stream error callback on a fatal device error.
     failed: AtomicBool,
+    /// Output gain as `f32` bits (see `gain_for`).
+    gain: AtomicU32,
+}
+
+impl Default for Shared {
+    fn default() -> Self {
+        Shared {
+            playing: AtomicBool::new(false),
+            clear_gen: AtomicU64::new(0),
+            clear_ack: AtomicU64::new(0),
+            frames_played: AtomicU64::new(0),
+            failed: AtomicBool::new(false),
+            gain: AtomicU32::new(1.0f32.to_bits()),
+        }
+    }
+}
+
+/// Analysis side of the output tap: a thread that drains the tap ring and
+/// publishes `Levels`. Stopped and joined when the `Output` drops.
+struct Analysis {
+    stop: Arc<AtomicBool>,
+    levels: Arc<Mutex<Option<Levels>>>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl Analysis {
+    fn spawn(mut tap: Consumer<f32>, sample_rate: u32) -> Result<Analysis, PlayerError> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let levels = Arc::new(Mutex::new(None));
+        let (t_stop, t_levels) = (Arc::clone(&stop), Arc::clone(&levels));
+        let join = thread::Builder::new()
+            .name("output-levels".into())
+            .spawn(move || {
+                // Circular history of the newest FFT_SIZE mono frames.
+                let mut hist = [0.0f32; FFT_SIZE];
+                let mut at = 0;
+                let mut win = [0.0f32; FFT_SIZE];
+                while !t_stop.load(Ordering::Acquire) {
+                    while let Ok(s) = tap.pop() {
+                        hist[at] = s;
+                        at = (at + 1) % FFT_SIZE;
+                    }
+                    // Oldest first: [at..] then [..at].
+                    win[..FFT_SIZE - at].copy_from_slice(&hist[at..]);
+                    win[FFT_SIZE - at..].copy_from_slice(&hist[..at]);
+                    let l = analyze(&win, sample_rate);
+                    *t_levels.lock().unwrap_or_else(|e| e.into_inner()) = Some(l);
+                    // Woken early by `Drop` so shutdown does not wait a full tick.
+                    thread::park_timeout(Duration::from_millis(30));
+                }
+            })
+            .map_err(|e| PlayerError::new(ErrorCode::Internal, e.to_string()))?;
+        Ok(Analysis { stop, levels, join: Some(join) })
+    }
+}
+
+impl Drop for Analysis {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(j) = self.join.take() {
+            j.thread().unpark();
+            let _ = j.join();
+        }
+    }
 }
 
 /// Handle to the running output stream. Dropping it stops audio.
@@ -153,6 +230,7 @@ pub struct Output {
     shared: Arc<Shared>,
     clips: Producer<Cmd>,
     _stream: Stream,
+    analysis: Analysis,
 }
 
 impl Output {
@@ -177,18 +255,23 @@ impl Output {
         let shared = Arc::new(Shared::default());
         let (clips, clip_rx) = RingBuffer::<Cmd>::new(MAX_VOICES * 2);
         let mixer = Mixer::new(clip_rx);
+        // Mono tap, a few FFT windows deep (at least 100 ms) so the analysis
+        // thread's ~30 ms polling never lets it overflow in normal operation.
+        let (tap, tap_rx) =
+            RingBuffer::<f32>::new((config.sample_rate as usize / 10).max(4 * FFT_SIZE));
+        let io = (consumer, mixer, tap);
 
         let stream = match format {
-            SampleFormat::F32 => build::<f32>(&device, config, consumer, mixer, &shared),
-            SampleFormat::F64 => build::<f64>(&device, config, consumer, mixer, &shared),
-            SampleFormat::I8 => build::<i8>(&device, config, consumer, mixer, &shared),
-            SampleFormat::I16 => build::<i16>(&device, config, consumer, mixer, &shared),
-            SampleFormat::I24 => build::<I24>(&device, config, consumer, mixer, &shared),
-            SampleFormat::I32 => build::<i32>(&device, config, consumer, mixer, &shared),
-            SampleFormat::U8 => build::<u8>(&device, config, consumer, mixer, &shared),
-            SampleFormat::U16 => build::<u16>(&device, config, consumer, mixer, &shared),
-            SampleFormat::U24 => build::<U24>(&device, config, consumer, mixer, &shared),
-            SampleFormat::U32 => build::<u32>(&device, config, consumer, mixer, &shared),
+            SampleFormat::F32 => build::<f32>(&device, config, io, &shared),
+            SampleFormat::F64 => build::<f64>(&device, config, io, &shared),
+            SampleFormat::I8 => build::<i8>(&device, config, io, &shared),
+            SampleFormat::I16 => build::<i16>(&device, config, io, &shared),
+            SampleFormat::I24 => build::<I24>(&device, config, io, &shared),
+            SampleFormat::I32 => build::<i32>(&device, config, io, &shared),
+            SampleFormat::U8 => build::<u8>(&device, config, io, &shared),
+            SampleFormat::U16 => build::<u16>(&device, config, io, &shared),
+            SampleFormat::U24 => build::<U24>(&device, config, io, &shared),
+            SampleFormat::U32 => build::<u32>(&device, config, io, &shared),
             other => {
                 return Err(PlayerError::new(
                     ErrorCode::NoOutputDevice,
@@ -197,8 +280,9 @@ impl Output {
             }
         }?;
         stream.play().map_err(map_err)?;
+        let analysis = Analysis::spawn(tap_rx, out_config.sample_rate)?;
 
-        Ok((Output { shared, clips, _stream: stream }, producer, out_config))
+        Ok((Output { shared, clips, _stream: stream, analysis }, producer, out_config))
     }
 
     /// Start mixing `clip` on top of whatever is playing (also while paused or
@@ -225,6 +309,12 @@ impl Output {
     /// True once the stream's error callback reported a fatal device error.
     pub fn has_failed(&self) -> bool {
         self.shared.failed.load(Ordering::Acquire)
+    }
+
+    /// Latest analysis of what the device is actually playing (post-gain,
+    /// including key sounds). `None` until the first analysis tick.
+    pub fn levels(&self) -> Option<Levels> {
+        *self.analysis.levels.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -268,6 +358,12 @@ impl OutputHandle {
         self.shared.frames_played.load(Ordering::Relaxed)
     }
 
+    /// Set the output gain (linear, see `gain_for`); applies on the next callback.
+    pub fn set_gain(&self, gain: f32) {
+        // Relaxed: a lone value, nothing else is published through it.
+        self.shared.gain.store(gain.to_bits(), Ordering::Relaxed);
+    }
+
     /// Set the frame counter (used after a seek).
     pub fn reset_frames(&self, frames: u64) {
         self.shared.frames_played.store(frames, Ordering::Relaxed);
@@ -287,8 +383,7 @@ fn map_err(e: cpal::Error) -> PlayerError {
 fn build<T>(
     device: &cpal::Device,
     config: StreamConfig,
-    mut consumer: Consumer<f32>,
-    mut mixer: Mixer,
+    (mut consumer, mut mixer, mut tap): (Consumer<f32>, Mixer, Producer<f32>),
     shared: &Arc<Shared>,
 ) -> Result<Stream, PlayerError>
 where
@@ -308,6 +403,7 @@ where
                 // lock-free ring only.
                 render(&mut consumer, data, channels, &cb_shared);
                 mixer.mix(data);
+                post(data, channels, &cb_shared, &mut tap);
             },
             move |err: cpal::Error| {
                 // Not the realtime audio callback, but we still avoid logging; the
@@ -366,9 +462,90 @@ fn render<T: Sample + FromSample<f32>>(
     }
 }
 
+/// Apply the output gain and copy the post-gain signal (mono-mixed) to the tap.
+fn post<T>(out: &mut [T], channels: usize, shared: &Shared, tap: &mut Producer<f32>)
+where
+    T: Sample + FromSample<f32>,
+    f32: FromSample<T>,
+{
+    // REAL-TIME: atomics and a non-blocking ring push only. A full tap drops
+    // the frame; the meters are allowed to miss audio, the device is not.
+    let gain = f32::from_bits(shared.gain.load(Ordering::Relaxed));
+    let channels = channels.max(1);
+    let inv = 1.0 / channels as f32;
+    for frame in out.chunks_mut(channels) {
+        let mut sum = 0.0;
+        for s in frame.iter_mut() {
+            let v = f32::from_sample(*s) * gain;
+            *s = T::from_sample(v);
+            sum += v;
+        }
+        let _ = tap.push(sum * inv);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gain_curve_endpoints_and_midpoint() {
+        assert_eq!(gain_for(0.0), 0.0);
+        assert_eq!(gain_for(1.0), 1.0);
+        assert!((gain_for(0.5) - 0.1).abs() < 1e-6, "got {}", gain_for(0.5));
+    }
+
+    #[test]
+    fn gain_curve_is_monotonic_and_clamped() {
+        let mut prev = gain_for(0.0);
+        for i in 1..=100 {
+            let g = gain_for(i as f32 / 100.0);
+            assert!(g > prev, "not increasing at {i}");
+            prev = g;
+        }
+        assert_eq!(gain_for(2.0), 1.0);
+        assert_eq!(gain_for(-1.0), 0.0);
+        assert_eq!(gain_for(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn default_gain_is_unity() {
+        assert_eq!(f32::from_bits(Shared::default().gain.load(Ordering::Relaxed)), 1.0);
+    }
+
+    #[test]
+    fn post_scales_output_and_taps_post_gain_mono() {
+        let shared = Shared::default();
+        shared.gain.store(0.5f32.to_bits(), Ordering::Relaxed);
+        let (mut tap, mut rx) = RingBuffer::<f32>::new(8);
+        let mut out = [0.5f32, 0.5, 1.0, -1.0];
+        post(&mut out, 2, &shared, &mut tap);
+        assert_eq!(out, [0.25, 0.25, 0.5, -0.5]);
+        assert_eq!(rx.pop(), Ok(0.25));
+        assert_eq!(rx.pop(), Ok(0.0));
+        assert!(rx.pop().is_err());
+    }
+
+    #[test]
+    fn post_scales_integer_output() {
+        let shared = Shared::default();
+        shared.gain.store(0.5f32.to_bits(), Ordering::Relaxed);
+        let (mut tap, _rx) = RingBuffer::<f32>::new(8);
+        let mut out = [i16::MAX];
+        post(&mut out, 1, &shared, &mut tap);
+        assert!((i32::from(out[0]) - 16383).abs() <= 1, "got {}", out[0]);
+    }
+
+    #[test]
+    fn full_tap_drops_samples_without_blocking() {
+        let shared = Shared::default();
+        let (mut tap, mut rx) = RingBuffer::<f32>::new(1);
+        let mut out = [0.1f32, 0.2, 0.3];
+        post(&mut out, 1, &shared, &mut tap);
+        assert_eq!(out, [0.1, 0.2, 0.3]);
+        assert_eq!(rx.pop(), Ok(0.1));
+        assert!(rx.pop().is_err());
+    }
 
     fn setup(samples: &[f32]) -> (Producer<f32>, Consumer<f32>, Shared) {
         let (mut p, c) = RingBuffer::<f32>::new(64);

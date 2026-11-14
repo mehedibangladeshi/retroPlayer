@@ -1,15 +1,17 @@
 import { existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/api'
-import { ALBUM, PLAYLIST, WINDOW } from '@shared/layout'
+import { ALBUM, PLAYLIST, POWER, RACK, WINDOW } from '@shared/layout'
 import { SUPPORTED_EXTENSIONS, type Album, type Command } from '@shared/protocol'
 import { SHADE } from '@shared/shade'
 import { clampInto, expandedAt, shadedBounds } from './shade'
 import { fitGroup, inferDocks, layout, matchHeight, overlaps, snap, subtree, type Docks, type Rect } from './dock'
 import { x11Relaunch } from './platform'
 import { isValidCommand } from './ndjson'
+import { contextMenu, setHidden } from './contextMenu'
 import { loadSettings, saveSettings, type WindowState } from './settings'
+import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, type Session } from './session'
 import { defaultPlayerSize, proportional, sizeLimits } from './windowSize'
 import { Sidecar } from './sidecar'
@@ -18,16 +20,16 @@ import icon from '../../build/icon.png?asset'
 
 let win: BrowserWindow | null = null
 let quitting = false
-// "Satellite" windows (playlist, album art): frameless, open with the player, hidden instead of closed, hidden while the player is minimized.
+// "Satellite" windows (playlist, album art, cassette rack, power deck): frameless, open with the player, hidden instead of closed, hidden while the player is minimized.
 interface Satellite {
-  hash: 'playlist' | 'album' // also its id in the dock graph (the player is 'player')
+  hash: 'playlist' | 'album' | 'rack' | 'power' // also its id in the dock graph (the player is 'player')
   title: string
   aspect: number
   minWidth: number
   minHeight: number
   maxWidth: number
   maxHeight: number
-  key: 'playlistWindow' | 'albumWindow'
+  key: 'playlistWindow' | 'albumWindow' | 'rackWindow' | 'powerWindow'
   win: BrowserWindow | null
   wanted: boolean
   shaded: boolean // rolled up to its top bar
@@ -36,16 +38,24 @@ interface Satellite {
 }
 const PL_ASPECT = PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h
 const AL_ASPECT = ALBUM.WINDOW.w / ALBUM.WINDOW.h
+const RK_ASPECT = RACK.WINDOW.w / RACK.WINDOW.h
+const PD_ASPECT = POWER.WINDOW.w / POWER.WINDOW.h
 const playlist: Satellite = {
   hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, ...sizeLimits(PL_ASPECT), key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const album: Satellite = {
   hash: 'album', title: 'Cassette Player: Album', aspect: AL_ASPECT, ...sizeLimits(AL_ASPECT), key: 'albumWindow', win: null, wanted: false, shaded: false, expanded: null
 }
-const satellites = [playlist, album]
+const rack: Satellite = {
+  hash: 'rack', title: 'Cassette Player: Cassette Rack', aspect: RK_ASPECT, ...sizeLimits(RK_ASPECT), key: 'rackWindow', win: null, wanted: false, shaded: false, expanded: null
+}
+const power: Satellite = {
+  hash: 'power', title: 'Cassette Player: Power Deck', aspect: PD_ASPECT, ...sizeLimits(PD_ASPECT), key: 'powerWindow', win: null, wanted: false, shaded: false, expanded: null
+}
+const satellites = [playlist, album, rack, power]
 // Who is docked to whom (in memory; read back from the saved positions at startup). Any window can dock to any side
 // of any other; docked windows follow their anchor, so everything docked to the player moves with it.
-const DEFAULT_DOCKS: Docks = { playlist: { to: 'player', side: 'right', ratio: 0 }, album: { to: 'player', side: 'left', ratio: 0 } }
+const DEFAULT_DOCKS: Docks = { playlist: { to: 'player', side: 'right', ratio: 0 }, album: { to: 'player', side: 'left', ratio: 0 }, rack: { to: 'player', side: 'top', ratio: 0 }, power: { to: 'playlist', side: 'right', ratio: 0 } }
 let docks: Docks = { ...DEFAULT_DOCKS }
 const live = (w: BrowserWindow | null): w is BrowserWindow => w !== null && !w.isDestroyed()
 // Last session (track, album, position): kept from engine events, saved on every state change, every few seconds
@@ -60,9 +70,15 @@ function saveSession(): void {
   saveSettings({ session })
   sessionSavedAt = Date.now()
 }
+// Options-save gate (see optionsStep): waits for a fresh engine's defaults, then skips the half-applied echoes.
+let optionsSkip = AWAITING
 const sidecar = new Sidecar(
-  () => [win, playlist.win, album.win].filter(live),
+  () => [win, ...satellites.map((s) => s.win)].filter(live),
   (evt) => {
+    const o = optionsStep(optionsSkip, evt, loadSettings().options)
+    optionsSkip = o.skip
+    if (o.save) saveSettings({ options: o.save })
+    if (o.sync) for (const c of optionsCommands(loadSettings().options)) sidecar.send(c)
     if (evt.type === 'playlist') sessionAlbum = evt.album
     restoreLeft = restoreStep(restoreLeft, evt)
     if (restoreLeft > 0) return
@@ -75,7 +91,7 @@ const sidecar = new Sidecar(
 const devUrl = process.env.ELECTRON_RENDERER_URL
 
 function fromAppWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
-  return [win, playlist.win, album.win].some((w) => live(w) && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame)
+  return [win, ...satellites.map((s) => s.win)].some((w) => live(w) && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame)
 }
 
 const ASPECT = WINDOW.width / WINDOW.height
@@ -285,6 +301,13 @@ function settleSoon(id: string): void {
 }
 
 // Show a wanted satellite on a real hidden -> shown transition only.
+// Hide a side window. macOS drops a hidden child window from its parent while Electron still reports the parent, so
+// parentDocked would never attach it again and activating the app would leave it behind: detach it first.
+function hideSatellite(w: BrowserWindow): void {
+  if (process.platform === 'darwin') w.setParentWindow(null)
+  w.hide()
+}
+
 function showSatellite(s: Satellite): void {
   if (!live(s.win)) return
   if (s.win.isVisible()) return
@@ -359,7 +382,8 @@ function createWindow(): void {
     w.show()
     restoreDocks()
     // Satellites open with the player, after it exists so they can dock beside it.
-    for (const s of satellites) openSatellite(s)
+    const hidden = loadSettings().hiddenWindows ?? []
+    for (const s of satellites) if (!hidden.includes(s.hash)) openSatellite(s)
   })
 
   // Minimizing the player hides the satellites too; restoring it shows the ones that were visible.
@@ -368,7 +392,7 @@ function createWindow(): void {
     for (const s of satellites) {
       if (live(s.win) && s.win.isVisible()) {
         hiddenByMinimize.add(s)
-        s.win.hide()
+        hideSatellite(s.win)
       }
     }
   })
@@ -436,6 +460,22 @@ function createWindow(): void {
   w.webContents.on('render-process-gone', stopMotor)
   w.webContents.on('did-start-loading', stopMotor)
   w.webContents.on('did-finish-load', () => sidecar.resendState(w))
+  // Right-click anywhere on the player: native menu to show or hide the other windows (a closed one only hides).
+  const showMenu = (): void => {
+    const items = satellites.map((s) => ({ label: s.title.replace('Cassette Player: ', ''), visible: live(s.win) && s.win.isVisible() }))
+    const toggle = (i: number, show: boolean): void => {
+      const s = satellites[i]
+      if (show) openSatellite(s)
+      else s.win?.close()
+    }
+    Menu.buildFromTemplate(contextMenu(items, toggle)).popup({ window: w })
+  }
+  w.webContents.on('context-menu', showMenu)
+  // Windows: a right-click on a drag region opens the OS window menu instead of reaching the page.
+  w.on('system-context-menu', (e) => {
+    e.preventDefault()
+    showMenu()
+  })
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   w.webContents.on('will-navigate', (e, url) => {
     if (!devUrl || !url.startsWith(devUrl)) e.preventDefault()
@@ -456,7 +496,10 @@ function toggleShade(s: Satellite, from?: Rect): void {
     s.shaded = true
     w.setAspectRatio(0) // the bar has its own shape; a shaded window is not resizable
     resizeFixed(w, r, [s.minWidth, r.height], false)
-    sync({ [s.hash]: r }) // windows docked below it move up
+    // Windows keeps a window at least about 39 px tall, taller than a narrow window's bar: dock the height it really got.
+    // (Linux applies bounds later, so getBounds() would still report the full size there.)
+    const got = process.platform === 'win32' ? { ...r, height: Math.max(r.height, w.getBounds().height) } : r
+    sync({ [s.hash]: got }) // windows docked below it move up
   } else {
     s.shaded = false
     const next = clampInto(expandedAt(cur, s.expanded ?? cur), screen.getDisplayMatching(cur).workArea)
@@ -589,13 +632,15 @@ function createSatellite(s: Satellite): BrowserWindow {
   }
   w.on('move', changed)
   w.on('resize', changed)
-  // Closing only hides: the window is reopened from the player and keeps its state. Quitting must still close it.
+  // Closing only hides (and is remembered across launches): the window is reopened from the player's right-click menu
+  // and keeps its state. Quitting must still close it.
   w.on('close', (e) => {
     clearTimeout(s.timer)
     persistSatellite(s)
     if (!quitting) {
       e.preventDefault()
-      w.hide()
+      hideSatellite(w)
+      saveSettings({ hiddenWindows: setHidden(loadSettings().hiddenWindows, s.hash, true) })
     }
   })
   w.on('closed', () => {
@@ -619,6 +664,7 @@ function createSatellite(s: Satellite): BrowserWindow {
 // Create the satellite on first use (it shows itself on ready-to-show), or show it if it already exists.
 function openSatellite(s: Satellite): void {
   s.wanted = true
+  saveSettings({ hiddenWindows: setHidden(loadSettings().hiddenWindows, s.hash, false) })
   if (!live(s.win)) createSatellite(s)
   else showSatellite(s)
 }
@@ -671,10 +717,9 @@ if (relaunch) {
     return dir
   })
   ipcMain.on(IPC.showPlaylist, (e) => {
-    if (!fromAppWindow(e) || !live(playlist.win)) return
-    if (playlist.win.isMinimized()) playlist.win.restore()
-    playlist.win.show()
-    playlist.win.focus()
+    if (!fromAppWindow(e)) return
+    openSatellite(playlist)
+    if (live(playlist.win)) playlist.win.focus()
   })
   ipcMain.on(IPC.toggleShade, (e) => {
     if (!fromAppWindow(e)) return
@@ -683,6 +728,9 @@ if (relaunch) {
   })
   ipcMain.on(IPC.minimize, (e) => {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.minimize()
+  })
+  ipcMain.on(IPC.quit, (e) => {
+    if (fromAppWindow(e)) app.quit()
   })
   ipcMain.on(IPC.close, (e) => {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.close()

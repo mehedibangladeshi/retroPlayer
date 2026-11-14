@@ -1,5 +1,8 @@
 import { useEffect } from 'react'
-import { stepTrack, togglePlayPause } from '../engine/commands'
+import { setLoop, setShuffle, setVolume, stepTrack, togglePlayPause } from '../engine/commands'
+import { getSnapshot } from '../engine/store'
+import { stepVolume } from '../views/powerMath'
+import { powerKeyAction } from './powerKeys'
 import { openAlbum } from './openFile'
 import type { SeekHold } from './useSeekHold'
 
@@ -35,6 +38,24 @@ export function useKeyboard(seek: Pick<SeekHold, 'start' | 'stop'>, onOpen?: () 
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault()
         if (!e.repeat) start(KEY_DIR[e.key], 'key')
+      } else {
+        const { options } = getSnapshot()
+        switch (powerKeyAction(e)) {
+          case 'volumeUp':
+            e.preventDefault()
+            setVolume(stepVolume(options.volume, 1))
+            break
+          case 'volumeDown':
+            e.preventDefault()
+            setVolume(stepVolume(options.volume, -1))
+            break
+          case 'loop':
+            setLoop(!options.loop)
+            break
+          case 'shuffle':
+            setShuffle(!options.shuffle)
+            break
+        }
       }
     }
     const up = (e: KeyboardEvent): void => {

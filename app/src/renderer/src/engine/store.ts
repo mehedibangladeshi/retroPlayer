@@ -8,6 +8,7 @@ export interface EngineState {
   error: { code: ErrorCode; message: string } | null
   album: Album | null
   artwork: string | null
+  options: { volume: number; loop: boolean; shuffle: boolean }
   /** performance.now() when positionMs was last set by the engine. */
   lastPositionAt: number
 }
@@ -22,6 +23,7 @@ let state: EngineState = {
   error: null,
   album: null,
   artwork: null,
+  options: { volume: 1, loop: false, shuffle: false },
   lastPositionAt: 0
 }
 const listeners = new Set<() => void>()
@@ -84,6 +86,9 @@ function handle(e: EngineEvent): void {
       break
     case 'artwork':
       set({ artwork: e.cover })
+      break
+    case 'options':
+      set({ options: { volume: e.volume, loop: e.loop, shuffle: e.shuffle } })
       break
     case 'error':
       pendingAutoPlay = null

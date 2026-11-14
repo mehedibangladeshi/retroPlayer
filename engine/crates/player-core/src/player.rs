@@ -17,6 +17,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -24,7 +25,8 @@ use std::time::{Duration, Instant};
 use crate::decode::Decoder;
 use crate::dsp::DspChain;
 use crate::error::{ErrorCode, PlayerError};
-use crate::output::{Clip, Output, OutputConfig, OutputHandle};
+use crate::levels::Levels;
+use crate::output::{Clip, Output, OutputConfig, OutputHandle, gain_for};
 use crate::resample::Resampler;
 use crate::sound::Sound;
 use crate::state::{Status, Transport, clamp_seek};
@@ -169,6 +171,8 @@ pub struct Player {
     /// the stream is gone. Never drop a clip handed to a live output elsewhere:
     /// the audio callback would then free it.
     retired: Vec<Clip>,
+    /// Volume knob position 0..1 as `f32` bits; re-applied to each new output.
+    volume: AtomicU32,
 }
 
 impl Player {
@@ -193,8 +197,30 @@ impl Player {
             device_config: None,
             sounds: HashMap::new(),
             retired: Vec::new(),
+            volume: AtomicU32::new(1.0f32.to_bits()),
         };
         (player, rx)
+    }
+
+    /// Set the volume knob (0..1, clamped; NaN mutes). Scales everything the
+    /// device plays, key sounds included. Does not open the device.
+    pub fn set_volume(&self, volume: f32) {
+        let v = if volume > 0.0 { volume.min(1.0) } else { 0.0 };
+        self.volume.store(v.to_bits(), Ordering::Relaxed);
+        if let Some(h) = &self.handle {
+            h.set_gain(gain_for(v));
+        }
+    }
+
+    /// The last knob position set (1.0 by default).
+    pub fn volume(&self) -> f32 {
+        f32::from_bits(self.volume.load(Ordering::Relaxed))
+    }
+
+    /// Latest meters/spectrum of the real (post-volume) output; `None` before
+    /// an output exists. Silent output (paused, stopped) reads as silent levels.
+    pub fn levels(&self) -> Option<Levels> {
+        self.output.as_ref().and_then(Output::levels)
     }
 
     pub fn generation(&self) -> u64 {
@@ -447,6 +473,7 @@ impl Player {
         // Rate unknown before open: 96_000 frames is ~0.5 s at 192 kHz (more at lower rates); seek/stop use clear() so latency is unaffected.
         let (output, producer, cfg) = Output::open_default(96_000)?;
         let handle = output.handle();
+        handle.set_gain(gain_for(self.volume()));
         lock(&self.inner).device_rate = cfg.sample_rate;
         self.device_rate = cfg.sample_rate;
         self.device_config = Some(cfg);

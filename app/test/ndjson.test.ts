@@ -97,6 +97,44 @@ test('parseEvent accepts playlist events', () => {
   assert.equal(parseEvent(JSON.stringify({ v, type: 'playlist', album: { tracks: [] } }))?.type, 'playlist')
 })
 
+test('isValidCommand accepts setVolume, setLoop, setShuffle, next and previous', () => {
+  for (const c of [
+    { v, type: 'setVolume', volume: 0 },
+    { v, type: 'setVolume', volume: 0.5 },
+    { v, type: 'setLoop', on: true },
+    { v, type: 'setLoop', on: false },
+    { v, type: 'setShuffle', on: true },
+    { v, type: 'setShuffle', on: false },
+    { v, type: 'next' },
+    { v, type: 'previous' }
+  ]) {
+    assert.equal(isValidCommand(c), true, JSON.stringify(c))
+  }
+})
+
+test('isValidCommand rejects bad setVolume values', () => {
+  for (const volume of [NaN, Infinity, '0.5', null]) {
+    assert.equal(isValidCommand({ v, type: 'setVolume', volume }), false, String(volume))
+  }
+  assert.equal(isValidCommand({ v, type: 'setVolume' }), false)
+})
+
+test('isValidCommand rejects non-boolean setLoop and setShuffle values', () => {
+  for (const type of ['setLoop', 'setShuffle']) {
+    for (const on of [1, 'yes', null]) {
+      assert.equal(isValidCommand({ v, type, on }), false, `${type} ${String(on)}`)
+    }
+    assert.equal(isValidCommand({ v, type }), false, `${type} missing on`)
+  }
+})
+
+test('parseEvent accepts options and levels events', () => {
+  const options = { v, type: 'options', volume: 0.8, loop: true, shuffle: false }
+  assert.deepEqual(parseEvent(JSON.stringify(options)), options)
+  const levels = { v, type: 'levels', rms: 0.1, peak: 0.4, bands: new Array(16).fill(0.2), wave: new Array(64).fill(0.3) }
+  assert.deepEqual(parseEvent(JSON.stringify(levels)), levels)
+})
+
 test('parseEvent accepts artwork events', () => {
   assert.deepEqual(parseEvent('{"v":1,"type":"artwork","cover":null}'), { v, type: 'artwork', cover: null })
   assert.deepEqual(parseEvent('{"v":1,"type":"artwork","cover":"data:image/png;base64,AAAA"}'), { v, type: 'artwork', cover: 'data:image/png;base64,AAAA' })

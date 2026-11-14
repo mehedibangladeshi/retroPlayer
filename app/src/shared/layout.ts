@@ -81,6 +81,21 @@ export const ALBUM = {
   ],
 } as const
 
+/** Cassette rack window. CSS px, art files are ASSET_SCALE (2x); measured with ImageMagick, see "Cassette rack" in assets/ui/MANIFEST.md. */
+export const RACK = {
+  WINDOW: { w: 1623, h: 936 },
+  ASSET_SCALE: 2,
+  /** Paint order: frame, inner panel, top (title, scratches, minimize, close, lamps, grip). */
+  LAYERS: [
+    { id: 'base', file: 'rack/rack-base.png', rect: { x: 0, y: 0, w: 1623, h: 936 } },
+    { id: 'panel', file: 'rack/rack-panel.png', rect: { x: 0, y: 0, w: 1623, h: 936 } },
+    { id: 'top', file: 'rack/rack-top.png', rect: { x: 0, y: 0, w: 1623, h: 936 } },
+  ],
+  // Connected components of the top layer (2x 3081,22 59x59 and 3148,22 59x59).
+  MINIMIZE: { x: 1540.5, y: 11, w: 29.5, h: 29.5 },
+  CLOSE: { x: 1574, y: 11, w: 29.5, h: 29.5 },
+} as const
+
 /** Playlist window. CSS px, origin = top-left of the window; art files are ASSET_SCALE (2x) of their rect, paths relative to assets/ui. See "Playlist window" in assets/ui/MANIFEST.md. */
 export const PLAYLIST = {
   // Layer canvas 1874x1874 px at 2x (cropped to the base body; y values below are 5.5 less than the 1874x1885 measurements in the notes).
@@ -113,4 +128,43 @@ export const PLAYLIST = {
   FONT_FAMILY: 'Montserrat',
   // Screen px, the same at every window size (not design px). Picked by the owner from a preview; a future setting.
   TEXT_PX: { heading: 16, row: 13, lineHeight: 1.3 },
+} as const
+
+// Power deck window (assets/ui/power/, 2x PNG layers on one 902x1868 canvas: the visible frame, no margin).
+// Display only for now: the knob, seek bar, visualizer, switches and buttons are baked art with no function yet.
+export const POWER = {
+  WINDOW: { w: 451, h: 934 },
+  ASSET_SCALE: 2,
+  /** Paint order: frame and panel, volume knob, labels/switches/buttons/meter, seek bar and visualizer, minimize and close. */
+  LAYERS: [
+    { id: 'base', file: 'power/power-base.png', rect: { x: 0, y: 0, w: 451, h: 934 } },
+    { id: 'volume', file: 'power/power-volume.png', rect: { x: 0, y: 0, w: 451, h: 934 } },
+    { id: 'mid', file: 'power/power-mid.png', rect: { x: 0, y: 0, w: 451, h: 934 } },
+    { id: 'display', file: 'power/power-display.png', rect: { x: 0, y: 0, w: 451, h: 934 } },
+    { id: 'top', file: 'power/power-top.png', rect: { x: 0, y: 0, w: 451, h: 934 } },
+  ],
+  // Columns of the top layer (2x 750..809 and 816..876, rows 24..83).
+  MINIMIZE: { x: 375, y: 12, w: 30, h: 30 },
+  CLOSE: { x: 408, y: 12, w: 30.5, h: 30 },
+  // Controls, design px, measured from the layers (see assets/ui/MANIFEST.md, "Power deck").
+  /** The inner disc of the volume knob (rim included) that rotates; the baked pointer sits at 3 o'clock (volume 0.8333). */
+  KNOB: { cx: 229, cy: 206.75, r: 104 },
+  SEEK: { x: 23.5, y: 395.5, w: 402.5, h: 16.5 },
+  VIS: { x: 33.5, y: 468, w: 256, h: 191.5 },
+  LOOP: { x: 397, y: 568, w: 21.5, h: 71.5 },
+  LOOP_RED: { cx: 407.75, cy: 578.25, r: 2 },
+  LOOP_GREEN: { cx: 407.75, cy: 629.75, r: 2 },
+  SHUFFLE: { x: 396, y: 681, w: 21, h: 71.5 },
+  SHUFFLE_RED: { cx: 406.25, cy: 691.25, r: 2 },
+  SHUFFLE_GREEN: { cx: 406.25, cy: 742.75, r: 2 },
+  IMPORT: { x: 44, y: 690, w: 113, h: 23.5 },
+  IMPORT_LAMP: { cx: 60, cy: 702, r: 3 },
+  POWER_BTN: { x: 42.5, y: 790.5, w: 113, h: 23 },
+  POWER_LAMP: { cx: 58, cy: 802.25, r: 3 },
+  METER: { x: 302, y: 787, w: 119.5, h: 107.5 },
+  METER_PIVOT: { x: 392, y: 871 },
+  METER_NEEDLE: 41,
+  // CSS rotate of the needle (0 = right, clockwise positive) at the 20 mark (left) and the 100 mark (straight up).
+  METER_MIN_DEG: -180,
+  METER_MAX_DEG: -90,
 } as const

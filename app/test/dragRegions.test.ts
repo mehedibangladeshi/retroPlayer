@@ -8,6 +8,8 @@ import { readFileSync } from 'node:fs'
 const views = [
   { name: 'Playlist', css: 'PlaylistView.css', tsx: 'PlaylistView.tsx', strip: 'pl-titlebar' },
   { name: 'Album', css: 'AlbumView.css', tsx: 'AlbumView.tsx', strip: 'al-titlebar' },
+  { name: 'Rack', css: 'RackView.css', tsx: 'RackView.tsx', strip: 'rk-titlebar' },
+  { name: 'Power deck', css: 'PowerView.css', tsx: 'PowerView.tsx', strip: 'pd-titlebar' },
 ]
 
 const read = (file: string) => readFileSync(new URL(`../src/renderer/src/views/${file}`, import.meta.url), 'utf8')

@@ -9,7 +9,7 @@ test('back goes to the previous track within the first 3 s', () => {
   assert.equal(backAction(3000, 2), 'prev')
   assert.equal(backAction(0, 1), 'prev')
 })
-test('back restarts on the first track or with no album', () => {
-  assert.equal(backAction(500, 0), 'restart')
+test('back goes to the previous track on the first track of the play order, restarts with no album', () => {
+  assert.equal(backAction(500, 0), 'prev')
   assert.equal(backAction(500, null), 'restart')
 })

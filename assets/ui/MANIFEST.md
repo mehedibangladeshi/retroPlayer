@@ -80,6 +80,18 @@ Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (the 3 transpare
 
 The cover is drawn between base and buttons at `COVER` 82.5,84.5 770x770 (2x 165,169 1540x1540, the alpha bbox of the sample art `2. reff art.png`, so it sits inside the glass hole). Shaded bar height is 62 (below the buttons, above the glass frame at 69.5). `source/album cover deck/album cover deck/2. reff art.png` (sample cover) and `preview for your eyes only.png` (composed look) are references only and are not shipped.
 
+## Cassette rack
+
+Canvas 3246x1872 px at 2x, so the design size is 1623x936 CSS px. Constants are in `RACK` in `app/src/shared/layout.ts`, measured with ImageMagick (alpha bboxes and connected components). Layers come from `updated send 9-11-26/updated cassette rack/` (8000x5000 canvases with the art at the top-left), exported with `magick SRC -crop 3246x1872+0+0 +repage -strip -define png:compression-level=9 PNG32:OUT`.
+
+| File | What | Anchor (CSS px) |
+|------|------|-----------------|
+| `rack/rack-base.png` | Outer window frame with rounded corners (was `1 base.png`) | 0,0 1623x936 |
+| `rack/rack-panel.png` | Inner dark shelf panel (was `2 top base.png`) | 0,0; panel 17,65 1587x845.5 |
+| `rack/rack-top.png` | "CASSETTE RACK" title, scratches, minimize, close, status dots, resize grip (was `4 top.png`) | 0,0; minimize 1540.5,11 29.5x29.5; close 1574,11 29.5x29.5 |
+
+The shaded bar is 64 high (the panel starts at 65). `3 refferance cassette placement.png` (six sample cassette spines at the right of the shelf, 2x 1714,183 1439x1612) is reference only and not shipped: the shelf is empty until cassettes are added.
+
 ## App icon
 
 | File | What | Where it goes |
@@ -87,3 +99,32 @@ The cover is drawn between base and buttons at `COVER` 82.5,84.5 770x770 (2x 165
 | `icon/app-icon.svg` | Yellow coin with a stroked play triangle. Vector trace of the supplied `app_logo.jpeg` (coin measured in source px), cut off its grey backdrop and padded so the coin fills 88% of the square | Source for `app/build/icon.png` |
 
 `app/build/icon.png` (1024x1024 RGBA) is rendered from it with `rsvg-convert -w 1024 -h 1024 assets/ui/icon/app-icon.svg -o app/build/icon.png`. electron-builder makes the macOS `.icns`, Windows `.ico` and Linux icons from that PNG, and the main process sets it as the player window's icon (Linux taskbar, dev runs).
+
+## Power deck
+
+Canvas 902x1868 px at 2x, so the design size is 451x934 CSS px. Constants are in `POWER` in `app/src/shared/layout.ts`, measured with ImageMagick (alpha bboxes, and the top layer's columns for the buttons). Layers come from `updated send 9-11-26/updated power deck/` (8000x5000 canvases with the art at the top-left, 901x1868), exported with `magick SRC -crop 902x1868+0+0 +repage -strip -define png:compression-level=9 PNG32:OUT`.
+
+| File | What | Anchor (CSS px) |
+|------|------|-----------------|
+| `power/power-base.png` | Window frame and inner panel outline (was `1 base.png`) | 0,0 451x934 |
+| `power/power-volume.png` | Volume knob with its 0-10 scale (was `2 volume button.png`) | 0,0; art 91.5,72.5 274x257 |
+| `power/power-mid.png` | "SUPER LX- RETRO" title, labels, Loop Song and Shuffle switches, Import Album and Power buttons, meter (was `3 mid.png`) | 0,0 |
+| `power/power-display.png` | Seek bar and music visualizer frames with their labels (was `4 seekbar visualizer.png`) | 0,0; art 21,373.5 407.5x288.5 |
+| `power/power-top.png` | Minimize and close (was `5 top.png`) | 0,0; minimize 375,12 30x30; close 408,12 30.5x30 |
+
+The shaded bar is 48 high (the panel outline starts at 48).
+
+Control constants in `POWER` (design px = 2x pixels / 2). Measured with ImageMagick on the layer PNGs: solid bboxes via `-alpha extract -threshold 99%` on a crop around each part (shadows are semi-transparent, so they drop out), lamps via an `-fx` colour test (red r>.45,g<.35; green g>.5) and scan lines for stroke edges.
+
+| Constant | Value | How measured |
+|----------|-------|--------------|
+| `KNOB` | centre 229,206.75, r 104 | `power-volume.png`: rim edges (grey 100,100,100 stroke) at 2x x 450..866 and y 204..622 give centre 458,413.5 and r 208.5. The baked pointer is a line at 3 o'clock about 4 design px below this centre; it is at volume 0.8333 (rotation 0). |
+| `SEEK` | 23.5,395.5 402.5x16.5 | `power-display.png` scan lines: inner opening of the frame between the strokes, 2x x 47..852, y 791..824 |
+| `VIS` | 33.5,468 256x191.5 | same, 2x x 67..579, y 936..1319 |
+| `LOOP`, `SHUFFLE` | 397,568 21.5x71.5; 396,681 21x71.5 | `power-mid.png` solid bbox of each switch body |
+| `LOOP_RED/GREEN`, `SHUFFLE_RED/GREEN` | lamp centres, r 2 | 7x7 px colour blobs (red top, green bottom) |
+| `IMPORT`, `POWER_BTN` | 44,690 113x23.5; 42.5,790.5 113x23 | solid bbox of each button body (labels excluded by the crop) |
+| `IMPORT_LAMP`, `POWER_LAMP` | 60,702 and 58,802.25, r 3 | 12x12 px red blobs |
+| `METER` | 302,787 119.5x107.5 | solid bbox of the meter face with its dark border |
+| `METER_PIVOT`, `METER_NEEDLE` | 392,871; 41 | centre of the needle hub ring (2x 783.9,1742.3); needle tip at 2x x 702, so 82 px from the pivot |
+| `METER_MIN_DEG`, `METER_MAX_DEG` | -180, -90 | the baked needle points left at the "20" label (level with the pivot); the "100" label sits straight above the pivot (label centres measured from the pivot: 20 at -179 degrees, 40 -156, 60 -135, 80 -114, 100 -88.5) |

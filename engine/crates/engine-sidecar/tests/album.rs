@@ -34,7 +34,8 @@ impl Sidecar {
             }
         });
         let s = Sidecar { child, stdin, lines };
-        s.next(); // startup state
+        assert_eq!(s.next()["type"], "state");
+        assert_eq!(s.next()["type"], "options");
         s
     }
 
@@ -261,4 +262,97 @@ fn load_album_index_out_of_range_starts_at_first_track() {
         assert_eq!(v["code"], "no_output_device", "{v}");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Loads the album stopped at `index`; false when there is no audio device.
+fn load_stopped(s: &mut Sidecar, dir: &std::path::Path, index: usize) -> bool {
+    s.send(json!({"v":1,"type":"loadAlbum","path":dir,"index":index,"play":false}));
+    assert_eq!(s.next()["type"], "playlist");
+    let v = s.next();
+    if v["type"] == "error" {
+        assert_eq!(v["code"], "no_output_device", "{v}");
+        return false;
+    }
+    true
+}
+
+/// The next `state` that is playing; panics on an error.
+fn playing(s: &Sidecar) -> Value {
+    loop {
+        let v = s.next();
+        assert_ne!(v["type"], "error", "{v}");
+        if v["type"] == "state" && v["status"] == "playing" {
+            return v;
+        }
+    }
+}
+
+#[test]
+fn next_and_previous_walk_the_album() {
+    let dir = album_dir("nav");
+    let [first, second] = ["01 a.wav", "02 b.wav"].map(|n| dir.join(n).to_string_lossy().into_owned());
+    let mut s = Sidecar::spawn();
+    if !load_stopped(&mut s, &dir, 0) {
+        return;
+    }
+    s.send(json!({"v":1,"type":"next"}));
+    assert_eq!(playing(&s)["trackInfo"]["path"], second.as_str());
+    s.send(json!({"v":1,"type":"previous"}));
+    assert_eq!(playing(&s)["trackInfo"]["path"], first.as_str());
+    // On the first track, previous restarts it.
+    s.send(json!({"v":1,"type":"previous"}));
+    let v = playing(&s);
+    assert_eq!((v["trackInfo"]["path"].as_str(), v["positionMs"].as_u64()), (Some(first.as_str()), Some(0)), "{v}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn next_on_last_track_does_nothing() {
+    let dir = album_dir("last");
+    let mut s = Sidecar::spawn();
+    if !load_stopped(&mut s, &dir, 1) {
+        return;
+    }
+    s.send(json!({"v":1,"type":"next"}));
+    let events = drain(&s, 500);
+    assert!(events.iter().all(|e| e["type"] != "error" && e["status"] != "playing"), "{events:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Needs an audio device: with Loop Song on, the ended track replays instead of advancing.
+#[test]
+#[ignore]
+fn device_loop_song_replays_the_track() {
+    let dir = album_dir("loop");
+    let first = dir.join("01 a.wav").to_string_lossy().into_owned();
+    let mut s = Sidecar::spawn();
+    s.send(json!({"v":1,"type":"setLoop","on":true}));
+    assert_eq!(s.next()["loop"], true);
+    s.send(json!({"v":1,"type":"loadAlbum","path":dir}));
+    assert_eq!(playing(&s)["trackInfo"]["path"], first.as_str());
+    loop {
+        if s.next()["type"] == "ended" {
+            break;
+        }
+    }
+    assert_eq!(playing(&s)["trackInfo"]["path"], first.as_str());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Needs an audio device: `levels` arrive while playing, with 16 bands and 64 wave points.
+#[test]
+#[ignore]
+fn device_levels_follow_position_ticks() {
+    let mut s = Sidecar::spawn();
+    s.send(json!({"v":1,"type":"load","path":FIXTURE}));
+    s.send(json!({"v":1,"type":"play"}));
+    let v = loop {
+        let l = s.lines.recv_timeout(Duration::from_secs(5)).expect("no levels");
+        let v: Value = serde_json::from_str(&l).unwrap();
+        assert_ne!(v["type"], "error", "{v}");
+        if v["type"] == "levels" {
+            break v;
+        }
+    };
+    assert_eq!((v["bands"].as_array().unwrap().len(), v["wave"].as_array().unwrap().len()), (16, 64), "{v}");
 }
