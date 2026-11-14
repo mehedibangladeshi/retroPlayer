@@ -11,6 +11,7 @@ import { x11Relaunch } from './platform'
 import { isValidCommand } from './ndjson'
 import { contextMenu, setHidden } from './contextMenu'
 import { loadSettings, saveSettings, type WindowState } from './settings'
+import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, type Session } from './session'
 import { defaultPlayerSize, proportional, sizeLimits } from './windowSize'
 import { Sidecar } from './sidecar'
@@ -69,9 +70,15 @@ function saveSession(): void {
   saveSettings({ session })
   sessionSavedAt = Date.now()
 }
+// Options-save gate (see optionsStep): waits for a fresh engine's defaults, then skips the half-applied echoes.
+let optionsSkip = AWAITING
 const sidecar = new Sidecar(
   () => [win, ...satellites.map((s) => s.win)].filter(live),
   (evt) => {
+    const o = optionsStep(optionsSkip, evt, loadSettings().options)
+    optionsSkip = o.skip
+    if (o.save) saveSettings({ options: o.save })
+    if (o.sync) for (const c of optionsCommands(loadSettings().options)) sidecar.send(c)
     if (evt.type === 'playlist') sessionAlbum = evt.album
     restoreLeft = restoreStep(restoreLeft, evt)
     if (restoreLeft > 0) return
@@ -711,6 +718,9 @@ if (relaunch) {
   })
   ipcMain.on(IPC.minimize, (e) => {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.minimize()
+  })
+  ipcMain.on(IPC.quit, (e) => {
+    if (fromAppWindow(e)) app.quit()
   })
   ipcMain.on(IPC.close, (e) => {
     if (fromAppWindow(e)) BrowserWindow.fromWebContents(e.sender)?.close()

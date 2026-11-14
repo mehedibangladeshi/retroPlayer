@@ -16,6 +16,7 @@ const api: RetroApi = {
   pathForFile: (file) => webUtils.getPathForFile(file),
   minimizeWindow: () => ipcRenderer.send(IPC.minimize),
   closeWindow: () => ipcRenderer.send(IPC.close),
+  quit: () => ipcRenderer.send(IPC.quit),
   showPlaylist: () => ipcRenderer.send(IPC.showPlaylist),
   toggleShade: () => ipcRenderer.send(IPC.toggleShade),
   onShaded: (cb) => {
