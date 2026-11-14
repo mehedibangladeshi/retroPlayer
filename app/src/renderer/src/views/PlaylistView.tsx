@@ -9,6 +9,7 @@ import { SHADE } from '@shared/shade'
 import { rowClickAction, rowKeyAction } from './rowKeys'
 import { MARQUEE_DELAY_MS, marquee } from './marquee'
 import { textMetrics } from './playlistText'
+import TitleText from './TitleText'
 import { nineSlice } from './stretchFit'
 import { useStretchFit } from './useStretchFit'
 import './PlaylistView.css'
@@ -105,10 +106,11 @@ export default function PlaylistView() {
         {/* The only drag region: no children, ends 4px short of the Minimize button. */}
         <div className="pl-titlebar" style={{ width: P.MINIMIZE.x + dw - 4, height: SHADE.playlist.barH }} />
         <div className="pl-layer" style={slice('base')} />
+        <TitleText title={P.TITLE} />
         <img className="pl-layer pl-cover" src={album?.cover ?? defaultCover} alt="" draggable={false} style={rectStyle(grow(P.COVER, dw, dh))} />
         <div className="pl-layer" style={slice('paper')} />
 
-        {/* The "Track list" title, its dashes and the footer text are already painted in the base artwork. */}
+        {/* The title's dashes and the footer text are painted in the base artwork; the title is TitleText above. */}
         {/* The underline is a border so it follows the heading's width, starting at the art's underline x. */}
         <div
           className="pl-heading"

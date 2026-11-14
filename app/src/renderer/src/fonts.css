@@ -1,0 +1,4 @@
+/* The app font for every window's code-drawn text. The playlist sets its own font (PLAYLIST.FONT_FAMILY). */
+@font-face { font-family: 'Liberation Sans'; src: url('@assets/fonts/LiberationSans-Regular.ttf') format('truetype'); font-weight: 400; }
+body, .app-font { font-family: 'Liberation Sans', sans-serif; }
+.title-text { position: absolute; line-height: 1; text-box: trim-both cap alphabetic; white-space: nowrap; pointer-events: none; }

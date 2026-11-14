@@ -63,10 +63,12 @@ Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (cropped to the 
 | `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,76 810.5x811, drawn between base and paper |
 | `playlist/fonts/Montserrat-VariableFont_wght.ttf` | Montserrat variable font (weights 100..900), SIL Open Font License, from Google Fonts | album heading and song rows (`PLAYLIST.FONT_FAMILY`) |
 | `playlist/fonts/Montserrat-OFL.txt` | Licence of the font (SIL Open Font License 1.1) | n/a |
+| `fonts/LiberationSans-Regular.ttf` | Liberation Sans 2.1.5 Regular, SIL Open Font License, from the artist's font set | all code-drawn text except the playlist (`app/src/renderer/src/fonts.css`) |
+| `fonts/LiberationSans-OFL.txt` | Licence of the font (SIL Open Font License 1.1) | n/a |
 | `playlist/reference/cover-example.png` | Example cover from the artist, reference only, not shipped | n/a |
 | `playlist/reference/preview.png` | Composed reference of the window, reference only, not shipped | n/a |
 
-Font choice: Montserrat replaces Another Typewriter (see `docs/DECISIONS.md`, 2026-11-08). It is used only for the album heading and the song rows, with a sans-serif fallback. "Track list" and the footer are painted in the artwork. Text sizes are fixed screen px (`PLAYLIST.TEXT_PX`): 16 px for the heading and 13 px for rows, the same at every window size.
+Font choice: Montserrat replaces Another Typewriter (see `docs/DECISIONS.md`, 2026-11-08). It is used only for the album heading and the song rows, with a sans-serif fallback. The footer and the title's dashes are painted in the artwork; the title "TRACK LIST" is drawn by code in Liberation Sans like the rack title (`PLAYLIST.TITLE`), and the red "Track List" was erased from `playlist-base.png`. Text sizes are fixed screen px (`PLAYLIST.TEXT_PX`): 16 px for the heading and 13 px for rows, the same at every window size.
 
 ## Album cover deck
 

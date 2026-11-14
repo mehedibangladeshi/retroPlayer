@@ -541,6 +541,18 @@ Decision: `Windows → Reset Windows` (`resetWindows`) does what a first launch 
 
 Why: The owner chose to show closed windows too, so one action gives a known layout after windows have been closed or moved out of reach.
 
+## 2026-11-14 — App font is Liberation Sans
+
+Decision: Every window's code-drawn text (cassette title and time, hints, the open menu, the error toast, the debug view) uses Liberation Sans Regular, bundled as `assets/ui/fonts/LiberationSans-Regular.ttf` with its SIL Open Font License in `LiberationSans-OFL.txt`. `app/src/renderer/src/fonts.css` declares it and sets it on `body`, and views inherit it rather than naming a font. The playlist keeps Montserrat (`PLAYLIST.FONT_FAMILY`). The brand texts "SUPER LX- RETRO" (player and power deck) and "HIGH QUALITY AUDIO" (player) stay baked into the artwork, where the artist set them in Hillside Sans. No Hillside font file is bundled. `app/test/appFont.test.ts` checks this, including that those art layers are the originals.
+
+Why: The owner picked Liberation Sans from the artist's set. Drawing the brand text in Hillside by code was tried and removed: the repository is public, so committing the font file would publish it, and Hillside's licence (the file says personal use only) does not allow that. The baked art already shows the brand text in Hillside.
+
+## 2026-11-14 — Playlist title drawn like the rack title
+
+Decision: The playlist's window title is drawn by code as "TRACK LIST" in Liberation Sans, with the "CASSETTE RACK" title's position, cap height, letter spacing and colour (`RACK_TITLE`, `#737373`, measured from `rack/rack-top.png`; `PLAYLIST.TITLE`). The red "Track List" is erased from `playlist/playlist-base.png`; its dashes stay. The title (`TitleText`) is trimmed to cap top and baseline (`text-box: trim-both cap alphabetic`), so a measured cap top places it exactly. The old unused `PLAYLIST.TITLE` measurements of the red title are removed.
+
+Why: The owner wants the playlist title in the app font and the rack title's colour. Copying the rack title's whole look keeps the two side windows' titles identical in size and placement.
+
 ## 2026-11-14 — Volume knob: grab cursor and click to turn
 
 Decision: The volume knob shows the grab cursor (grabbing while held). A press that moves less than 3 design px is a click, and it turns the knob to point at the click (`angleVolume`): straight up is 5, the lower-left mark 0, the lower-right mark 10, the gap at the bottom snaps to the nearer end, and the centre does nothing. The clickable circle is 140 design px in radius, covering the knob and its ring of scale dots. Vertical drag, wheel and arrow keys stay as they were. Only the left button turns it, so a right-click still opens the menu.
