@@ -113,3 +113,18 @@ Canvas 902x1868 px at 2x, so the design size is 451x934 CSS px. Constants are in
 | `power/power-top.png` | Minimize and close (was `5 top.png`) | 0,0; minimize 375,12 30x30; close 408,12 30.5x30 |
 
 The shaded bar is 48 high (the panel outline starts at 48).
+
+Control constants in `POWER` (design px = 2x pixels / 2). Measured with ImageMagick on the layer PNGs: solid bboxes via `-alpha extract -threshold 99%` on a crop around each part (shadows are semi-transparent, so they drop out), lamps via an `-fx` colour test (red r>.45,g<.35; green g>.5) and scan lines for stroke edges.
+
+| Constant | Value | How measured |
+|----------|-------|--------------|
+| `KNOB` | centre 229,206.75, r 104 | `power-volume.png`: rim edges (grey 100,100,100 stroke) at 2x x 450..866 and y 204..622 give centre 458,413.5 and r 208.5. The baked pointer is a line at 3 o'clock about 4 design px below this centre; it is at volume 0.8333 (rotation 0). |
+| `SEEK` | 23.5,395.5 402.5x16.5 | `power-display.png` scan lines: inner opening of the frame between the strokes, 2x x 47..852, y 791..824 |
+| `VIS` | 33.5,468 256x191.5 | same, 2x x 67..579, y 936..1319 |
+| `LOOP`, `SHUFFLE` | 397,568 21.5x71.5; 396,681 21x71.5 | `power-mid.png` solid bbox of each switch body |
+| `LOOP_RED/GREEN`, `SHUFFLE_RED/GREEN` | lamp centres, r 2 | 7x7 px colour blobs (red top, green bottom) |
+| `IMPORT`, `POWER_BTN` | 44,690 113x23.5; 42.5,790.5 113x23 | solid bbox of each button body (labels excluded by the crop) |
+| `IMPORT_LAMP`, `POWER_LAMP` | 60,702 and 58,802.25, r 3 | 12x12 px red blobs |
+| `METER` | 302,787 119.5x107.5 | solid bbox of the meter face with its dark border |
+| `METER_PIVOT`, `METER_NEEDLE` | 392,871; 41 | centre of the needle hub ring (2x 783.9,1742.3); needle tip at 2x x 702, so 82 px from the pivot |
+| `METER_MIN_DEG`, `METER_MAX_DEG` | -180, -90 | the baked needle points left at the "20" label (level with the pivot); the "100" label sits straight above the pivot (label centres measured from the pivot: 20 at -179 degrees, 40 -156, 60 -135, 80 -114, 100 -88.5) |
