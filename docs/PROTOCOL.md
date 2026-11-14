@@ -122,6 +122,16 @@ Fields: `path` (string, absolute path to the folder), `index` (optional integer,
 {"v":1,"type":"loadAlbum","path":"/music/The Hunna - The Hunna (2022)","index":2,"play":false}
 ```
 
+### scanAlbum
+
+Reads an album folder exactly as `loadAlbum` does, but only reports what it found. It never touches playback, the current playlist or the current album. It always answers with exactly one `albumInfo` event and never emits `error`; a folder that is missing, unreadable or has no playable tracks gives `album` `null`.
+
+Fields: `path` (string, absolute path to the folder).
+
+```json
+{"v":1,"type":"scanAlbum","path":"/music/The Hunna - The Hunna (2022)"}
+```
+
 ### playIndex
 
 Loads and plays track `index` of the current album. `index` is zero-based. If there is no album, or `index` is out of range, the engine emits `error` with code `invalid_state`.
@@ -224,6 +234,16 @@ Fields: `code` (one of the error codes below), `message` (string, human-readable
 
 ```json
 {"v":1,"type":"error","code":"file_not_found","message":"File not found: /home/user/Music/missing.mp3"}
+```
+
+### albumInfo
+
+The answer to `scanAlbum`. It changes no player state.
+
+Fields: `path` (string, the command's `path`, echoed verbatim) and `album` (an album object as in `playlist`, or `null` if the scan failed).
+
+```json
+{"v":1,"type":"albumInfo","path":"/music/Album","album":null}
 ```
 
 ### playlist

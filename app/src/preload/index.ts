@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { IPC, type RetroApi } from '@shared/api'
 import type { EngineEvent } from '@shared/protocol'
+import type { RackState } from '@shared/rack'
 
 const api: RetroApi = {
   send: (cmd) => ipcRenderer.send(IPC.command, cmd),
@@ -25,7 +26,19 @@ const api: RetroApi = {
     return () => {
       ipcRenderer.removeListener(IPC.shaded, listener)
     }
-  }
+  },
+  getRack: () => ipcRenderer.invoke(IPC.rackGet) as Promise<RackState>,
+  onRack: (cb) => {
+    const listener = (_e: IpcRendererEvent, s: RackState): void => cb(s)
+    ipcRenderer.on(IPC.rackChanged, listener)
+    return () => {
+      ipcRenderer.removeListener(IPC.rackChanged, listener)
+    }
+  },
+  rackPlay: (dir) => ipcRenderer.send(IPC.rackPlay, dir),
+  rackAdd: (dirs) => ipcRenderer.send(IPC.rackAdd, dirs),
+  rackReorder: (dirs) => ipcRenderer.send(IPC.rackReorder, dirs),
+  rackMenu: (dir) => ipcRenderer.send(IPC.rackMenu, dir)
 }
 
 contextBridge.exposeInMainWorld('retro', api)

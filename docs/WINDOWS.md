@@ -68,6 +68,8 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    with a checkmark for visible, a separator, `Reset Windows` and `Fill Gaps`. Picking a window shows or hides it.
    Its Keyboard Shortcuts submenu lists every shortcut with its key, for display only (the windows handle the keys).
    Closed windows are saved (`hiddenWindows` in settings.json) and stay closed at the next launch until shown again.
+   The cassette rack has its own native right-click menu (Sort: Recent / Sort: Custom, and Remove from rack over a
+   spine). The rack page asks for it over `rack:menu` with the spine under the pointer; main pops it on the rack window.
    On Windows and Linux, `system-context-menu` comes first on a right-click over a drag region. It is only
    `preventDefault()`ed to hide the OS window menu and never opens a menu: a menu popped from it closed about 5 ms
    later on Linux, and two back to back left none open on Windows.

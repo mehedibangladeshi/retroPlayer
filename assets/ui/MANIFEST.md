@@ -94,6 +94,19 @@ Canvas 3246x1872 px at 2x, so the design size is 1623x936 CSS px. Constants are 
 
 The shaded bar is 64 high (the panel starts at 65). `3 refferance cassette placement.png` (six sample cassette spines at the right of the shelf, 2x 1714,183 1439x1612) is reference only and not shipped: the shelf is empty until cassettes are added.
 
+### Spine design reference
+
+The album spines in the rack come from `source/cassette spine/`. These files are references only and are not shipped. Each spine is drawn in CSS, not from a PNG.
+
+| File | What |
+|------|------|
+| `source/cassette spine/1 refferance.png` | Composed example of a spine on the shelf |
+| `source/cassette spine/2 bg.png` | Rounded mask: 211x1527 at (7,5) on an 8000x5000 canvas |
+| `source/cassette spine/3 bg outer line.png` | Thin light inset outline around the spine |
+| `source/cassette spine/4 name reff.png` | Rotated name placement |
+
+Composition: the spine is a 211:1527 box with a rounded mask (CSS mask). The album cover's centre strip fills it (cropped and downscaled in the main process). A thin light inset outline (CSS) sits on top. With no cover, a solid colour from a hash of the text fills it. The "Artist - Album (Year)" text is Montserrat, rotated to read top to bottom, in black or white for contrast.
+
 ## App icon
 
 | File | What | Where it goes |

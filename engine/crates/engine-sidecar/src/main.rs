@@ -285,6 +285,11 @@ fn dispatch(
                 None => Ok(()),
             }
         }
+        Command::ScanAlbum { path } => {
+            let album = scan_album(Path::new(&path)).ok().map(|a| WireAlbum::from(&a));
+            send(Event::AlbumInfo { path, album });
+            Ok(())
+        }
         Command::PlayIndex { index } => {
             let pl = playlist.as_mut().ok_or_else(|| invalid_state("no album loaded"))?;
             let path = pl.select(index).map(Path::to_path_buf).ok_or_else(|| invalid_state("track index out of range"))?;

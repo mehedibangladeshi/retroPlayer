@@ -12,3 +12,14 @@ body { background: transparent; overflow: hidden; }
 /* Placeholder restore glyph (see ASSETS_TODO): a dark patch hides the baked minimize icon, an outlined square marks "restore". */
 .rk .rk-chrome.shaded, .rk .rk-chrome.shaded:hover { background-color: #2f3138; }
 .rk .rk-chrome.shaded::after { content: ''; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #ddd; border-top-width: 4px; }
+/* The shelf: one row of spines, scrolled sideways (the wheel's vertical delta scrolls it too, see RackView.tsx). */
+.rk-shelf { position: absolute; box-sizing: border-box; display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; }
+/* A cassette spine: sizes are fractions of the spine width --sw (211 px in the design), measured from 2 bg.png (corner radius 22 px) and 3 bg outer line.png (inset 8 px sides / 13 px top / 14 px bottom, 4 px stroke, #e0e0e0). */
+.rk .rk-spine { position: relative; flex: none; margin: 0; padding: 0; border: 0; border-radius: calc(var(--sw) * 0.104); overflow: hidden; cursor: pointer; font: inherit; }
+.rk .rk-spine::after { content: ''; position: absolute; inset: calc(var(--sw) * 0.063) calc(var(--sw) * 0.038); border: max(1px, calc(var(--sw) * 0.019)) solid #e0e0e0; border-radius: calc(var(--sw) * 0.06); pointer-events: none; }
+.rk .rk-spine:focus-visible { outline: 3px solid rgba(255, 255, 255, 0.6); outline-offset: 2px; }
+.rk .rk-spine:active { transform: translateY(1px); }
+.rk .rk-spine.drop-before { box-shadow: -6px 0 0 #e8e8e8; }
+.rk .rk-spine.drop-after { box-shadow: 6px 0 0 #e8e8e8; }
+/* Reads top to bottom, centred across the spine, starting 20.7% down, glyph box 66 px wide of 211 (4 name reff.png). */
+.rk-spine-text { position: absolute; left: 50%; top: 20.7%; transform: translateX(-50%); max-height: 73%; writing-mode: vertical-rl; font-family: 'Montserrat', sans-serif; font-weight: 300; font-size: calc(var(--sw) * 0.34); line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }

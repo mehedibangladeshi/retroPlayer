@@ -139,3 +139,9 @@ test('parseEvent accepts artwork events', () => {
   assert.deepEqual(parseEvent('{"v":1,"type":"artwork","cover":null}'), { v, type: 'artwork', cover: null })
   assert.deepEqual(parseEvent('{"v":1,"type":"artwork","cover":"data:image/png;base64,AAAA"}'), { v, type: 'artwork', cover: 'data:image/png;base64,AAAA' })
 })
+
+test('scanAlbum needs a string path', () => {
+  assert.equal(isValidCommand({ v, type: 'scanAlbum', path: '/music/album' }), true)
+  assert.equal(isValidCommand({ v, type: 'scanAlbum' }), false)
+  assert.equal(isValidCommand({ v, type: 'scanAlbum', path: 3 }), false)
+})

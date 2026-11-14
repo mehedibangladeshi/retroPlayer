@@ -24,11 +24,18 @@ test('the app stylesheet loads Liberation Sans and sets it on the page, and main
 
 test('no view but the playlist picks another font', () => {
   const views = readdirSync(new URL('views/', src), { recursive: true }) as string[]
-  for (const f of views.filter((f) => /\.(css|tsx)$/.test(f) && !f.startsWith('PlaylistView'))) {
+  for (const f of views.filter((f) => /\.(css|tsx)$/.test(f) && !/^(PlaylistView|RackView)/.test(f))) {
     const code = read(`views/${f}`)
     assert.doesNotMatch(code, /font-family:\s*(?!inherit)|fontFamily/, f)
     assert.doesNotMatch(code, /font:\s*(?!inherit)[^;]*(serif|system-ui|monospace)/, f)
   }
+})
+
+test('the rack spine text is Montserrat, loaded like the playlist does', () => {
+  assert.match(read('views/RackView.tsx'), /Montserrat-VariableFont_wght\.ttf\?url/)
+  assert.match(read('views/RackView.tsx'), /@font-face \{ font-family: 'Montserrat'/)
+  assert.match(read('views/RackView.css'), /\.rk-spine-text\s*\{[^}]*font-family:\s*'Montserrat'/)
+  assert.doesNotMatch(read('views/RackView.css').replace(/\.rk-spine-text[^}]*\}/, ''), /font-family:\s*(?!inherit)/)
 })
 
 test('Hillside Sans is not bundled or named in the app', () => {

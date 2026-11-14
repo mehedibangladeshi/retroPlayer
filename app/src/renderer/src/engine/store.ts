@@ -84,6 +84,8 @@ function handle(e: EngineEvent): void {
     case 'playlist':
       set({ album: e.album })
       break
+    case 'albumInfo':
+      break // answers a scan; carries no player state
     case 'artwork':
       set({ artwork: e.cover })
       break

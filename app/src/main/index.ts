@@ -15,6 +15,9 @@ import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, type Session } from './session'
 import { clampToLimits, defaultPlayerHeight, displayLimits, fitSize, proportional, type Limits } from './windowSize'
 import { Sidecar } from './sidecar'
+import { record, remove, reorder, setSort, view, type RackFile } from './rack'
+import { loadRack, makeSpine, saveRack } from './rackStore'
+import { dirArg, dirsArg, rackMenuTemplate } from './rackIpc'
 // Bundled into out/ by electron-vite; packaged builds also get it as the .icns/.ico via electron-builder.
 import icon from '../../build/icon.png?asset'
 
@@ -74,6 +77,13 @@ function saveSession(): void {
   saveSettings({ session })
   sessionSavedAt = Date.now()
 }
+// Cassette rack: every album loaded or scanned gets a spine (rack.json, read at whenReady: userData is set further down).
+let rackFile: RackFile = { sort: 'recent', entries: [] }
+function setRack(f: RackFile): void {
+  rackFile = f
+  saveRack(f)
+  if (live(rack.win)) rack.win.webContents.send(IPC.rackChanged, view(f))
+}
 // Options-save gate (see optionsStep): waits for a fresh engine's defaults, then skips the half-applied echoes.
 let optionsSkip = AWAITING
 const sidecar = new Sidecar(
@@ -84,6 +94,7 @@ const sidecar = new Sidecar(
     if (o.save) saveSettings({ options: o.save })
     if (o.sync) for (const c of optionsCommands(loadSettings().options)) sidecar.send(c)
     if (evt.type === 'playlist') sessionAlbum = evt.album
+    if ((evt.type === 'playlist' || evt.type === 'albumInfo') && evt.album) setRack(record(rackFile, makeSpine(evt.album), Date.now()))
     restoreLeft = restoreStep(restoreLeft, evt)
     if (restoreLeft > 0) return
     const next = nextSession(session, sessionAlbum, evt)
@@ -820,6 +831,37 @@ if (relaunch) {
     if (dir) saveSettings({ lastOpenDir: dirname(dir) })
     return dir
   })
+  ipcMain.handle(IPC.rackGet, (e) => (fromAppWindow(e) ? view(rackFile) : null))
+  ipcMain.on(IPC.rackPlay, (e, arg: unknown) => {
+    const dir = dirArg(arg)
+    if (!fromAppWindow(e) || !dir || !rackFile.entries.some((x) => x.dir === dir)) return
+    if (!existsSync(dir)) setRack(remove(rackFile, dir))
+    else sidecar.send({ v: 1, type: 'loadAlbum', path: dir }) // its playlist event re-records it (Recent order)
+  })
+  ipcMain.on(IPC.rackAdd, (e, arg: unknown) => {
+    const dirs = dirsArg(arg)
+    if (!fromAppWindow(e) || !dirs) return
+    // Folders only: a single song never gets a spine. Each scan answers albumInfo, which records it.
+    // throwIfNoEntry:false + try: an unreadable or vanished folder is skipped, not fatal to the rest.
+    for (const d of dirs) {
+      try { if (statSync(d, { throwIfNoEntry: false })?.isDirectory()) sidecar.send({ v: 1, type: 'scanAlbum', path: d }) } catch { /* skip */ }
+    }
+  })
+  ipcMain.on(IPC.rackReorder, (e, arg: unknown) => {
+    const dirs = dirsArg(arg)
+    if (fromAppWindow(e) && dirs) setRack(reorder(rackFile, dirs))
+  })
+  ipcMain.on(IPC.rackMenu, (e, arg: unknown) => {
+    const w = BrowserWindow.fromWebContents(e.sender)
+    if (!fromAppWindow(e) || !w) return
+    const dir = dirArg(arg)
+    const hasDir = dir !== null && rackFile.entries.some((x) => x.dir === dir)
+    const template = rackMenuTemplate(rackFile.sort, hasDir, {
+      setSort: (s) => setRack(setSort(rackFile, s)),
+      remove: () => dir && setRack(remove(rackFile, dir))
+    })
+    Menu.buildFromTemplate(template).popup({ window: w })
+  })
   ipcMain.on(IPC.showPlaylist, (e) => {
     if (!fromAppWindow(e)) return
     openSatellite(playlist)
@@ -853,6 +895,7 @@ if (relaunch) {
   })
   app.on('window-all-closed', () => app.quit())
   void app.whenReady().then(() => {
+    rackFile = loadRack()
     createWindow()
     screen.on('display-metrics-changed', () => applyLimits())
     screen.on('display-added', () => applyLimits())

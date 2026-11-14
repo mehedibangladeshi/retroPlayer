@@ -31,6 +31,8 @@ pub enum Command {
         looped: bool,
     },
     StopSound { name: String },
+    /// Reads an album folder without touching playback; answered by `AlbumInfo`.
+    ScanAlbum { path: String },
     #[serde(rename_all = "camelCase")]
     LoadAlbum {
         path: String,
@@ -116,6 +118,8 @@ pub enum Event {
     Ended,
     Error { code: WireErrorCode, message: String },
     Playlist { album: Option<WireAlbum> },
+    /// Answer to `ScanAlbum`; `path` echoes the command, `album` is `None` if the scan failed.
+    AlbumInfo { path: String, album: Option<WireAlbum> },
     /// `data:<mime>;base64,...` URL of the current track's art, or `null`.
     Artwork { cover: Option<String> },
     Options {

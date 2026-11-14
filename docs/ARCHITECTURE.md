@@ -137,6 +137,13 @@ The current track is not an event. Each window matches `state.trackInfo.path` ag
 2. It sends an `artwork` event only when that cover differs from the last one sent. An album with one shared cover is therefore sent once.
 3. Main caches the event and sends it to each window. The album-art window shows the cover, or an empty panel when `cover` is `null`.
 
+### Rack history
+
+1. When main gets a `playlist` event from a load, it records the album in the rack. Dropping a folder on the rack sends `scanAlbum {path}` instead, which answers `albumInfo`, so playback is not touched.
+2. `rackStore.ts` makes the spine: it crops the cover's centre strip with `nativeImage`, and picks the colours and text.
+3. `rack.ts` holds the pure state (sort mode, order, `lastUsed`) and writes `rack.json` in userData atomically.
+4. The rack window gets the list through the `rack:get` and `rack:changed` channels. Its actions (`rack:play`, `rack:add`, `rack:reorder`, `rack:menu`) are validated in `rackIpc.ts`.
+
 ## Supervision and errors
 
 - Errors are events. The engine reports them as `error` messages and never panics on bad files, missing devices, or bad input.
