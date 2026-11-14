@@ -96,6 +96,11 @@ test('clampToLimits: an aspect window clamps its height and follows with its wid
   assert.deepEqual(clampToLimits({ x: 5, y: 6, width: 100, height: 80 }, A, l), { x: 5, y: 6, width: Math.round(204 * A), height: 204 })
   const ok = { x: 5, y: 6, width: Math.round(400 * A), height: 400 }
   assert.deepEqual(clampToLimits(ok, A, l), ok)
+  // In range but a pixel off the exact aspect (an X11 window manager rounds it, e.g. a 199x414 power deck): left alone,
+  // or an unshade would resize it to a size the window manager then rounds again.
+  const pd = displayLimits(451 / 934, { width: 1920, height: 1050 }, 934)
+  const wm = { x: 750, y: 332, width: 199, height: 414 }
+  assert.deepEqual(clampToLimits(wm, 451 / 934, pd), wm)
 })
 
 test('clampToLimits: a free window clamps width and height on their own', () => {

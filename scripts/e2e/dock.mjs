@@ -435,8 +435,10 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   const pl = (await R(app.ev)).playlist
   r = await userResize('playlist', { ...pl, width: pl.width + 24 })
   check('free: a playlist width drag keeps its height, still docked', r.playlist.width === pl.width + 24 && r.playlist.height === pl.height && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(pl))
-  r = await userResize('playlist', { ...r.playlist, height: pl.height + 40 })
-  check('free: a playlist height drag keeps its width, still docked', r.playlist.height === pl.height + 40 && r.playlist.width === pl.width + 24 && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(pl))
+  // +40, or +70 where +40 would end within the 12 px resize snap of the player's bottom edge (dock.ts snapResize).
+  const dh = Math.abs(pl.y + pl.height + 40 - (r.player.y + r.player.height)) <= 12 ? 70 : 40
+  r = await userResize('playlist', { ...r.playlist, height: pl.height + dh })
+  check('free: a playlist height drag keeps its width, still docked', r.playlist.height === pl.height + dh && r.playlist.width === pl.width + 24 && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(pl))
   r = await userResize('playlist', { ...r.playlist, width: 2000, height: 2000 })
   check('limits: a side window never grows past its max', r.playlist.width <= PL[2] && r.playlist.height <= PL[3], fmt(r) + ' max ' + fmt(PL))
   r = await userResize('playlist', { ...r.playlist, width: 100, height: 100 })
@@ -758,10 +760,12 @@ check('restart: closed side windows stay closed', r.rack === null && r.power ===
   if (all5) {
     const area = await app.ev(`return screen.getDisplayMatching(byId('player').getBounds()).workArea`)
     const want = defaultPlayerHeight(area, aspectSum, 2)
-    check('reset: the player has the default height for its display', r.player.height === want, `${r.player.height} want ${want}`)
+    // Openbox rounds an aspect window's size to its own aspect hint (a pixel or two): sizes are compared with near().
+    const near = (a, b) => Math.abs(a - b) <= 2
+    check('reset: the player has the default height for its display', near(r.player.height, want), `${r.player.height} want ${want}`)
     check('reset: rack, album, playlist and power deck flush in their default places', defaultDocked(r), fmt(r))
     let ok = true
-    for (const k of ['playlist', 'album', 'rack', 'power']) ok &&= r[k].height === (await clampH(k, r.player.height))
+    for (const k of ['playlist', 'album', 'rack', 'power']) ok &&= near(r[k].height, await clampH(k, r.player.height))
     check("reset: no window is shaded, every side window is at the player's height", ok, fmt(r))
     const hid = await hiddenSaved()
     check('reset: no window is saved hidden', hid.length === 0, fmt(hid))
@@ -769,7 +773,8 @@ check('restart: closed side windows stay closed', r.rack === null && r.power ===
     const saved = await app.ev(`const fs = process.mainModule.require('fs'), path = process.mainModule.require('path');
       const st = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8'));
       return { player: st.window, playlist: st.playlistWindow, album: st.albumWindow, rack: st.rackWindow, power: st.powerWindow }`)
-    check('reset: the saved bounds equal where every window ended up', ['player', 'playlist', 'album', 'rack', 'power'].every((k) => saved[k] && fmt(saved[k]) === fmt(r[k])), fmt(saved) + ' vs ' + fmt(r))
+    const same = (a, b) => a.x === b.x && a.y === b.y && near(a.width, b.width) && near(a.height, b.height)
+    check('reset: the saved bounds equal where every window ended up', ['player', 'playlist', 'album', 'rack', 'power'].every((k) => saved[k] && same(saved[k], r[k])), fmt(saved) + ' vs ' + fmt(r))
   }
 
   // Fill Gaps leaves a shaded window alone: a shaded album bar docked under a shorter playlist is an obstacle, not space to grow over.
@@ -796,6 +801,9 @@ check('restart: closed side windows stay closed', r.rack === null && r.power ===
   // Fill Gaps: playlist docked right of the player but shorter; album, power deck and rack closed, so the group is player + playlist.
   for (const k of ['Album', 'Cassette Rack', 'Power Deck']) await menu(k)
   await sleep(800)
+  // On a small screen the default player is at the minimum height, which the playlist cannot go below: grow the player first.
+  await app.ev(`const w = byId('player'); const b = w.getBounds(); const h = Math.min(w.getMaximumSize()[1], b.height + 60); w.setSize(Math.round(h * ${WINDOW.width / WINDOW.height}), h)`)
+  await sleep(1000)
   const short = await app.ev(`const w = byId('playlist'); const b = w.getBounds(); const t = Math.max(w.getMinimumSize()[1], Math.floor(b.height * 0.6)); w.setSize(b.width, t); return t`)
   await sleep(800)
   r = await R(app.ev)
@@ -865,7 +873,10 @@ check('restart: closed side windows stay closed', r.rack === null && r.power ===
   r = await userResize('playlist', { ...r.playlist, height: r.player.height + 7 }) // bottom edge 7 px past the player's
   check('snap resize: a free playlist bottom 7 px off snaps flush with the player bottom, still docked', r.playlist.y + r.playlist.height === r.player.y + r.player.height && flush.right(r.player, r.playlist), fmt(r))
   const al0 = r.album
-  r = await userResize('album', { ...al0, height: r.player.height + 7 }) // bottom edge 7 px past the player's
+  // Bottom edge 7 px past the player's, in the album's aspect: openbox corrects a programmatic size to the aspect hint,
+  // as a real aspect-locked drag would be.
+  const alH = r.player.y + r.player.height + 7 - al0.y
+  r = await userResize('album', { ...al0, width: Math.round(alH * (ALBUM.WINDOW.w / ALBUM.WINDOW.h)), height: alH })
   check('snap resize: an aspect album bottom 7 px off snaps flush with the player bottom, aspect kept', r.album.y + r.album.height === r.player.y + r.player.height && near(r.album.height, r.album.width) && flush.left(r.player, r.album), fmt(r))
   // A perfect rectangle: album and power deck closed, rack above the player, playlist right of it.
   await menu('Album')

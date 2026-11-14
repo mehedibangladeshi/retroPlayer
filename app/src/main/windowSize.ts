@@ -30,6 +30,8 @@ export function fitSize(saved: { width: number; height: number }, aspect: number
 interface Box { x: number; y: number; width: number; height: number }
 // A window brought inside new limits (its display changed), keeping its position. `aspect` null: a free window.
 export function clampToLimits(r: Box, aspect: number | null, l: Limits): Box {
+  // In range: untouched, so a size an X11 window manager rounded to its own aspect hint is not fought.
+  if (r.width >= l.minWidth && r.width <= l.maxWidth && r.height >= l.minHeight && r.height <= l.maxHeight) return r
   const height = clamp(r.height, l.minHeight, l.maxHeight)
   return { ...r, width: aspect === null ? clamp(r.width, l.minWidth, l.maxWidth) : Math.round(height * aspect), height }
 }
