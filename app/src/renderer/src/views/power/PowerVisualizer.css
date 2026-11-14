@@ -1,0 +1,10 @@
+.pvis {
+  position: absolute;
+  cursor: pointer;
+  display: block;
+}
+.pvis .grid { stroke: #3fff7a; stroke-opacity: 0.1; stroke-width: 0.5; }
+.pvis .bar { fill: #46ff7e; }
+.pvis .cap { fill: #ffb43a; }
+.pvis .wave { fill: none; stroke: #46ff7e; stroke-width: 1.6; stroke-linejoin: round; }
+.pvis .glow { filter: drop-shadow(0 0 3px rgba(70, 255, 126, 0.8)); }

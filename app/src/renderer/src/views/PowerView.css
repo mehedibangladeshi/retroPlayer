@@ -12,3 +12,10 @@ body { background: transparent; overflow: hidden; }
 /* Placeholder restore glyph (see ASSETS_TODO): a dark patch hides the baked minimize icon, an outlined square marks "restore". */
 .pd .pd-chrome.shaded, .pd .pd-chrome.shaded:hover { background-color: #2f3138; }
 .pd .pd-chrome.shaded::after { content: ''; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #ddd; border-top-width: 4px; }
+/* Switches and buttons: invisible hit areas over the baked art; pressed feedback is code-drawn. */
+.pd .pd-btn { position: absolute; margin: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
+.pd .pd-btn:active { background-color: rgba(0, 0, 0, 0.25); transform: translateY(1px); }
+.pd .pd-btn:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); }
+.pd-lamp { position: absolute; border-radius: 50%; pointer-events: none; }
+.pd-lamp.red { background: radial-gradient(circle, #ff8a80 0%, #ff3b30 60%); box-shadow: 0 0 6px 2px rgba(255, 59, 48, 0.7); }
+.pd-lamp.green { background: radial-gradient(circle, #a8f0bd 0%, #34c759 60%); box-shadow: 0 0 6px 2px rgba(52, 199, 89, 0.7); }
