@@ -210,6 +210,20 @@ fn device_volume_scales_the_measured_output() {
 }
 
 #[test]
+fn boost_defaults_to_zero_and_clamps() {
+    let (p, _rx) = Player::new();
+    assert_eq!(p.boost_db(), 0.0);
+    p.set_boost_db(6.0);
+    assert_eq!(p.boost_db(), 6.0);
+    p.set_boost_db(-3.0);
+    assert_eq!(p.boost_db(), 0.0);
+    p.set_boost_db(99.0);
+    assert_eq!(p.boost_db(), 12.0);
+    p.set_boost_db(f32::NAN);
+    assert_eq!(p.boost_db(), 0.0);
+}
+
+#[test]
 fn volume_defaults_to_one_and_levels_need_an_output() {
     let (p, _rx) = Player::new();
     assert_eq!(p.volume(), 1.0);

@@ -7,18 +7,22 @@ import { spawn, execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stackTopFirst, taskbarEntries } from './zorder.mjs'
+import { defaultPlayerHeight, displayLimits } from '../../app/src/main/windowSize.ts'
+import { ALBUM, PLAYLIST, POWER, RACK, WINDOW } from '../../app/src/shared/layout.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 // A real OS pointer drag (x0, y0 in DIP; converted to what each OS's input API expects). Resolves when the button is up.
-function realDrag(x0, y0, dx, dy, scale, steps = 25) {
+// Runs the OS pointer script `name` (drag, rclick) with screen coordinates scaled to what that OS expects.
+function realPointer(name, coords, scale, ...rest) {
   const px = (v) => String(Math.round(v * (process.platform === 'darwin' ? 1 : scale)))
-  const args = [px(x0), px(y0), px(dx), px(dy), String(steps)]
+  const args = [...coords.map(px), ...rest.map(String)]
   const [cmd, argv] =
-    process.platform === 'win32' ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'drag-win.ps1'), ...args]]
-    : process.platform === 'darwin' ? ['swift', [join(here, 'drag-mac.swift'), ...args]]
-    : ['python3', [join(here, 'drag-linux.py'), ...args]]
+    process.platform === 'win32' ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, `${name}-win.ps1`), ...args]]
+    : process.platform === 'darwin' ? ['swift', [join(here, `${name}-mac.swift`), ...args]]
+    : ['python3', [join(here, `${name}-linux.py`), ...args]]
   return new Promise((res, rej) => spawn(cmd, argv, { stdio: 'inherit' }).on('exit', (c) => (c === 0 ? res() : rej(new Error(`${cmd} exited ${c}`)))))
 }
+const realDrag = (x0, y0, dx, dy, scale, steps = 25) => realPointer('drag', [x0, y0, dx, dy], scale, steps)
 
 const [appDir, ud, ...extra] = process.argv.slice(2)
 const electron = execFileSync('node', ['-e', "console.log(require('electron'))"], { cwd: appDir }).toString().trim().split(/\r?\n/).pop() // first use may print a download line first
@@ -87,16 +91,36 @@ const flush = {
   top: (a, b) => b.y + b.height === a.y && b.x < a.x + a.width && a.x < b.x + b.width
 }
 const fmt = (r) => JSON.stringify(r)
+// Each window's size limits come from the work area of its display: [minW, minH, maxW, maxH] as the app computes them.
+const SHAPE = {
+  player: [WINDOW.width / WINDOW.height, WINDOW.height, false],
+  playlist: [PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h, PLAYLIST.WINDOW.h, true],
+  album: [ALBUM.WINDOW.w / ALBUM.WINDOW.h, ALBUM.WINDOW.h, false],
+  rack: [RACK.WINDOW.w / RACK.WINDOW.h, RACK.WINDOW.h, true],
+  power: [POWER.WINDOW.w / POWER.WINDOW.h, POWER.WINDOW.h, false]
+}
+async function limitsOf(ev, k) {
+  const a = await ev(`return screen.getDisplayMatching(byId('${k}').getBounds()).workArea`)
+  const l = displayLimits(SHAPE[k][0], a, SHAPE[k][1], SHAPE[k][2])
+  return [l.minWidth, l.minHeight, l.maxWidth, l.maxHeight]
+}
+const limitsNow = (ev, k) => ev(`const w = byId('${k}'); return [...w.getMinimumSize(), ...w.getMaximumSize()]`)
 
 // ---- run 1
 let app = await launch(9341)
 const r0 = await R(app.ev) // first launch: side windows open at the player's height (or their minimum size)
 const mins = await app.ev(`return Object.fromEntries(['playlist','album','rack','power'].map((k) => [k, byId(k).getMinimumSize()]))`)
+// The limits follow the display each window is on (windowSize.ts displayLimits).
+for (const k of Object.keys(SHAPE)) {
+  const [want, got] = [await limitsOf(app.ev, k), await limitsNow(app.ev, k)]
+  check(`limits: ${k} has its display's limits`, fmt(got) === fmt(want), fmt(got) + ' want ' + fmt(want))
+}
+const MIN_H = (await limitsOf(app.ev, 'player'))[1] // the same for every window (it depends on the display only)
 const atPlayerHeight = (k) => Math.abs(r0[k].height - r0.player.height) <= 2 || r0[k].width === mins[k][0]
 // Windows small enough that two stacked ones fit the work area with a little room (CI screens are as small as
-// 1024x677, and macOS also keeps windows above the bottom of the work area), but not below the player's minimum.
+// 1024x677, and macOS also keeps windows above the bottom of the work area), but not below the minimum height.
 const H = await app.ev(`const w = byId('player'); const b = w.getBounds(); const a = screen.getDisplayMatching(b).workArea;
-  const h = Math.max(308, Math.min(330, Math.floor((a.height - 20) / 2))); w.setSize(Math.round(h * b.width / b.height), h); return h`)
+  const h = Math.max(${MIN_H}, Math.min(330, Math.floor((a.height - 20) / 2))); w.setSize(Math.round(h * b.width / b.height), h); return h`)
 await sleep(600)
 let r = await R(app.ev)
 const work = await app.ev(`return screen.getDisplayMatching(byId('player').getBounds()).workArea`)
@@ -112,8 +136,8 @@ await sleep(700)
 r = await R(app.ev)
 check('side resize: both side windows take the new height, still docked', r.playlist.height === H && r.album.height === H && flush.right(r.player, r.playlist) && flush.left(r.player, r.album), fmt(r))
 
-// The cassette rack: docked above the player, it follows, shades, tears off and snaps back, and resizes in proportion
-// within its limits. Then it is closed (hidden), so the checks below keep their three-window layout.
+// The cassette rack: docked above the player, it follows, shades, tears off and snaps back, and resizes freely (width
+// and height on their own) within its limits. Then it is closed (hidden), so the checks below keep their three-window layout.
 {
   const RK = 1623 / 936
   const nearR = (a, b) => Math.abs(a - b) <= 2
@@ -126,8 +150,8 @@ check('side resize: both side windows take the new height, still docked', r.play
   await drag(app.ev, 'player', work.x + Math.round((work.width - r.player.width) / 2) - r.player.x, work.y + H + 50 - r.player.y)
   r = await R(app.ev)
   check('rack: follows a player drag', flush.top(r.player, r.rack) && r.rack.x === r.player.x, fmt(r))
-  const lim = await app.ev(`const w = byId('rack'); return [...w.getMinimumSize(), ...w.getMaximumSize()]`)
-  check('rack limits: 534x308 to 1602x924', fmt(lim) === fmt([534, 308, 1602, 924]), fmt(lim))
+  const [lim, want] = [await limitsNow(app.ev, 'rack'), await limitsOf(app.ev, 'rack')]
+  check('rack limits: its display\'s (free: min width = min height)', fmt(lim) === fmt(want) && lim[0] === lim[1], fmt(lim) + ' want ' + fmt(want))
   const rackShade = `const { ipcMain } = process.mainModule.require('electron'); const w = byId('rack'); ipcMain.emit('window:toggleShade', { sender: w.webContents, senderFrame: w.webContents.mainFrame })`
   const full = r.rack
   await app.ev(rackShade)
@@ -152,7 +176,12 @@ check('side resize: both side windows take the new height, still docked', r.play
   await app.ev(`byId('rack').setBounds(${JSON.stringify({ ...rk, width: rk.width + 40 })})`)
   await sleep(800)
   r = await R(app.ev)
-  check('rack proportion: a width drag ends in proportion, still docked', nearR(r.rack.width, Math.round(r.rack.height * RK)) && flush.top(r.player, r.rack), fmt(r) + ' from ' + fmt(rk))
+  check('rack free: a width drag keeps its height, still docked', r.rack.width === rk.width + 40 && r.rack.height === rk.height && flush.top(r.player, r.rack), fmt(r) + ' from ' + fmt(rk))
+  const rk2 = r.rack
+  await app.ev(`byId('rack').setBounds(${JSON.stringify({ ...rk2, y: rk2.y - 30, height: rk2.height + 30 })})`) // its top edge only
+  await sleep(800)
+  r = await R(app.ev)
+  check('rack free: a height drag keeps its width, still docked', r.rack.height === rk2.height + 30 && r.rack.width === rk2.width && flush.top(r.player, r.rack), fmt(r) + ' from ' + fmt(rk2))
   await app.ev(`byId('rack').setSize(${Math.round(H * RK)}, ${H})`) // back to the player height: it reopens above the player later
   await sleep(700)
   await app.ev(`byId('rack').close()`)
@@ -175,8 +204,8 @@ check('side resize: both side windows take the new height, still docked', r.play
   await drag(app.ev, 'player', -40, 20)
   r = await R(app.ev)
   check('power: follows a player drag through the playlist', flush.right(r.player, r.playlist) && flush.right(r.playlist, r.power) && r.power.y === r.playlist.y, fmt(r))
-  const lim = await app.ev(`const w = byId('power'); return [...w.getMinimumSize(), ...w.getMaximumSize()]`)
-  check('power limits: 149x308 to 446x924', fmt(lim) === fmt([149, 308, 446, 924]), fmt(lim))
+  const [lim, want] = [await limitsNow(app.ev, 'power'), await limitsOf(app.ev, 'power')]
+  check('power limits: its display\'s', fmt(lim) === fmt(want), fmt(lim) + ' want ' + fmt(want))
   const shade = `const { ipcMain } = process.mainModule.require('electron'); const w = byId('power'); ipcMain.emit('window:toggleShade', { sender: w.webContents, senderFrame: w.webContents.mainFrame })`
   const full = r.power
   await app.ev(shade)
@@ -246,15 +275,16 @@ r = await R(app.ev)
 check('tear-off: detached playlist does not follow', r.playlist.x === loose.x && r.playlist.y === loose.y, fmt(r))
 check('tear-off: album still follows', flush.left(r.player, r.album), fmt(r))
 
-// Dock the playlist to the player's bottom (dropped 6 px short, offset 90 px so a window docked to its right clears the player); the player sits at the top.
+// Dock the playlist to the player's bottom (dropped 6 px short, offset 110 px so a window docked to its right clears the
+// player, and neither edge is within the 12 px start/end alignment); the player sits at the top.
 await dragTo('player', work.x + 120, top)
 r = await R(app.ev)
-await dragTo('playlist', r.player.x + 90, r.player.y + r.player.height + 6)
+await dragTo('playlist', r.player.x + 110, r.player.y + r.player.height + 6)
 r = await R(app.ev)
-check('bottom: playlist snaps flush below the player', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 90, fmt(r))
+check('bottom: playlist snaps flush below the player', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 110, fmt(r))
 await drag(app.ev, 'player', 40, 4)
 r = await R(app.ev)
-check('bottom: playlist follows the player, keeping its offset', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 90, fmt(r))
+check('bottom: playlist follows the player, keeping its offset', flush.bottom(r.player, r.playlist) && r.playlist.x === r.player.x + 110, fmt(r))
 
 // Window to window: album docks to the playlist's right (dropped 5 px off), then follows the player through the chain.
 await dragTo('album', r.playlist.x + r.playlist.width + 5, r.playlist.y + 6)
@@ -332,14 +362,14 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
 // Growing the player against the screen edge: the docked group shifts back onto the screen, still docked (a window
 // manager keeps a side window on screen, which used to read as a drag and tear it off, or leave it over the player).
 {
-  await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(308 * b.width / b.height), 308)`)
+  await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(${MIN_H} * b.width / b.height), ${MIN_H})`)
   await sleep(500)
   r = await R(app.ev)
   await dragTo('player', work.x + work.width - 4 - r.playlist.width - r.player.width, r.player.y)
   r = await R(app.ev)
   const start = r.player
   for (let i = 1; i <= 8; i++) {
-    const h = Math.round(308 + ((H2 - 308) * i) / 8)
+    const h = Math.round(MIN_H + ((H2 - MIN_H) * i) / 8)
     await app.ev(`const w = byId('player'); w.setSize(Math.round(${h} * ${start.width / start.height}), ${h})`)
     await sleep(30)
   }
@@ -373,12 +403,15 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   check('side resize: both still follow the player', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
 }
 
-// Size limits: every window has the same height range (308..924) with widths from its own aspect, and a user resize
-// ends in proportion and inside the limits.
+// Size limits: each window's height range comes from its display's work area, widths from its own aspect (a free
+// window's min width is its min height). A user resize ends inside the limits, and in proportion except for the free
+// windows (playlist, rack).
 {
-  const lim = await app.ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, [...byId(k).getMinimumSize(), ...byId(k).getMaximumSize()]]))`)
-  check('limits: player 384x308 to 1151x924', fmt(lim.player) === fmt([384, 308, 1151, 924]), fmt(lim))
-  check('limits: side windows 308x308 to 924x924', fmt(lim.playlist) === fmt([308, 308, 924, 924]) && fmt(lim.album) === fmt([308, 308, 924, 924]), fmt(lim))
+  const PL = await limitsOf(app.ev, 'playlist')
+  for (const k of ['player', 'playlist', 'album']) {
+    const [lim, want] = [await limitsNow(app.ev, k), await limitsOf(app.ev, k)]
+    check(`limits: ${k} still has its display's limits`, fmt(lim) === fmt(want), fmt(lim) + ' want ' + fmt(want))
+  }
   const near = (a, b) => Math.abs(a - b) <= 2 // openbox rounds the aspect itself
   // Openbox enforces the aspect itself and may keep the other dimension, so only the proportion is checked here (which
   // dimension leads is unit-tested in windowSize.test.ts).
@@ -394,13 +427,22 @@ check('resize: album stays flush above', flush.top(r.player, r.album), fmt(r))
   p = r.player
   r = await userResize('player', { ...p, height: p.height - 20 }) // its bottom edge only
   check('proportion: a player height drag ends in proportion', inProportion(r.player) && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(p))
-  const pl = r.playlist
+  const al = r.album
+  r = await userResize('album', { ...al, width: al.width + 24 })
+  check('proportion: a side window width drag ends in proportion, still docked', near(r.album.height, r.album.width) && flush.top(r.player, r.album), fmt(r) + ' from ' + fmt(al))
+  await app.ev(`byId('album').setSize(${al.width}, ${al.height})`)
+  await sleep(700)
+  const pl = (await R(app.ev)).playlist
   r = await userResize('playlist', { ...pl, width: pl.width + 24 })
-  check('proportion: a side window width drag ends in proportion, still docked', near(r.playlist.height, r.playlist.width) && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(pl))
+  check('free: a playlist width drag keeps its height, still docked', r.playlist.width === pl.width + 24 && r.playlist.height === pl.height && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(pl))
+  // +40, or +70 where +40 would end within the 12 px resize snap of the player's bottom edge (dock.ts snapResize).
+  const dh = Math.abs(pl.y + pl.height + 40 - (r.player.y + r.player.height)) <= 12 ? 70 : 40
+  r = await userResize('playlist', { ...r.playlist, height: pl.height + dh })
+  check('free: a playlist height drag keeps its width, still docked', r.playlist.height === pl.height + dh && r.playlist.width === pl.width + 24 && flush.right(r.player, r.playlist), fmt(r) + ' from ' + fmt(pl))
   r = await userResize('playlist', { ...r.playlist, width: 2000, height: 2000 })
-  check('limits: a side window never grows past 924', r.playlist.width <= 924 && r.playlist.height <= 924 && near(r.playlist.width, r.playlist.height), fmt(r))
+  check('limits: a side window never grows past its max', r.playlist.width <= PL[2] && r.playlist.height <= PL[3], fmt(r) + ' max ' + fmt(PL))
   r = await userResize('playlist', { ...r.playlist, width: 100, height: 100 })
-  check('limits: a side window never shrinks below 308', r.playlist.width === 308 && r.playlist.height === 308 && flush.right(r.player, r.playlist), fmt(r))
+  check('limits: a side window never shrinks below its min', r.playlist.width === PL[0] && r.playlist.height === PL[1] && flush.right(r.player, r.playlist), fmt(r) + ' min ' + fmt(PL))
   await app.ev(`const w = byId('playlist'); w.setSize(${H}, ${H})`) // back to the size the checks below expect
   await sleep(700)
 }
@@ -461,13 +503,23 @@ r = await R(app.ev)
 
 // The player's right-click menu, live: the real 'context-menu' handler builds it; popup() is intercepted so the menu is
 // captured instead of shown. `click` picks the submenu item with that label.
-const menu = (click = '') => app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
+const menu = async (click = '') => app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
   Menu.prototype.popup = function () { m = this }
   try { byId('player').webContents.emit('context-menu', { preventDefault() {} }, {}) } finally { Menu.prototype.popup = orig }
   const items = m.items[0].submenu.items; items.find((i) => i.label === ${JSON.stringify(click)})?.click()
-  return items.map((i) => [i.label, i.checked])`)
+  return items.filter((i) => i.type === 'checkbox').map((i) => [i.label, i.checked])`) // the window checkboxes (the submenu also has Reset Windows and Fill Gaps)
 const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), path = process.mainModule.require('path');
   return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8')).hiddenWindows ?? []`)
+{
+  // The live menu's Keyboard Shortcuts submenu: Electron accepts every key, and shows them without binding them.
+  const keys = await app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
+    Menu.prototype.popup = function () { m = this }
+    try { byId('player').webContents.emit('context-menu', { preventDefault() {} }, {}) } finally { Menu.prototype.popup = orig }
+    const k = m.items.find((i) => i.label === 'Keyboard Shortcuts');
+    return k ? k.submenu.items.filter((i) => i.type !== 'separator').map((i) => [i.label, i.accelerator, i.registerAccelerator]) : null`)
+  check('menu: Keyboard Shortcuts lists the shortcuts with their keys, display only',
+    !!keys && keys.length >= 14 && keys.every(([l, a, reg]) => l && a && reg === false) && keys.some(([l, a]) => l === 'Play / Pause' && a === 'Space'), fmt(keys))
+}
 {
   const hashOf = { Playlist: 'playlist', Album: 'album', 'Cassette Rack': 'rack', 'Power Deck': 'power' }
   const marksMatch = (items, v) => items.length === 4 && items.every(([l, c]) => hashOf[l] && c === !!v[hashOf[l]])
@@ -599,7 +651,7 @@ const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), p
     const p = await w.webContents.executeJavaScript(\`(() => { const cp = document.querySelector('.cp'); const r = cp.getBoundingClientRect();
       for (let y = r.top + 40; y < r.bottom - 20; y += 8) for (let x = r.left + 40; x < r.right - 20; x += 8) {
         const e = document.elementFromPoint(x, y); if (e && cp.contains(e) && !e.closest('button, .cp-menu')) return { x, y } } return null })()\`);
-    return p && { x: c.x + p.x, y: c.y + p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
+    return p && { x: c.x + p.x, y: c.y + p.y, ox: p.x, oy: p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
   const start = await R(app.ev)
   const dx = 100 // the five-window group is about 2.7 player heights wide: room for this on a 1024 px screen
   const dy = 0 // horizontal: the player has windows above it and little room below on small screens
@@ -632,6 +684,34 @@ const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), p
   check('real drag: the OS moved the player', mx >= dx / 2 && Math.abs(my) <= 10, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
   check('real drag: docked windows flush after the drop', fiveDocked(r), fmt(r))
   check('real drag: docked windows follow during the drag', samples > 0 && flushSamples / samples >= 0.8, `${flushSamples}/${samples} mid-drag samples flush`)
+
+  // A real right-click on the same spot of the body (a drag region) opens the app's menu exactly once: Windows and Linux
+  // report it twice (page and system menu), and two menus back to back left none open on Windows.
+  // popup() is recorded instead of shown so nothing blocks the main process.
+  await app.ev(`const { Menu } = process.mainModule.require('electron'); globalThis.__pops = [];
+    globalThis.__popOrig = Menu.prototype.popup; Menu.prototype.popup = function () { __pops.push(this.items.map((i) => i.label)) }`)
+  const at = await app.ev(`const w = byId('player'); const c = w.getContentBounds(); return { x: c.x + ${pt.ox}, y: c.y + ${pt.oy} }`)
+  await realPointer('rclick', [at.x, at.y], pt.scale)
+  await sleep(500)
+  const pops = await app.ev(`process.mainModule.require('electron').Menu.prototype.popup = __popOrig; return __pops`)
+  check('real right-click on the body: opens the app menu once', pops.length === 1 && pops[0][0] === 'Windows', `${fmt(pops)} at ${fmt(at)}`)
+
+  // The same right-click with the real popup: the menu must stay open until the pointer script's Escape (~1 s after
+  // release). A menu raised by the button press and closed by the release passes the check above but shows nothing.
+  await sleep(500)
+  // Focus changes and the player's mouse events are logged too: they explain a failure (an activation closes a menu).
+  await app.ev(`const { Menu } = process.mainModule.require('electron'); globalThis.__menuEv = []; const L = (k) => __menuEv.push([k, Date.now()]);
+    const offs = all.map((w) => { const n = /#(\\w+)$/.exec(w.webContents.getURL())?.[1] ?? 'player'; const f = () => L('focus ' + n), b = () => L('blur ' + n)
+      const i = (e, x) => /mouse(Down|Up)/.test(x.type) && L(x.type); w.on('focus', f); w.on('blur', b); w.webContents.on('input-event', i)
+      return () => { w.off('focus', f); w.off('blur', b); w.webContents.off('input-event', i) } }); globalThis.__menuOff = () => offs.forEach((o) => o());
+    globalThis.__popOrig = Menu.prototype.popup; Menu.prototype.popup = function (...a) {
+      this.once('menu-will-show', () => __menuEv.push(['show', Date.now()])); this.once('menu-will-close', () => __menuEv.push(['close', Date.now()]))
+      return __popOrig.apply(this, a) }`)
+  await realPointer('rclick', [at.x, at.y], pt.scale)
+  await sleep(500)
+  const ev = await app.ev(`process.mainModule.require('electron').Menu.prototype.popup = __popOrig; __menuOff(); return __menuEv`)
+  const shows = ev.filter((e) => e[0] === 'show'), close = ev.find((e) => e[0] === 'close')
+  check('real right-click on the body: the menu stays open', shows.length === 1 && !!close && close[1] - shows[0][1] >= 700, `${fmt(ev.map(([k, t]) => [k, t - (ev[0]?.[1] ?? 0)]))}`)
 }
 
 const quit = async () => {
@@ -646,7 +726,8 @@ app = await launch(9342, 5)
 r = await R(app.ev)
 const sameOffset = (k, to) => r[k].x - r[to].x === before[k].x - before[to].x && r[k].y - r[to].y === before[k].y - before[to].y
 check('restart: playlist docked right again', flush.right(r.player, r.playlist), fmt(r))
-check('restart: side windows keep their own sizes', ['playlist', 'album', 'rack', 'power'].every((k) => r[k].width === before[k].width && r[k].height === before[k].height), fmt(r) + ' before ' + fmt(before))
+// openbox re-rounds an aspect-locked window (power deck) by a pixel or two when it is created again
+check('restart: side windows keep their own sizes', ['playlist', 'album', 'rack', 'power'].every((k) => Math.abs(r[k].width - before[k].width) <= 2 && Math.abs(r[k].height - before[k].height) <= 2), fmt(r) + ' before ' + fmt(before))
 check('restart: album docked on top of the playlist again', flush.top(r.playlist, r.album) && sameOffset('album', 'playlist'), fmt(r) + ' before ' + fmt(before))
 check('restart: rack docked above the player again', flush.top(r.player, r.rack) && sameOffset('rack', 'player'), fmt(r) + ' before ' + fmt(before))
 check('restart: power deck docked right of the playlist again', flush.right(r.playlist, r.power) && sameOffset('power', 'playlist'), fmt(r) + ' before ' + fmt(before))
@@ -660,6 +741,163 @@ await quit()
 app = await launch(9343, 3)
 r = await R(app.ev)
 check('restart: closed side windows stay closed', r.rack === null && r.power === null && !!r.playlist && !!r.album, fmt(r))
+// Reset Windows, Fill Gaps and a display change (right-click > Windows). They run last (after the restart checks), because Reset
+// Windows replaces the five-window layout those checks rely on.
+{
+  const defaultDocked = (m) => flush.top(m.player, m.rack) && m.rack.x === m.player.x && flush.left(m.player, m.album) && m.album.y === m.player.y && flush.right(m.player, m.playlist) && m.playlist.y === m.player.y && flush.right(m.playlist, m.power) && m.power.y === m.playlist.y
+  const aspectSum = ALBUM.WINDOW.w / ALBUM.WINDOW.h + WINDOW.width / WINDOW.height + PLAYLIST.WINDOW.w / PLAYLIST.WINDOW.h + POWER.WINDOW.w / POWER.WINDOW.h
+  const clampH = async (k, h) => { const l = await limitsOf(app.ev, k); return Math.min(l[3], Math.max(l[1], h)) }
+
+  // Disarrange: a shaded album, a closed rack, a resized playlist, a moved power deck.
+  await toggleShade('album')
+  await menu('Cassette Rack')
+  await app.ev(`const w = byId('playlist'); const b = w.getBounds(); w.setSize(b.width + 40, b.height - 30)`)
+  await sleep(1000)
+  await menu('Reset Windows')
+  await sleep(2000)
+  r = await R(app.ev)
+  const all5 = ['player', 'playlist', 'album', 'rack', 'power'].every((k) => r[k])
+  check('reset: all five windows visible', all5, fmt(r))
+  if (all5) {
+    const area = await app.ev(`return screen.getDisplayMatching(byId('player').getBounds()).workArea`)
+    const want = defaultPlayerHeight(area, aspectSum, 2)
+    // Openbox rounds an aspect window's size to its own aspect hint (a pixel or two): sizes are compared with near().
+    const near = (a, b) => Math.abs(a - b) <= 2
+    check('reset: the player has the default height for its display', near(r.player.height, want), `${r.player.height} want ${want}`)
+    check('reset: rack, album, playlist and power deck flush in their default places', defaultDocked(r), fmt(r))
+    let ok = true
+    for (const k of ['playlist', 'album', 'rack', 'power']) ok &&= near(r[k].height, await clampH(k, r.player.height))
+    check("reset: no window is shaded, every side window is at the player's height", ok, fmt(r))
+    const hid = await hiddenSaved()
+    check('reset: no window is saved hidden', hid.length === 0, fmt(hid))
+    // The rack and power deck were never created in this launch (closed at startup): Reset built them, and what it saved must be where they ended up.
+    const saved = await app.ev(`const fs = process.mainModule.require('fs'), path = process.mainModule.require('path');
+      const st = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8'));
+      return { player: st.window, playlist: st.playlistWindow, album: st.albumWindow, rack: st.rackWindow, power: st.powerWindow }`)
+    const same = (a, b) => a.x === b.x && a.y === b.y && near(a.width, b.width) && near(a.height, b.height)
+    check('reset: the saved bounds equal where every window ended up', ['player', 'playlist', 'album', 'rack', 'power'].every((k) => saved[k] && same(saved[k], r[k])), fmt(saved) + ' vs ' + fmt(r))
+  }
+
+  // Fill Gaps leaves a shaded window alone: a shaded album bar docked under a shorter playlist is an obstacle, not space to grow over.
+  for (const k of ['Cassette Rack', 'Power Deck']) await menu(k)
+  await sleep(800)
+  await toggleShade('album')
+  await sleep(500)
+  await app.ev(`const w = byId('playlist'); const b = w.getBounds(); w.setSize(b.width, Math.max(w.getMinimumSize()[1], Math.floor(b.height * 0.6)))`)
+  await sleep(800)
+  r = await R(app.ev)
+  await dragTo('album', r.playlist.x, r.playlist.y + r.playlist.height)
+  r = await R(app.ev)
+  const plH = r.playlist.height
+  const barBelow = flush.bottom(r.playlist, r.album)
+  await menu('Fill Gaps')
+  await sleep(1200)
+  r = await R(app.ev)
+  check('fill gaps: a shaded window below is not grown over', barBelow && r.playlist.height === plH && r.playlist.y + r.playlist.height <= r.album.y, fmt(r) + ' was height ' + plH)
+  await toggleShade('album')
+  await sleep(500)
+  await menu('Reset Windows')
+  await sleep(2000)
+
+  // Fill Gaps: playlist docked right of the player but shorter; album, power deck and rack closed, so the group is player + playlist.
+  for (const k of ['Album', 'Cassette Rack', 'Power Deck']) await menu(k)
+  await sleep(800)
+  // On a small screen the default player is at the minimum height, which the playlist cannot go below: grow the player first.
+  await app.ev(`const w = byId('player'); const b = w.getBounds(); const h = Math.min(w.getMaximumSize()[1], b.height + 60); w.setSize(Math.round(h * ${WINDOW.width / WINDOW.height}), h)`)
+  await sleep(1000)
+  const short = await app.ev(`const w = byId('playlist'); const b = w.getBounds(); const t = Math.max(w.getMinimumSize()[1], Math.floor(b.height * 0.6)); w.setSize(b.width, t); return t`)
+  await sleep(800)
+  r = await R(app.ev)
+  const maxPlH = (await limitsOf(app.ev, 'playlist'))[3]
+  check('fill gaps: set up a shorter playlist right of the player', !!r.playlist && r.playlist.height < r.player.height && flush.right(r.player, r.playlist), fmt(r) + ' ' + short)
+  await menu('Fill Gaps')
+  await sleep(1200)
+  r = await R(app.ev)
+  const wantH = Math.min(r.player.height, maxPlH)
+  check('fill gaps: the playlist grew into the gap, still docked right of the player', r.playlist.height === wantH && flush.right(r.player, r.playlist) && r.playlist.y === r.player.y, fmt(r) + ' want height ' + wantH)
+  await drag(app.ev, 'player', -10, 0)
+  r = await R(app.ev)
+  check('fill gaps: the playlist still follows the player', flush.right(r.player, r.playlist) && r.playlist.height === wantH, fmt(r))
+  await menu('Reset Windows')
+  await sleep(2000)
+
+  // Display change: a smaller work area (a fake display) clamps every window to its limits; restoring it restores the limits.
+  // A fake display 65% of the real work area (at its origin), so the limits really shrink on any screen.
+  const setDisplay = (fake) => app.ev(`const real = globalThis.__realScreen ??= { m: screen.getDisplayMatching, p: screen.getPrimaryDisplay };
+    const d = real.p.call(screen); const a = d.workArea;
+    const fake = ${fake} ? { ...d, workArea: { x: a.x, y: a.y, width: Math.round(a.width * 0.65), height: Math.round(a.height * 0.65) } } : d;
+    screen.getDisplayMatching = ${fake} ? () => fake : real.m; screen.getPrimaryDisplay = ${fake} ? () => fake : real.p;
+    screen.emit('display-metrics-changed', {}, fake, ['workArea'])`)
+  const unpatch = () => app.ev(`const real = globalThis.__realScreen; if (real) { screen.getDisplayMatching = real.m; screen.getPrimaryDisplay = real.p }`).catch(() => {})
+  const limitsMatch = async (k) => fmt(await limitsNow(app.ev, k)) === fmt(await limitsOf(app.ev, k))
+  const big = await limitsOf(app.ev, 'player')
+  try {
+    await setDisplay(true)
+    await sleep(2000)
+    r = await R(app.ev)
+    let inside = true
+    let maxOk = true
+    for (const k of Object.keys(SHAPE)) {
+      const [minW, minH, maxW, maxH] = await limitsOf(app.ev, k)
+      inside &&= r[k].width >= minW && r[k].width <= maxW && r[k].height >= minH && r[k].height <= maxH
+      maxOk &&= await limitsMatch(k)
+    }
+    const small = await limitsOf(app.ev, 'player')
+    check('display change: the smaller work area really lowers the limits', small[3] < big[3], fmt(small) + ' vs ' + fmt(big))
+    check('display change: every window fits the smaller work area limits', inside, fmt(r))
+    check('display change: every window has the smaller display limits', maxOk, '')
+    check('display change: the windows are still docked', defaultDocked(r), fmt(r))
+  } finally {
+    await unpatch()
+  }
+  await setDisplay(false)
+  await sleep(1500)
+  let back = true
+  for (const k of Object.keys(SHAPE)) back &&= await limitsMatch(k)
+  check("display change: restoring the display restores the real display's limits", back, '')
+  await menu('Reset Windows')
+  await sleep(2000)
+  r = await R(app.ev)
+  check('reset: the default layout is back after the display change', defaultDocked(r), fmt(r))
+}
+
+// Resize-end snapping: a moved edge within 12 px of another window's parallel edge snaps to it, so windows tile. Last
+// (default five-window layout after Reset Windows), then Reset Windows again.
+{
+  const userResize = async (k, b) => {
+    await app.ev(`byId('${k}').setBounds(${JSON.stringify(b)})`)
+    await sleep(800)
+    return R(app.ev)
+  }
+  const near = (a, b) => Math.abs(a - b) <= 2
+  r = await R(app.ev)
+  r = await userResize('playlist', { ...r.playlist, height: r.player.height + 7 }) // bottom edge 7 px past the player's
+  check('snap resize: a free playlist bottom 7 px off snaps flush with the player bottom, still docked', r.playlist.y + r.playlist.height === r.player.y + r.player.height && flush.right(r.player, r.playlist), fmt(r))
+  const al0 = r.album
+  // Bottom edge 7 px past the player's, in the album's aspect: openbox corrects a programmatic size to the aspect hint,
+  // as a real aspect-locked drag would be.
+  const alH = r.player.y + r.player.height + 7 - al0.y
+  r = await userResize('album', { ...al0, width: Math.round(alH * (ALBUM.WINDOW.w / ALBUM.WINDOW.h)), height: alH })
+  check('snap resize: an aspect album bottom 7 px off snaps flush with the player bottom, aspect kept', r.album.y + r.album.height === r.player.y + r.player.height && near(r.album.height, r.album.width) && flush.left(r.player, r.album), fmt(r))
+  // A perfect rectangle: album and power deck closed, rack above the player, playlist right of it.
+  await menu('Album')
+  await menu('Power Deck')
+  await sleep(700)
+  r = await R(app.ev)
+  r = await userResize('rack', { ...r.rack, width: r.player.width + r.playlist.width - 6 })
+  r = await userResize('playlist', { ...r.playlist, height: r.player.height - 5 })
+  const vis = ['rack', 'player', 'playlist'].map((k) => r[k])
+  const x0 = Math.min(...vis.map((v) => v.x)), y0 = Math.min(...vis.map((v) => v.y))
+  const bw = Math.max(...vis.map((v) => v.x + v.width)) - x0, bh = Math.max(...vis.map((v) => v.y + v.height)) - y0
+  const area = vis.reduce((s, v) => s + v.width * v.height, 0)
+  const overlap = vis.some((v, i) => vis.some((u, j) => j > i && v.x < u.x + u.width && u.x < v.x + v.width && v.y < u.y + u.height && u.y < v.y + v.height))
+  check('snap resize: rack, player and playlist tile their bounding box exactly, all docked', area === bw * bh && !overlap && flush.top(r.player, r.rack) && flush.right(r.player, r.playlist), fmt(r))
+  await menu('Album')
+  await menu('Power Deck')
+  await menu('Reset Windows')
+  await sleep(2000)
+}
+
 await quit()
 
 console.log(failures ? `${failures} FAILED` : 'ALL PASS')

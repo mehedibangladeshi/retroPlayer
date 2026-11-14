@@ -43,6 +43,7 @@ export function togglePlayPause(): void {
   else if (status === 'stopped' || status === 'paused') pressPlay()
 }
 
+export const setBoost = (boostDb: number): void => send({ type: 'setBoost', boostDb })
 export const setVolume = (volume: number): void => send({ type: 'setVolume', volume })
 export const setLoop = (on: boolean): void => send({ type: 'setLoop', on })
 export const setShuffle = (on: boolean): void => send({ type: 'setShuffle', on })

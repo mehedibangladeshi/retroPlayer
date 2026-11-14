@@ -3,16 +3,6 @@
 // Bump when default window sizes change: saved bounds from older layouts are then dropped once.
 export const LAYOUT_VERSION = 3
 
-// 25% of the work-area width is provisional; the user decides the final value after testing.
-export function defaultPlayerSize(
-  workArea: { width: number; height: number },
-  aspect: number,
-  minWidth: number
-): { width: number; height: number } {
-  const width = Math.max(minWidth, Math.min(Math.round(0.25 * workArea.width), Math.floor(0.8 * workArea.height * aspect)))
-  return { width, height: Math.round(width / aspect) }
-}
-
 interface Migratable { layoutVersion?: number; window?: unknown; playlistWindow?: unknown; albumWindow?: unknown; rackWindow?: unknown; powerWindow?: unknown }
 
 // Old layout: drop saved bounds once and stamp the current version.
@@ -27,14 +17,24 @@ export function migrateSettings<T extends Migratable>(s: T): T {
   return out
 }
 
-// Every window's height stays within 50%..150% of the player's design height (616); widths follow each window's aspect.
-const MIN_H = 308
-const MAX_H = 924
-export function sizeLimits(aspect: number): { minWidth: number; minHeight: number; maxWidth: number; maxHeight: number } {
-  return { minWidth: Math.round(MIN_H * aspect), minHeight: MIN_H, maxWidth: Math.round(MAX_H * aspect), maxHeight: MAX_H }
+export type Limits = { minWidth: number; maxWidth: number; minHeight: number; maxHeight: number }
+const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(lo, hi), Math.max(lo, Math.round(v)))
+// A saved size brought inside the window's limits and the work area: a corrupt or hand-edited settings.json must not
+// open a window larger than the screen. `aspect` null is a free window (playlist, rack): width and height on their own.
+export function fitSize(saved: { width: number; height: number }, aspect: number | null, l: Limits, area: { width: number; height: number }): { width: number; height: number } {
+  if (aspect === null) return { width: clamp(saved.width, l.minWidth, Math.min(l.maxWidth, area.width)), height: clamp(saved.height, l.minHeight, Math.min(l.maxHeight, area.height)) }
+  const width = clamp(saved.width, l.minWidth, Math.min(l.maxWidth, area.width, Math.floor(area.height * aspect)))
+  return { width, height: Math.round(width / aspect) }
 }
 
 interface Box { x: number; y: number; width: number; height: number }
+// A window brought inside new limits (its display changed), keeping its position. `aspect` null: a free window.
+export function clampToLimits(r: Box, aspect: number | null, l: Limits): Box {
+  // In range: untouched, so a size an X11 window manager rounded to its own aspect hint is not fought.
+  if (r.width >= l.minWidth && r.width <= l.maxWidth && r.height >= l.minHeight && r.height <= l.maxHeight) return r
+  const height = clamp(r.height, l.minHeight, l.maxHeight)
+  return { ...r, width: aspect === null ? clamp(r.width, l.minWidth, l.maxWidth) : Math.round(height * aspect), height }
+}
 // A user resize (`cur`, from `rest`) brought back to the window's aspect and limits. The dimension the user changed most
 // leads; an edge the user moved stays where it is, so the opposite edge moves.
 export function proportional(cur: Box, rest: Box, aspect: number, l: { minHeight: number; maxHeight: number }): Box {
@@ -46,4 +46,25 @@ export function proportional(cur: Box, rest: Box, aspect: number, l: { minHeight
   const x = cur.x !== rest.x ? cur.x + cur.width - width : cur.x
   const y = cur.y !== rest.y ? cur.y + cur.height - height : cur.y
   return { x, y, width, height }
+}
+
+export interface Area { width: number; height: number }
+
+// Heights scale with the display's work area: 30%..90%, floor 200 / cap 2x design so tiny and huge screens stay usable.
+export function heightRange(area: Area, designH: number): { minHeight: number; maxHeight: number } {
+  const minHeight = Math.min(308, Math.max(200, Math.round(0.3 * area.height)))
+  return { minHeight, maxHeight: Math.max(minHeight, Math.min(Math.round(0.9 * area.height), Math.round(2 * designH))) }
+}
+
+// `free` windows (playlist, rack) get a looser min width so they can tile.
+export function displayLimits(aspect: number, area: Area, designH: number, free = false): Limits {
+  const { minHeight, maxHeight } = heightRange(area, designH)
+  return { minWidth: free ? minHeight : Math.round(minHeight * aspect), minHeight, maxWidth: Math.round(maxHeight * aspect), maxHeight }
+}
+
+// groupW/groupH: the default window group's extent in player heights; it fills at most 75% of the work area.
+export function defaultPlayerHeight(area: Area, groupW: number, groupH: number): number {
+  const { minHeight, maxHeight } = heightRange(area, 616)
+  const h = Math.round(Math.min((0.75 * area.width) / groupW, (0.75 * area.height) / groupH))
+  return Math.min(maxHeight, Math.max(minHeight, h))
 }

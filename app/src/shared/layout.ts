@@ -46,6 +46,13 @@ export const CHROME: { minimize: Rect; close: Rect } = {
   close: { x: 741, y: 7, w: 19, h: 19 },
 }
 
+/** A window title drawn by code in Liberation Sans (TitleText): left edge and cap top (design px, flat letters), cap
+ *  height, letter spacing (px), colour. */
+export type Title = { text: string; x: number; capTop: number; capH: number; spacing: number; color: string }
+
+/** "CASSETTE RACK", still baked into rack/rack-top.png (Liberation Sans); the playlist title copies its look. */
+export const RACK_TITLE: Title = { text: 'CASSETTE RACK', x: 26, capTop: 32, capH: 18, spacing: -0.13, color: '#737373' }
+
 /** Text slots drawn over the cassette label (title strip) and next to "HIGH QUALITY AUDIO" (time). */
 export const LABEL: { title: Rect; time: Rect } = {
   title: { x: 132, y: 130, w: 513, h: 30 },
@@ -94,6 +101,9 @@ export const RACK = {
   // Connected components of the top layer (2x 3081,22 59x59 and 3148,22 59x59).
   MINIMIZE: { x: 1540.5, y: 11, w: 29.5, h: 29.5 },
   CLOSE: { x: 1574, y: 11, w: 29.5, h: 29.5 },
+  /** Nine-slice borders (design px) for free resizing: they hold the title and top scratch (2x x<=679, y<=118), buttons,
+   *  lamps, grip and the panel's rounded corners (panel 2x 35,130 3172x1690); only plain frame and panel stretch. */
+  SLICE: { top: 90, right: 100, bottom: 60, left: 360 },
 } as const
 
 /** Playlist window. CSS px, origin = top-left of the window; art files are ASSET_SCALE (2x) of their rect, paths relative to assets/ui. See "Playlist window" in assets/ui/MANIFEST.md. */
@@ -111,8 +121,6 @@ export const PLAYLIST = {
   COVER: { x: 57.5, y: 76, w: 810.5, h: 811 },
   // Alpha bbox of playlist-paper.png (2x 141,183 1563x1581) inset by about 8 px for padding.
   TEXT_AREA: { x: 78.5, y: 94, w: 765.5, h: 774.5 },
-  // Preview crop aligned to base (preview = art + (32,8) px at 2x on the cropped canvas); baseline y, colour sampled (#733638).
-  TITLE: { x: 28, y: 44.5, fontSize: 36, color: '#733638' },
   // Preview text left x 232 and baseline 278; underline bar 2x 185..705, y 296..301.
   HEADING: { x: 100, y: 134.5, underline: { x: 92.5, y: 142.5, w: 260, h: 2.5 } },
   // First row "01." left x 253 baseline 397 in preview; baselines 397..787 over 6 rows give 65 px at 2x.
@@ -124,6 +132,11 @@ export const PLAYLIST = {
   // Connected-component bboxes in playlist-top.png: minimize 2x 1724,40 60x60; close 1791,40 60x60.
   MINIMIZE: { x: 862, y: 14.5, w: 30, h: 30 },
   CLOSE: { x: 895.5, y: 14.5, w: 30, h: 30 },
+  /** Nine-slice borders (design px) for free resizing: they hold "Track List" and its dashes (x<=228), the buttons,
+   *  footer, lamps and grip, and every edge of TEXT_AREA, COVER and the paper, so those grow exactly with the window. */
+  SLICE: { top: 100, right: 100, bottom: 75, left: 240 },
+  /** The window title, drawn by code like the rack's (the art's red "Track List" is erased; its dashes stay at x 188). */
+  TITLE: { ...RACK_TITLE, text: 'TRACK LIST' } satisfies Title,
   // Montserrat variable font (SIL OFL), file assets/ui/playlist/fonts/Montserrat-VariableFont_wght.ttf; falls back to sans-serif.
   FONT_FAMILY: 'Montserrat',
   // Screen px, the same at every window size (not design px). Picked by the owner from a preview; a future setting.

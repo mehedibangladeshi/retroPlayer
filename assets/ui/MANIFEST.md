@@ -63,10 +63,12 @@ Canvas 1874x1874 px at 2x, so the design size is 937x937 CSS px (cropped to the 
 | `playlist/default-cover.svg` | Our own placeholder cover (gradient, blobs, grain), used when an album has no cover. Square viewBox | `COVER` 57.5,76 810.5x811, drawn between base and paper |
 | `playlist/fonts/Montserrat-VariableFont_wght.ttf` | Montserrat variable font (weights 100..900), SIL Open Font License, from Google Fonts | album heading and song rows (`PLAYLIST.FONT_FAMILY`) |
 | `playlist/fonts/Montserrat-OFL.txt` | Licence of the font (SIL Open Font License 1.1) | n/a |
+| `fonts/LiberationSans-Regular.ttf` | Liberation Sans 2.1.5 Regular, SIL Open Font License, from the artist's font set | all code-drawn text except the playlist (`app/src/renderer/src/fonts.css`) |
+| `fonts/LiberationSans-OFL.txt` | Licence of the font (SIL Open Font License 1.1) | n/a |
 | `playlist/reference/cover-example.png` | Example cover from the artist, reference only, not shipped | n/a |
 | `playlist/reference/preview.png` | Composed reference of the window, reference only, not shipped | n/a |
 
-Font choice: Montserrat replaces Another Typewriter (see `docs/DECISIONS.md`, 2026-11-08). It is used only for the album heading and the song rows, with a sans-serif fallback. "Track list" and the footer are painted in the artwork. Text sizes are fixed screen px (`PLAYLIST.TEXT_PX`): 16 px for the heading and 13 px for rows, the same at every window size.
+Font choice: Montserrat replaces Another Typewriter (see `docs/DECISIONS.md`, 2026-11-08). It is used only for the album heading and the song rows, with a sans-serif fallback. The footer and the title's dashes are painted in the artwork; the title "TRACK LIST" is drawn by code in Liberation Sans like the rack title (`PLAYLIST.TITLE`), and the red "Track List" was erased from `playlist-base.png`. Text sizes are fixed screen px (`PLAYLIST.TEXT_PX`): 16 px for the heading and 13 px for rows, the same at every window size.
 
 ## Album cover deck
 
@@ -91,6 +93,19 @@ Canvas 3246x1872 px at 2x, so the design size is 1623x936 CSS px. Constants are 
 | `rack/rack-top.png` | "CASSETTE RACK" title, scratches, minimize, close, status dots, resize grip (was `4 top.png`) | 0,0; minimize 1540.5,11 29.5x29.5; close 1574,11 29.5x29.5 |
 
 The shaded bar is 64 high (the panel starts at 65). `3 refferance cassette placement.png` (six sample cassette spines at the right of the shelf, 2x 1714,183 1439x1612) is reference only and not shipped: the shelf is empty until cassettes are added.
+
+### Spine design reference
+
+The album spines in the rack come from `source/cassette spine/`. These files are references only and are not shipped. Each spine is drawn in CSS, not from a PNG.
+
+| File | What |
+|------|------|
+| `source/cassette spine/1 refferance.png` | Composed example of a spine on the shelf |
+| `source/cassette spine/2 bg.png` | Rounded mask: 211x1527 at (7,5) on an 8000x5000 canvas |
+| `source/cassette spine/3 bg outer line.png` | Thin light inset outline around the spine |
+| `source/cassette spine/4 name reff.png` | Rotated name placement |
+
+Composition: the spine is a 211:1527 box with a rounded mask (CSS mask). The album cover's centre strip fills it (cropped and downscaled in the main process). A thin light inset outline (CSS) sits on top. With no cover, a solid colour from a hash of the text fills it. The "Artist - Album (Year)" text is Montserrat, rotated to read top to bottom, in black or white for contrast.
 
 ## App icon
 

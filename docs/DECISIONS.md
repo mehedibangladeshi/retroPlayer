@@ -510,3 +510,92 @@ Why: The button needs a clear meaning, and quitting through the normal path keep
 Decision: A right-click anywhere on the player opens a native Electron menu (`Menu.popup`, built in `app/src/main/contextMenu.ts`). Its first item, Windows, lists every side window as a checkbox (ticked when visible); picking one shows or hides that window, so a closed window can be brought back. Closed side windows are saved as `hiddenWindows` in settings.json and stay closed at the next launch; showing one (from the menu or Ctrl+L) removes it from the list. Quitting does not count as closing. Settings, Check for Updates and About follow as placeholders that do nothing yet. On Windows, a right-click on the drag region raises `system-context-menu`, which is prevented and shows this menu instead of the OS window menu.
 
 Why: This is an owner-approved exception to the "no native controls" rule. Most of the player is a drag region, and on Windows a right-click there never reaches the page, so an HTML menu would not open everywhere. A native menu also is never clipped by the window edge and gives checkboxes and submenus for free. The menu will grow, so only the template lives in the tested module.
+
+## 2026-11-14 — The playlist and the cassette rack resize freely
+
+Decision: The playlist and cassette rack windows resize in width and height independently (`free: true` in `satellites`): no `setAspectRatio`, no proportion fix when a resize ends, and saved sizes are fitted to the screen per dimension (`fitSize`). They keep the shared limits (height 308..924, width from the design aspect at those heights). Their views scale by the tighter side and grow the composition to fill the window (`stretchFit`), drawing each art layer nine-slice (`nineSlice`, borders in `PLAYLIST.SLICE` / `RACK.SLICE`) at whole screen pixels. The list area, cover and right-edge buttons follow the window. A shaded free window's bar keeps the scale its art had. The player, album and power deck still keep their design aspect. This changes rule 8 of `docs/WINDOWS.md` (owner request).
+
+Why: Both windows hold lists (songs, cassettes) that are worth more room in one direction without growing in the other. Their art is plain frames with details in the corners and edges, so nine-slicing grows them without redrawing or distorting artwork; the other windows are fixed compositions where stretching would distort them.
+
+## 2026-11-14 — The right-click menu opens only from the page's context-menu event
+
+Decision: On every OS the right-click menu (`app/src/main/contextMenu.ts`) opens only from the page's `context-menu` event. On Windows and Linux, `system-context-menu` is still raised first over a drag region, but it is only `preventDefault()`ed to hide the OS window menu. `oncePerClick` is removed. This supersedes the once-per-click part of the 2026-11-14 "A native right-click menu on the player" entry and rule 9 of the side-window rules in `docs/WINDOWS.md` as they were.
+
+Why: On Linux a menu popped from `system-context-menu` closed about 5 ms later, and on Windows two menus back to back left none open. One source for the menu avoids both.
+
+## 2026-11-14 — Window sizes follow the display they are on
+
+Decision: The height limits of a window come from the work area of its display (`displayLimits` in `app/src/main/windowSize.ts`). With `H` the work-area height: `minHeight = clamp(round(0.30·H), 200, 308)`, and `maxHeight = max(minHeight, min(round(0.90·H), 2 × the window's design height))`. Widths follow the design aspect. Free windows (playlist, rack) have `minWidth = minHeight`. The default player height (`defaultPlayerHeight`) is chosen so the default five-window group (album, player, playlist and power deck wide; rack and player tall) fits 75% of the primary work area. Limits are re-applied on `display-metrics-changed`, `display-added` and `display-removed`, and when a window's move ends on another display. A window out of range is clamped (`clampToLimits`: aspect kept, free windows per dimension) and stays docked. A shaded window is not resized; its limits apply when it is unshaded. Examples: a 1280x720 display (work area 680 px) gives 204..612 with a default player of 255; 1920x1080 (work area 1040 px) gives 308..936, default 386; 2560x1440 (work area 1400 px) gives 308..1232, default 515.
+
+Why: The owner asked for a researched responsive system. The old fixed 308..924 px range fits a 1280x720 display badly, since the maximum is larger than its work area, and it is small on 2560x1440. The formula scales with the screen. Sources: the GNOME HIG (1024x600 is the smallest display to support), Microsoft (1366x768 is common, and layout uses effective pixels), and the Electron screen API (`workArea` in DIP, and display events). The WCAG 24 px target floor was not applied: the art's chrome buttons are 30 px in a 937 px design.
+
+## 2026-11-14 — Tiling help: edge snapping and Fill Gaps
+
+Decision: Three changes help windows fit together as tiles. (1) A dropped window aligns its start or end edge with the neighbour's, whichever is closer, within 12 px (`snap`). Before, only the start edge aligned. (2) When a user resize ends, each edge it moved snaps to a parallel edge of another window within 12 px (`snapResize` in `app/src/main/dock.ts`). Free windows snap per edge. Aspect windows snap by the most-changed dimension. This runs on every OS at resize end, because `will-resize` does not exist on Linux. (3) `Windows → Fill Gaps` (`fillGaps`) is an on-demand menu action. Inside the bounding box of the player's visible group, each visible free window grows right, down, left, then up until it meets another window (a shaded bar counts) or the box edge, within its limits. Aspect windows never change. The free-window minimum width is now `minHeight`, which is looser than the aspect width it had before.
+
+Why: The owner wants windows arranged as tiles. Aligning either edge and snapping on resize make windows meet each other. The owner chose on-demand Fill Gaps over automatic filling, so the user keeps control of each size.
+
+## 2026-11-14 — Reset Windows is a first launch
+
+Decision: `Windows → Reset Windows` (`resetWindows`) does what a first launch does. All four side windows are shown and unshaded, `hiddenWindows` is cleared, the player goes to its default size on its display, the side windows go to the player's height, `DEFAULT_DOCKS` applies, the group is nudged onto the work area, and the bounds are saved once every window is shown.
+
+Why: The owner chose to show closed windows too, so one action gives a known layout after windows have been closed or moved out of reach.
+
+## 2026-11-14 — App font is Liberation Sans
+
+Decision: Every window's code-drawn text (cassette title and time, hints, the open menu, the error toast, the debug view) uses Liberation Sans Regular, bundled as `assets/ui/fonts/LiberationSans-Regular.ttf` with its SIL Open Font License in `LiberationSans-OFL.txt`. `app/src/renderer/src/fonts.css` declares it and sets it on `body`, and views inherit it rather than naming a font. The playlist keeps Montserrat (`PLAYLIST.FONT_FAMILY`). The brand texts "SUPER LX- RETRO" (player and power deck) and "HIGH QUALITY AUDIO" (player) stay baked into the artwork, where the artist set them in Hillside Sans. No Hillside font file is bundled. `app/test/appFont.test.ts` checks this, including that those art layers are the originals.
+
+Why: The owner picked Liberation Sans from the artist's set. Drawing the brand text in Hillside by code was tried and removed: the repository is public, so committing the font file would publish it, and Hillside's licence (the file says personal use only) does not allow that. The baked art already shows the brand text in Hillside.
+
+## 2026-11-14 — Playlist title drawn like the rack title
+
+Decision: The playlist's window title is drawn by code as "TRACK LIST" in Liberation Sans, with the "CASSETTE RACK" title's position, cap height, letter spacing and colour (`RACK_TITLE`, `#737373`, measured from `rack/rack-top.png`; `PLAYLIST.TITLE`). The red "Track List" is erased from `playlist/playlist-base.png`; its dashes stay. The title (`TitleText`) is trimmed to cap top and baseline (`text-box: trim-both cap alphabetic`), so a measured cap top places it exactly. The old unused `PLAYLIST.TITLE` measurements of the red title are removed.
+
+Why: The owner wants the playlist title in the app font and the rack title's colour. Copying the rack title's whole look keeps the two side windows' titles identical in size and placement.
+
+## 2026-11-14 — Volume knob: grab cursor and click to turn
+
+Decision: The volume knob shows the grab cursor (grabbing while held). A press that moves less than 3 design px is a click, and it turns the knob to point at the click (`angleVolume`): straight up is 5, the lower-left mark 0, the lower-right mark 10, the gap at the bottom snaps to the nearer end, and the centre does nothing. The clickable circle is 140 design px in radius, covering the knob and its ring of scale dots. Vertical drag, wheel and arrow keys stay as they were. Only the left button turns it, so a right-click still opens the menu.
+
+Why: The owner wants to grab the knob and to set the volume by clicking on or around it, like a real dial.
+
+## 2026-11-14 — Cassette rack keeps an album history
+
+Decision: Every album that is loaded (folder dialog, folder drop on the player, session restore, a click in the rack) or dropped on the cassette rack gets a spine in the rack. A single song never does, and one album folder has one spine. A spine is a centre strip of the album cover at the reference aspect 211:1527, cropped in the main process with Electron `nativeImage` (crop, downscale to 400 px tall, JPEG at quality 82). No new dependency. With no cover, the spine is a solid colour from a hash of its text. The text is "Artist - Album (Year)", with missing parts dropped and an untagged title replaced by the folder name, set in Montserrat (the playlist font), rotated to read top to bottom. Its colour is black or white, whichever has the higher WCAG contrast against the strip's mean colour. The history is stored in `rack.json` in userData, separate from `settings.json`, and holds only the small spine JPEG data URLs, never full covers. It is `{sort, entries: [{dir, text, image, bg, ink, lastUsed}]}`; array order is the custom order. Writes are atomic. The sort mode is Recent (default, by `lastUsed` descending, and any album load bumps it) or Custom (spines are dragged to reorder, the order is kept while in Recent, and new albums append at the end). Right-clicking a spine removes it from the rack. Clicking a spine loads the album and plays it; if its folder no longer exists, the spine is removed silently. Dropping a folder on the rack adds it without playing: main sends the new engine command `scanAlbum {path}`, which answers `albumInfo {path, album|null}` and never touches playback (see `docs/PROTOCOL.md`).
+
+Why: The owner wants the rack to remember the albums they play, like cassettes on a shelf. Keeping the history in its own file keeps `settings.json` small and lets it be written on its own. Cropping the cover in the main process with the Electron API adds no dependency and keeps the spine small enough to store. `scanAlbum` lets a dropped folder be added without interrupting the music. The sort modes let the owner see recent albums first, or arrange the shelf by hand.
+
+## 2026-11-14 — Cassette rack: click, preview, hover and "+" spine
+
+Decision: A double-click on a spine loads the album and plays it, with no preview. A single click opens a read-only tracklist preview after 300 ms (`PREVIEW_DELAY_MS`), so a double-click can cancel it; a triple-click does nothing extra. Enter on a focused spine plays it, and Space toggles the preview. A drag (reordering in Custom sort) never opens a preview or plays. The preview slides out sideways to the right of the spine, over its neighbours, at full spine height, and flips left near the right edge. It reuses the playlist's track rows (the shared `TrackRows` component). Any other interaction with the rack closes it: a click outside it, the wheel on the shelf, a right-click, a drag start, Escape, window blur, or playing. Scrolling inside the preview keeps it open. The preview's tracklist comes from the new IPC `rackTracks(dir)` (`rack:tracks`): main sends the engine `scanAlbum` and waits for its `albumInfo` (5 s timeout). That answer is not recorded, so previewing never moves an album to the front of Recent. A missing or unreadable folder removes the spine silently. The cover is not sent with the reply. Hover lifts a spine slightly, as if pulled out of the rack, and the previewed spine stays lifted. While reordering, the drag image is 1.05× the spine's on-screen size, because Chromium's default drag image ignored the window's CSS scale and looked huge. A transparent "+" spine is always last in the row; it opens the folder picker and adds the album to the rack without playing it. Deferred: double-clicking a track row in the preview could play the album from that track. For now the preview is read-only.
+
+Why: The owner wants a single click to show what is on a cassette without disturbing playback, and a double-click to play it. The delay keeps the two gestures apart. Previewing must not reshuffle Recent, so the preview's scan is never recorded.
+
+## 2026-11-14 — Cassette rack preview: OS double-click time and polish
+
+Decision: The single-click tracklist preview now waits the OS double-click time instead of a fixed 300 ms. The main process reads it once at startup (`app/src/main/dblclick.ts`), and the rack gets it over `doubleClickMs()` (`os:doubleClickMs`). It replaces the 300 ms `PREVIEW_DELAY_MS` in the entry above; the default is now 500 ms. The value is read per OS, each with `execFile` (no shell) and a 2 s timeout:
+- Windows: `reg query "HKCU\Control Panel\Mouse" /v DoubleClickSpeed`.
+- macOS: `defaults read -g com.apple.mouse.doubleClickThreshold` (seconds).
+- Linux: on KDE, `kreadconfig6` or `kreadconfig5 --group KDE --key DoubleClickInterval`; otherwise `gsettings get org.gnome.desktop.peripherals.mouse double-click`.
+
+The value is clamped to 150–1000 ms, and 500 ms is used when it cannot be read. A preview scan's `albumInfo` is never recorded, even when it arrives after the 5 s timeout. The waiter counts the scans it has sent per folder, because the engine answers them in order, and the count is cleared on `engine_crashed`. The preview slides in with a CSS transition, so closing it mid-slide reverses smoothly. Read-only rows are plain elements, with no focus and no hover highlight.
+
+Why: Chromium counts a second click as a double-click using the OS setting. Matching that setting means a double-click never flashes a preview, and a single click is no slower than it needs to be. Electron has no API for this value, so it is read from the OS. Previewing must never reshuffle Recent, so late scan answers are dropped.
+
+## 2026-11-14 — Track names: drop the artist except on mixtapes
+
+Decision: In the playlist and the rack preview, an album's rows read "01. Title". A mixtape is a folder whose tracks do not all share one artist, and its rows read "01. Artist – Title". A track's effective artist is its own artist, else the album artist, and unknown artists are ignored. `mixedArtists(album)` decides the folder kind, and `trackRowName(track, i, showArtist, albumArtist)` in `app/src/renderer/src/views/trackRowName.ts` builds the row. Single files have no playlist rows.
+
+Why: On a one-artist album the artist repeats on every row and is noise. On a mixtape the artist is the only thing that tells the tracks apart.
+
+## 2026-11-14 — Volume knob turns, not drags
+
+Decision: Dragging the volume knob turns it like a real dial. The angle the pointer travels around the knob's centre turns it (`pointerAngle` and `turnVolume` in `app/src/renderer/src/views/powerMath.ts`), and each move applies its own change. The knob stops at 0 and 10 with no wrap, and grabbing never jumps. This replaces the vertical drag (`dragVolume`, now removed), so it supersedes the vertical-drag part of "Volume knob: grab cursor and click to turn" above. A click without moving still points the knob at the click, and the wheel and arrow keys are unchanged.
+
+Why: A vertical drag does not match how a dial is turned. Following the pointer's angle does, and applying each move's change stops cleanly at the ends.
+
+## 2026-11-14 — Volume boost with a look-ahead limiter in the output callback
+
+Decision: Boost adds 0, +3, +6, +9 or +12 dB (Off by default) to the music, for quiet tracks. The gain goes through a look-ahead peak limiter so it never clips: look-ahead 1.5 ms, release 80 ms, ceiling -1 dBFS sample peak, gain ramped over 20 ms, channels linked (`engine/crates/player-core/src/limiter.rs`). It runs inside the cpal output callback on the music only, before key sounds are mixed and before the knob volume. It is preallocated, so the callback does no allocation, and it resets when the output buffer is cleared (seek, load, stop). At Off the music passes bit-identical, only delayed 1.5 ms. At exactly 0 dB nothing is limited, by design. The knob's curve (-40..0 dB, max 1.0) is unchanged, and the knob only attenuates. Protocol: the command `setBoost {boostDb}` (the engine clamps to [0,12]), and the `options` event gains `boostDb`. It is saved with the other options in `settings.json` (a file without it loads as Off) and re-sent after an engine restart. It is set from the right-click menu's "Volume boost" radio submenu or the BOOST lamp on the power deck.
+
+Why: Plain gain with a hard clip (what VLC does above 100%) distorts loud peaks. Rejected: extending `setVolume` to 0..2, which breaks the 1.0 = bit-perfect clamp. Rejected: placing the boost in the DspChain. The DspChain sits before the ~2 s output ring, so a change would be heard about 2 s late, and before the resampler, which can push peaks past any limiter. Auto-normalize (ReplayGain, an R128 scan, or compression) is deferred. Research and alternatives are in `docs/research/2026-11-14-volume-boost.md`.

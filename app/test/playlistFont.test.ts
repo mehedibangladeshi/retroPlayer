@@ -6,7 +6,8 @@ import { PLAYLIST } from '../src/shared/layout.ts'
 // The playlist uses the bundled Montserrat variable font (SIL OFL) for the album heading and song rows.
 const viewSrc = readFileSync(new URL('../src/renderer/src/views/PlaylistView.tsx', import.meta.url), 'utf8')
 // Drop comments so explanatory text cannot trip the source checks.
-const code = viewSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+// A block comment starts at whitespace, so the '/*' inside a glob string is kept.
+const code = viewSrc.replace(/(^|\s)\/\*[\s\S]*?\*\//g, '$1').replace(/\/\/[^\n]*/g, '')
 
 test('playlist font family is Montserrat', () => {
   assert.equal(PLAYLIST.FONT_FAMILY, 'Montserrat')

@@ -1,0 +1,18 @@
+/* Track rows, shared by the playlist and the rack's tracklist preview. */
+.pl-rows { position: absolute; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.3) transparent; }
+.pl-rows::-webkit-scrollbar { width: 6px; }
+.pl-rows::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.3); border-radius: 3px; }
+.pl-row { display: flex; gap: 8px; width: 100%; box-sizing: border-box; margin: 0; padding-right: 8px; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.pl-row:hover { background: rgba(0, 0, 0, 0.06); }
+.pl-row.inert { cursor: default; }
+.pl-row.inert:hover { background: transparent; }
+.pl-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pl-name.marquee { text-overflow: clip; }
+.pl-name.marquee .pl-text { display: inline-block; animation: pl-marquee var(--marquee-ms) linear infinite alternate; }
+/* Holds at each end so the start and the end of the name can be read. */
+@keyframes pl-marquee { 0%, 15% { transform: translateX(0); } 85%, 100% { transform: translateX(calc(-1 * var(--marquee-shift))); } }
+.pl-dur { flex: none; font-variant-numeric: tabular-nums; }
+.pl-row.selected { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
+.pl-row.current { color: #733638; }
+.pl-row:focus-visible { outline: 1px solid rgba(0, 0, 0, 0.4); }
+@media (prefers-reduced-motion: reduce) { .pl-name.marquee .pl-text { animation: none; } }

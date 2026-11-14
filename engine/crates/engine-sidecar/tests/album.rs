@@ -356,3 +356,58 @@ fn device_levels_follow_position_ticks() {
     };
     assert_eq!((v["bands"].as_array().unwrap().len(), v["wave"].as_array().unwrap().len()), (16, 64), "{v}");
 }
+
+#[test]
+fn scan_album_answers_album_info_and_touches_nothing() {
+    let dir = album_dir("scan");
+    let missing = "/definitely/not/here";
+    let empty = std::env::temp_dir().join(format!("retro-album-scan-empty-{}", std::process::id()));
+    std::fs::create_dir_all(&empty).unwrap();
+    let mut s = Sidecar::spawn();
+    s.send(json!({"v":1,"type":"scanAlbum","path":dir}));
+    // Missing and empty dirs answer with a null album, never an error; the replies arrive
+    // back to back, so no playlist/state/error event can sit between them.
+    s.send(json!({"v":1,"type":"scanAlbum","path":missing}));
+    s.send(json!({"v":1,"type":"scanAlbum","path":empty}));
+    let v = s.next();
+    assert_eq!((v["type"].as_str(), v["path"].as_str()), (Some("albumInfo"), Some(dir.to_str().unwrap())), "{v}");
+    assert_eq!(v["album"]["dir"], dir.to_string_lossy().as_ref());
+    assert_eq!(v["album"]["tracks"].as_array().unwrap().len(), 2);
+    assert!(v["album"]["title"].is_null() || v["album"]["title"].is_string());
+    for p in [missing, empty.to_str().unwrap()] {
+        let v = s.next();
+        assert_eq!((v["type"].as_str(), v["path"].as_str()), (Some("albumInfo"), Some(p)), "{v}");
+        assert!(v["album"].is_null(), "{v}");
+    }
+    // Nothing was loaded by the scans.
+    s.send(json!({"v":1,"type":"playIndex","index":0}));
+    let v = s.next();
+    assert_eq!((v["type"].as_str(), v["code"].as_str()), (Some("error"), Some("invalid_state")), "{v}");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&empty);
+}
+
+#[test]
+fn scan_album_leaves_the_loaded_album_loaded() {
+    let dir = album_dir("scan-keep");
+    let other = album_dir("scan-other");
+    let mut s = Sidecar::spawn();
+    s.send(json!({"v":1,"type":"loadAlbum","path":dir}));
+    assert_eq!(s.next()["type"], "playlist");
+    let v = s.next(); // state, or no_output_device
+    assert!(matches!(v["type"].as_str(), Some("state" | "error")), "{v}");
+    s.send(json!({"v":1,"type":"scanAlbum","path":other}));
+    let v = loop {
+        let v = s.next();
+        if v["type"] != "state" {
+            break v;
+        }
+    };
+    assert_eq!(v["type"], "albumInfo", "{v}");
+    // The album is still loaded: playIndex is not invalid_state.
+    s.send(json!({"v":1,"type":"playIndex","index":1}));
+    let v = s.next();
+    assert_ne!(v["code"], "invalid_state", "{v}");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&other);
+}

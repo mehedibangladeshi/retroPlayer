@@ -1,5 +1,5 @@
 html, body, #root { margin: 0; height: 100%; }
-body { background: #15151a; color: #ddd; font: 14px system-ui, sans-serif; user-select: none; }
+body { background: #15151a; color: #ddd; font-size: 14px; user-select: none; }
 .dbg { height: 100%; box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; gap: 12px; align-items: center; -webkit-app-region: drag; border: 3px solid transparent; }
 .dbg.dragging { border-color: #6aa7ff; background: #1b2233; }
 .dbg button { -webkit-app-region: no-drag; padding: 8px 14px; background: #2b2b35; color: #eee; border: 1px solid #444; border-radius: 4px; cursor: pointer; }

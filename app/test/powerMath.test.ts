@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  knobRotation, dragVolume, stepVolume, seekAt, needleAngle, decay,
+  knobRotation, pointerAngle, turnVolume, stepVolume, seekAt, needleAngle, decay, angleVolume,
 } from '../src/renderer/src/views/powerMath.ts'
 
 test('knobRotation maps 0..1 to -225..45 with the baked pointer at 0.8333', () => {
@@ -10,12 +10,22 @@ test('knobRotation maps 0..1 to -225..45 with the baked pointer at 0.8333', () =
   assert.ok(Math.abs(knobRotation(0.8333)) < 0.1)
 })
 
-test('dragVolume: up is louder, 200 px is the full range, clamped', () => {
-  assert.equal(dragVolume(0.5, -100), 1)
-  assert.equal(dragVolume(0.5, 100), 0)
-  assert.ok(Math.abs(dragVolume(0.5, -20) - 0.6) < 1e-9)
-  assert.equal(dragVolume(0.9, -500), 1)
-  assert.equal(dragVolume(0.1, 500), 0)
+test('pointerAngle: degrees from straight up, clockwise positive; null near the centre', () => {
+  assert.equal(pointerAngle(0, -50), 0)
+  assert.equal(pointerAngle(50, 0), 90)
+  assert.equal(Math.abs(pointerAngle(0, 50) as number), 180)
+  assert.equal(pointerAngle(-50, 0), -90)
+  assert.equal(pointerAngle(3, 3), null)
+})
+
+test('turnVolume: follows the angle change, wraps the seam, clamps at both stops', () => {
+  const near = (a: number, b: number): void => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`)
+  near(turnVolume(0.5, 0, 27), 0.6)
+  near(turnVolume(0.5, 27, 0), 0.4)
+  near(turnVolume(0.5, 170, -170), 0.5 + 20 / 270) // clockwise across the seam
+  near(turnVolume(0.5, -170, 170), 0.5 - 20 / 270) // anticlockwise across the seam
+  assert.equal(turnVolume(0.95, 0, 90), 1)
+  assert.equal(turnVolume(0.05, 0, -90), 0)
 })
 
 test('stepVolume steps 0.05, clamps, and does not drift', () => {
@@ -50,4 +60,15 @@ test('decay rises at once and falls gradually', () => {
   const d = decay(0.8, 0.1, 100, 0.001)
   assert.ok(Math.abs(d - 0.7) < 1e-9)
   assert.equal(decay(0.5, 0.1, 1e6, 0.001), 0.1)
+})
+
+test('angleVolume: a click around the knob turns it to that angle', () => {
+  const near = (a: number, b: number): void => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`)
+  near(angleVolume(0, -50) as number, 0.5) // straight up = 5
+  near(angleVolume(50, 0) as number, 225 / 270) // 3 o'clock = the baked pointer
+  near(angleVolume(-50, 50) as number, 0) // 0 mark (lower left)
+  near(angleVolume(50, 50) as number, 1) // 10 mark (lower right)
+  assert.equal(angleVolume(-10, 100), 0) // dead zone at the bottom snaps to the nearer end
+  assert.equal(angleVolume(10, 100), 1)
+  assert.equal(angleVolume(1, 1), null) // too close to the centre to have an angle
 })

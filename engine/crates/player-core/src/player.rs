@@ -26,7 +26,7 @@ use crate::decode::Decoder;
 use crate::dsp::DspChain;
 use crate::error::{ErrorCode, PlayerError};
 use crate::levels::Levels;
-use crate::output::{Clip, Output, OutputConfig, OutputHandle, gain_for};
+use crate::output::{Clip, Output, OutputConfig, OutputHandle, clamp_boost_db, gain_for};
 use crate::resample::Resampler;
 use crate::sound::Sound;
 use crate::state::{Status, Transport, clamp_seek};
@@ -173,6 +173,8 @@ pub struct Player {
     retired: Vec<Clip>,
     /// Volume knob position 0..1 as `f32` bits; re-applied to each new output.
     volume: AtomicU32,
+    /// Music boost in dB (0..=12) as `f32` bits; re-applied to each new output.
+    boost_db: AtomicU32,
 }
 
 impl Player {
@@ -198,6 +200,7 @@ impl Player {
             sounds: HashMap::new(),
             retired: Vec::new(),
             volume: AtomicU32::new(1.0f32.to_bits()),
+            boost_db: AtomicU32::new(0.0f32.to_bits()),
         };
         (player, rx)
     }
@@ -215,6 +218,22 @@ impl Player {
     /// The last knob position set (1.0 by default).
     pub fn volume(&self) -> f32 {
         f32::from_bits(self.volume.load(Ordering::Relaxed))
+    }
+
+    /// Boost the music by `db` (clamped to 0..=12, NaN is 0) through the
+    /// output limiter, so it never clips. Key sounds are not boosted. Does not
+    /// open the device.
+    pub fn set_boost_db(&self, db: f32) {
+        let db = clamp_boost_db(db);
+        self.boost_db.store(db.to_bits(), Ordering::Relaxed);
+        if let Some(h) = &self.handle {
+            h.set_boost_db(db);
+        }
+    }
+
+    /// The last boost set in dB (0.0 by default).
+    pub fn boost_db(&self) -> f32 {
+        f32::from_bits(self.boost_db.load(Ordering::Relaxed))
     }
 
     /// Latest meters/spectrum of the real (post-volume) output; `None` before
@@ -474,6 +493,7 @@ impl Player {
         let (output, producer, cfg) = Output::open_default(96_000)?;
         let handle = output.handle();
         handle.set_gain(gain_for(self.volume()));
+        handle.set_boost_db(self.boost_db());
         lock(&self.inner).device_rate = cfg.sample_rate;
         self.device_rate = cfg.sample_rate;
         self.device_config = Some(cfg);

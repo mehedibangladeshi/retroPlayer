@@ -40,7 +40,9 @@ The playlist, the second window and cover-art extraction were added later at the
 - [x] Import a whole album folder (Open popover, folder drop, Ctrl/Cmd+Shift+O). Tracks play in order, and playback advances to the next track when one ends.
 - [x] Playlist window: a second, frameless window styled from the playlist artwork. It shows the album's title, artist, cover and tracks. Clicking a track selects it; double-clicking or Enter plays it. Ctrl/Cmd+L shows it again. Text is Montserrat at a fixed screen size; a cut-off name shows in full on hover and scrolls when selected, and the album heading stays on top while the songs scroll.
 - [x] Tags and cover art are read by the engine. The cover is the embedded or folder image, or a default cover.
+- [x] Cassette rack album history: every album loaded or dropped on the rack gets a spine (cover middle strip or a name colour, "Artist - Album (Year)" in Montserrat). Double-click plays it, single click previews the tracklist, and "+" adds an album without playing it; dropping a folder on the rack adds it without playing; right-click sorts by Recent or Custom (drag to reorder) and removes a spine. Single songs are not added.
 - [x] The player remembers the last session: at startup it reloads the last album (or file) on the same track and position, stopped, and Play resumes there.
+- [x] Volume boost (Off, +3 to +12 dB) with a look-ahead limiter, mixtape track rows that show the artist, and a volume knob that turns when dragged.
 
 Limits: one album at a time, read-only (no editing), and folders are not scanned recursively. The Open file action replaces the album.
 
@@ -67,6 +69,10 @@ Browse and manage a collection of audio files.
 ### Multi-window floating and snappable windows
 
 The player and playlist windows exist already, as separate windows that show the same engine state. Still to do: floating windows for the equalizer and library, which can snap to each other and to the player.
+
+### Loudness normalization
+
+Set each track's level automatically, from ReplayGain tags or an R128 scan, instead of the manual volume boost. Deferred from Boost; see `docs/research/2026-11-14-volume-boost.md`.
 
 ### Mobile (iOS and Android)
 
