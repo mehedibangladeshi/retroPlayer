@@ -481,6 +481,30 @@ Decision: A fifth window, the power deck (`power`), is a side window built from 
 
 Why: The owner asked for the power deck's UI with all window behaviour first. The player already has windows on its left (album art), right (playlist) and top (rack), and the tall, narrow deck fits beside the playlist at the same height.
 
+## 2026-11-14 — Power deck controls are engine-owned
+
+Decision: Volume, Loop Song and Shuffle live in the engine. New commands: `setVolume {volume}` (0..1), `setLoop {on}` and `setShuffle {on}`. The engine sends `options {volume, loop, shuffle}` at start and after every set command. Volume is a gain of 0 at 0, otherwise 10^(2·(v−1)), so −40..0 dB. It is applied in the audio callback after the key-sound mix, so it changes the whole output. The `Playlist` keeps a play order. Shuffle puts the current track first and shuffles the rest, using a small xorshift seeded from the clock (no `rand` crate). `next` and `previous` moved into the engine, so the renderer's Forward and Backward clicks send them. Previous on the first track of the order restarts it. Loop Song reloads the same track when it ends, for an album or a single file. Main saves the options in `settings.json` (`Settings.options`, `app/src/main/options.ts`). When a fresh engine sends its first `options` event, main re-sends them as `setVolume`, `setLoop` and `setShuffle`. The three echoes of those commands are not saved, so a half-applied state is never written. Keyboard: Up/Down change the volume by ±0.05, L toggles Loop Song, S toggles Shuffle (player and power windows), and V switches the visualizer mode (power window). Space, Left and Right are unchanged. This supersedes the statement in the 2026-11-14 "A power deck window" entry that the controls are artwork only and that the window sends no commands.
+
+Why: The engine already owns the transport and the queue, and the renderer must hold no authoritative state. Volume and the play order therefore belong with the audio, so they stay right when the renderer is frozen or reloaded. Main owns `settings.json`, so the renderer never writes files.
+
+## 2026-11-14 — Output levels for the meter and visualizer
+
+Decision: The audio callback pushes the post-gain output, mixed to mono, into a pre-allocated `rtrb` tap. When the tap is full, samples are dropped. The callback does no allocation, locking or logging. A thread owned by the `Output` reads the tap and runs a hand-written radix-2, 1024-point FFT (`player-core/src/levels.rs`), about every 30 ms. The thread is joined when the `Output` is dropped. The sidecar reads the latest levels on each position tick and sends a `levels {rms, peak, bands[16], wave[64]}` event, only while Playing (about 20 Hz).
+
+Why: The VU meter and the visualizer must show what is actually being output, not a timer. A hand-written FFT for one size avoids adding `rustfft`, under the rule that a dependency is added only when needed. Sending levels with the position tick adds no new timer.
+
+## 2026-11-14 — Code-drawn power deck states
+
+Decision: Some power deck states have no artwork, so they are drawn in code over the baked layers. The seek bar fill and thumb are CSS. The Loop Song and Shuffle lamps are CSS glows, green when on and red when off. The Import Album lamp glows while its button is pressed. The VU needle is SVG, driven by rms and mapped from −40 dB at the "20" mark to 0 dB at the "100" mark. It covers the baked needle with the face colour `#b1ad9f` and redraws the pivot. The volume knob turns only its disc: a circular clip of `power-volume.png` rotates, so the printed 0–10 scale stays still. The baked pointer is part of that disc and turns with it. Each placeholder is listed in `docs/ASSETS_TODO.md` item 21, with the art that would replace it.
+
+Why: The controls need to work now, and the art for their states was not supplied. Keeping each placeholder in its own view code means real art can replace it without changing the engine or the protocol.
+
+## 2026-11-14 — Power button quits the app
+
+Decision: The power button on the deck quits the app. It calls `RetroApi.quit()`, which sends IPC `app:quit`. Main accepts that only from an app window. The session is saved on quit, as before.
+
+Why: The button needs a clear meaning, and quitting through the normal path keeps the session save that the 2026-11-08 entry relies on.
+
 ## 2026-11-14 — A native right-click menu on the player
 
 Decision: A right-click anywhere on the player opens a native Electron menu (`Menu.popup`, built in `app/src/main/contextMenu.ts`). Its first item, Windows, lists every side window as a checkbox (ticked when visible); picking one shows or hides that window, so a closed window can be brought back. Closed side windows are saved as `hiddenWindows` in settings.json and stay closed at the next launch; showing one (from the menu or Ctrl+L) removes it from the list. Quitting does not count as closing. Settings, Check for Updates and About follow as placeholders that do nothing yet. On Windows, a right-click on the drag region raises `system-context-menu`, which is prevented and shows this menu instead of the OS window menu.
