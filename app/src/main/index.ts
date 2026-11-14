@@ -301,6 +301,13 @@ function settleSoon(id: string): void {
 }
 
 // Show a wanted satellite on a real hidden -> shown transition only.
+// Hide a side window. macOS drops a hidden child window from its parent while Electron still reports the parent, so
+// parentDocked would never attach it again and activating the app would leave it behind: detach it first.
+function hideSatellite(w: BrowserWindow): void {
+  if (process.platform === 'darwin') w.setParentWindow(null)
+  w.hide()
+}
+
 function showSatellite(s: Satellite): void {
   if (!live(s.win)) return
   if (s.win.isVisible()) return
@@ -385,7 +392,7 @@ function createWindow(): void {
     for (const s of satellites) {
       if (live(s.win) && s.win.isVisible()) {
         hiddenByMinimize.add(s)
-        s.win.hide()
+        hideSatellite(s.win)
       }
     }
   })
@@ -632,7 +639,7 @@ function createSatellite(s: Satellite): BrowserWindow {
     persistSatellite(s)
     if (!quitting) {
       e.preventDefault()
-      w.hide()
+      hideSatellite(w)
       saveSettings({ hiddenWindows: setHidden(loadSettings().hiddenWindows, s.hash, true) })
     }
   })
