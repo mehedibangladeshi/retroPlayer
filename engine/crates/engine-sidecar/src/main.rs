@@ -23,6 +23,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use player_core::{Cover, ErrorCode, Playlist, Player, PlayerError, PlayerEvent, Status, scan_album, track_cover};
 use protocol::{Command, Event, WireAlbum, WireErrorCode, cover_url, parse_command};
@@ -93,6 +94,8 @@ enum Input {
     /// The player finished a track (may be stale; see `on_ended`).
     /// Carries the generation of the track that ended.
     Ended(u64),
+    /// A `position` tick went out; time to send `levels`.
+    Tick,
 }
 
 fn spawn_reader(tx: Sender<Input>) {
@@ -127,12 +130,17 @@ fn spawn_reader(tx: Sender<Input>) {
 fn spawn_forwarder(events: mpsc::Receiver<PlayerEvent>, tx: Sender<Out>, input: Sender<Input>) {
     thread::spawn(move || {
         for ev in events {
-            let ended = if let PlayerEvent::Ended { generation } = ev { Some(generation) } else { None };
+            // Levels live on the main thread's Player, so ticks are relayed there.
+            let follow = match ev {
+                PlayerEvent::Ended { generation } => Some(Input::Ended(generation)),
+                PlayerEvent::Position { .. } => Some(Input::Tick),
+                _ => None,
+            };
             if tx.send(Out::Event(ev.into())).is_err() {
                 break;
             }
-            if let Some(g) = ended {
-                let _ = input.send(Input::Ended(g));
+            if let Some(i) = follow {
+                let _ = input.send(i);
             }
         }
     });
@@ -178,24 +186,52 @@ fn should_advance(
     ended_gen == current_gen && status == Status::Stopped && track == playlist_current
 }
 
-/// Auto-advance on a track end. An `Ended` can be queued while the user already picked
-/// another track, so only advance if the player is stopped on the playlist's current track.
+/// Playback options the engine owns (volume lives in the Player).
+#[derive(Default)]
+struct Opts {
+    looped: bool,
+    shuffle: bool,
+}
+
+fn options_event(player: &Player, opts: &Opts) -> Event {
+    Event::Options { volume: player.volume(), looped: opts.looped, shuffle: opts.shuffle }
+}
+
+/// Shuffle seed from the clock, spread so close timestamps give unrelated orders.
+fn seed() -> u64 {
+    let n = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
+    (n ^ (n >> 31)).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+}
+
+/// On a track end: replay it (Loop Song) or auto-advance the album. An `Ended` can be queued
+/// while the user already picked another track, so only act if the player is stopped on
+/// the track that ended (the playlist's current one, for an album).
 fn on_ended(
     player: &mut Player,
     ended_gen: u64,
     playlist: &mut Option<Playlist>,
+    opts: &Opts,
     art: &mut Option<Cover>,
     send: &dyn Fn(Event),
 ) -> Result<(), PlayerError> {
-    let Some(pl) = playlist else { return Ok(()) };
     let snap = player.snapshot();
-    let cur = pl.current().map(|i| pl.album().tracks[i].path.as_path());
     let track = snap.track.as_ref().map(|t| t.path.as_path());
+    let cur = match playlist.as_ref() {
+        Some(pl) => pl.current().map(|i| pl.album().tracks[i].path.as_path()),
+        None if opts.looped => track,
+        None => return Ok(()),
+    };
     if !should_advance(ended_gen, player.generation(), snap.status, track, cur) {
         return Ok(());
     }
-    match pl.advance().map(Path::to_path_buf) {
-        Some(p) => load_track(player, &p, pl.album().cover.as_ref(), art, send, true),
+    let cover = playlist.as_ref().and_then(|pl| pl.album().cover.clone());
+    let next = if opts.looped {
+        track.map(Path::to_path_buf)
+    } else {
+        playlist.as_mut().and_then(|pl| pl.advance().map(Path::to_path_buf))
+    };
+    match next {
+        Some(p) => load_track(player, &p, cover.as_ref(), art, send, true),
         None => Ok(()), // last track: stay stopped
     }
 }
@@ -219,6 +255,7 @@ fn dispatch(
     player: &mut Player,
     sounds: &mut HashMap<String, String>,
     playlist: &mut Option<Playlist>,
+    opts: &mut Opts,
     art: &mut Option<Cover>,
     send: &dyn Fn(Event),
     cmd: Command,
@@ -235,7 +272,12 @@ fn dispatch(
             let mut pl = Playlist::new(scan_album(Path::new(&path))?);
             send(Event::Playlist { album: Some(WireAlbum::from(pl.album())) });
             let index = if index < pl.album().tracks.len() { index } else { 0 };
-            let first = pl.select(index).map(Path::to_path_buf);
+            let first = if opts.shuffle {
+                pl.reshuffle_from(index, seed());
+                pl.current().map(|i| pl.album().tracks[i].path.clone())
+            } else {
+                pl.select(index).map(Path::to_path_buf)
+            };
             let cover = pl.album().cover.clone();
             *playlist = Some(pl);
             match first {
@@ -248,6 +290,32 @@ fn dispatch(
             let path = pl.select(index).map(Path::to_path_buf).ok_or_else(|| invalid_state("track index out of range"))?;
             let cover = pl.album().cover.clone();
             load_track(player, &path, cover.as_ref(), art, send, true)
+        }
+        // `previous` on the first track returns that track; reloading it restarts from 0.
+        Command::Next | Command::Previous => {
+            let Some(pl) = playlist.as_mut() else { return Ok(()) };
+            let to = if matches!(cmd, Command::Next) { pl.next() } else { pl.previous() };
+            let Some(path) = to.map(Path::to_path_buf) else { return Ok(()) };
+            let cover = pl.album().cover.clone();
+            load_track(player, &path, cover.as_ref(), art, send, true)
+        }
+        Command::SetVolume { volume } => {
+            player.set_volume(volume as f32);
+            send(options_event(player, opts));
+            Ok(())
+        }
+        Command::SetLoop { on } => {
+            opts.looped = on;
+            send(options_event(player, opts));
+            Ok(())
+        }
+        Command::SetShuffle { on } => {
+            opts.shuffle = on;
+            if let Some(pl) = playlist.as_mut() {
+                pl.set_shuffle(on, seed());
+            }
+            send(options_event(player, opts));
+            Ok(())
         }
         Command::Play => player.play(),
         Command::Pause => player.pause(),
@@ -310,7 +378,9 @@ fn main() {
         let _ = tx.send(Out::Event(ev));
     };
 
+    let mut opts = Opts::default();
     send(player.snapshot().into());
+    send(options_event(&player, &opts));
     let (itx, irx) = mpsc::channel::<Input>();
     spawn_forwarder(player_events, tx.clone(), itx.clone());
     spawn_reader(itx.clone());
@@ -333,10 +403,18 @@ fn main() {
                 }
             },
             Input::Ended(g) => Work::Ended(g),
+            Input::Tick => {
+                if player.snapshot().status == Status::Playing
+                    && let Some(l) = player.levels()
+                {
+                    send(l.into());
+                }
+                continue;
+            }
         };
         let outcome = catch_unwind(AssertUnwindSafe(|| match work {
-            Work::Cmd(cmd) => dispatch(&mut player, &mut sounds, &mut playlist, &mut art, &send, cmd),
-            Work::Ended(g) => on_ended(&mut player, g, &mut playlist, &mut art, &send),
+            Work::Cmd(cmd) => dispatch(&mut player, &mut sounds, &mut playlist, &mut opts, &mut art, &send, cmd),
+            Work::Ended(g) => on_ended(&mut player, g, &mut playlist, &opts, &mut art, &send),
         }));
         match outcome {
             Ok(Ok(())) => {}
@@ -352,6 +430,7 @@ fn main() {
                 publish_art(&mut art, None, &send);
                 // The player may be left half-updated (locks, streams), so discard it
                 // and start fresh rather than trust it; announce the fresh state.
+                let volume = player.volume();
                 let old = std::mem::replace(&mut player, {
                     let (p, ev) = Player::new();
                     spawn_forwarder(ev, tx.clone(), itx.clone());
@@ -368,6 +447,7 @@ fn main() {
                         }
                     }
                 }));
+                player.set_volume(volume);
                 send(player.snapshot().into());
             }
         }

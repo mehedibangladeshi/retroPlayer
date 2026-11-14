@@ -132,6 +132,52 @@ Fields: `index` (integer, zero-based position in the album's `tracks`).
 {"v":1,"type":"playIndex","index":2}
 ```
 
+### setVolume
+
+Sets the output volume. The engine clamps `volume` to `[0, 1]`. It maps the knob position to gain: `0` is silence; any other value gives `10^(2*(volume-1))`, so the low end is -40 dB and `1` is 0 dB. The gain applies to the whole output, including key sounds. Default `1`.
+
+Fields: `volume` (number, knob position 0 to 1).
+
+```json
+{"v":1,"type":"setVolume","volume":0.6}
+```
+
+### setLoop
+
+Loop Song. When on, a track that ends replays from the start instead of advancing to the next track. Manual `next` and `previous` are unaffected. Default off.
+
+Fields: `on` (boolean).
+
+```json
+{"v":1,"type":"setLoop","on":true}
+```
+
+### setShuffle
+
+Shuffle. When on, the play order becomes the current track first, then the remaining album tracks in random order. When off, the play order is the album order. `loadAlbum` with shuffle on reshuffles starting from the chosen index. Default off.
+
+Fields: `on` (boolean).
+
+```json
+{"v":1,"type":"setShuffle","on":false}
+```
+
+### next
+
+Goes to the next track in play order and plays it, like `playIndex`. Does nothing at the end of the play order, or when no album is loaded.
+
+```json
+{"v":1,"type":"next"}
+```
+
+### previous
+
+Goes to the previous track in play order and plays it. On the first track of the play order, it restarts that track (seeks to 0). The UI decides "restart if more than 3 s in" before it sends `previous`; the engine does not check the position.
+
+```json
+{"v":1,"type":"previous"}
+```
+
 ## Events (engine to UI)
 
 ### state
@@ -213,6 +259,30 @@ Fields: `cover` (string or `null`, always present): a `data:` URL (`data:<mime>;
 {"v":1,"type":"artwork","cover":null}
 ```
 
+### options
+
+Carries the engine's playback options. It is emitted once when the engine starts, and after every `setVolume`, `setLoop` and `setShuffle`. The engine owns these values. The Electron main process saves them in `settings.json` and sends them back as commands at startup and after a sidecar restart.
+
+Fields: `volume` (number, 0 to 1), `loop` (boolean), `shuffle` (boolean).
+
+```json
+{"v":1,"type":"options","volume":0.6,"loop":false,"shuffle":true}
+```
+
+### levels
+
+Analysis of the real output, after volume is applied. It is sent with each `position` tick while `Playing` (about 20 Hz). Audio samples never reach the UI; only these numbers do. The UI fades the display to zero when no `levels` event has arrived for 150 ms.
+
+Fields:
+- `rms` (number, 0 to 1): overall RMS level.
+- `peak` (number, 0 to 1): peak level.
+- `bands` (array of 16 numbers, each 0 to 1): level of 16 log-spaced bands from 40 Hz to 16 kHz, dB-scaled.
+- `wave` (array of 64 numbers, each -1 to 1): a downsampled mono waveform.
+
+```json
+{"v":1,"type":"levels","rms":0.42,"peak":0.81,"bands":[0.12,0.2,0.35,0.5,0.62,0.7,0.66,0.58,0.49,0.41,0.33,0.27,0.22,0.16,0.09,0.04],"wave":[0.0,0.12,0.25,0.37,0.48,0.58,0.67,0.74,0.8,0.85,0.88,0.9,0.91,0.9,0.88,0.85,0.8,0.74,0.67,0.58,0.48,0.37,0.25,0.12,0.0,-0.12,-0.25,-0.37,-0.48,-0.58,-0.67,-0.74,-0.8,-0.85,-0.88,-0.9,-0.91,-0.9,-0.88,-0.85,-0.8,-0.74,-0.67,-0.58,-0.48,-0.37,-0.25,-0.12,0.0,0.12,0.25,0.37,0.48,0.58,0.67,0.74,0.8,0.85,0.88,0.9,0.91,0.9,0.88,0.85]}
+```
+
 ## Error codes
 
 | Code | Meaning |
@@ -260,7 +330,7 @@ Empty --load--> Stopped --play--> Playing <--pause/play--> Paused
 - If the engine panics while handling a command, it emits `error` with code `internal` and a message starting with `engine panic:`. It then resets the player, loads the key sounds again on the fresh player, and emits a fresh `state` (empty).
 - The audio device is opened on the first `load` or `playSound`. With no device, `load` fails with `no_output_device` and nothing else changes.
 - `loadSound` and `playSound` never produce events, including `error`: a missing file, an unknown name or no audio device is logged to stderr only, so a key sound can't put an error message in front of the user. A sound that can't play is skipped.
-- The Electron main process forwards a renderer command only if it passes validation: `load` needs a path with a supported audio extension (`flac`, `wav`, `mp3`, `m4a`, `aac`, `ogg`, `oga`, any case), and `playSound` needs a known sound name. `loadSound` is sent by main only. Main logs a dropped command and sends no reply.
+- The Electron main process forwards a renderer command only if it passes validation: `load` needs a path with a supported audio extension (`flac`, `wav`, `mp3`, `m4a`, `aac`, `ogg`, `oga`, any case), and `playSound` needs a known sound name. `loadSound` is sent by main only. `setVolume` needs a finite number, and `setLoop` and `setShuffle` need a boolean `on`. Main logs a dropped command and sends no reply.
 
 ## Changing the protocol
 

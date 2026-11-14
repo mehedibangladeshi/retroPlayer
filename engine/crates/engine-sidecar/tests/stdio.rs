@@ -50,6 +50,12 @@ impl Sidecar {
         serde_json::from_str(&l).unwrap()
     }
 
+    /// Skip the startup `state` and `options` lines.
+    fn started(&self) {
+        assert_eq!(self.next()["type"], "state");
+        assert_eq!(self.next()["type"], "options");
+    }
+
     /// Next event that is not a `position` tick.
     fn next_event(&self) -> Value {
         loop {
@@ -85,12 +91,44 @@ fn startup_state_is_empty() {
     assert_eq!(v["positionMs"], 0);
     assert!(v["durationMs"].is_null());
     assert!(v["trackInfo"].is_null());
+    let v = s.next();
+    assert_eq!((v["type"].as_str(), v["volume"].as_f64()), (Some("options"), Some(1.0)), "{v}");
+    assert_eq!((v["loop"].as_bool(), v["shuffle"].as_bool()), (Some(false), Some(false)), "{v}");
+}
+
+#[test]
+fn option_commands_echo_options() {
+    let mut s = Sidecar::spawn();
+    s.started();
+    s.send(r#"{"v":1,"type":"setVolume","volume":0.3}"#);
+    let v = s.next_event();
+    assert_eq!((v["type"].as_str(), v["volume"].as_f64()), (Some("options"), Some(0.3)), "{v}");
+    s.send(r#"{"v":1,"type":"setLoop","on":true}"#);
+    assert_eq!(s.next_event()["loop"], true);
+    s.send(r#"{"v":1,"type":"setShuffle","on":true}"#);
+    let v = s.next_event();
+    assert_eq!((v["volume"].as_f64(), v["loop"].as_bool(), v["shuffle"].as_bool()), (Some(0.3), Some(true), Some(true)), "{v}");
+    s.send(r#"{"v":1,"type":"setVolume","volume":7}"#);
+    assert_eq!(s.next_event()["volume"], 1.0, "clamped");
+    s.send(r#"{"v":1,"type":"setVolume","volume":"x"}"#);
+    assert_error(&s.next_event(), "bad_message");
+}
+
+#[test]
+fn next_and_previous_without_album_do_nothing() {
+    let mut s = Sidecar::spawn();
+    s.started();
+    s.send(r#"{"v":1,"type":"next"}"#);
+    s.send(r#"{"v":1,"type":"previous"}"#);
+    s.send(r#"{"v":1,"type":"play"}"#);
+    // The first event is play's error: next and previous emitted nothing.
+    assert_error(&s.next_event(), "invalid_state");
 }
 
 #[test]
 fn garbage_gives_bad_message_and_process_survives() {
     let mut s = Sidecar::spawn();
-    s.next();
+    s.started();
     s.send("this is not json");
     assert_error(&s.next_event(), "bad_message");
     s.send(r#"{"v":2,"type":"play"}"#);
@@ -106,7 +144,7 @@ fn garbage_gives_bad_message_and_process_survives() {
 #[test]
 fn load_missing_file() {
     let mut s = Sidecar::spawn();
-    s.next();
+    s.started();
     s.send(r#"{"v":1,"type":"load","path":"/definitely/not/here.mp3"}"#);
     assert_error(&s.next_event(), "file_not_found");
 }
@@ -115,7 +153,7 @@ fn load_missing_file() {
 fn load_fixture() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../player-core/tests/fixtures/sine_440hz_250ms_44100_mono.wav");
     let mut s = Sidecar::spawn();
-    s.next();
+    s.started();
     s.send(&serde_json::json!({"v":1,"type":"load","path":path}).to_string());
     let v = s.next_event();
     if v["type"] == "error" {
@@ -132,7 +170,7 @@ fn load_fixture() {
 #[test]
 fn closing_stdin_exits_zero() {
     let mut s = Sidecar::spawn();
-    s.next();
+    s.started();
     s.stdin = None;
     let start = Instant::now();
     loop {
@@ -148,7 +186,7 @@ fn closing_stdin_exits_zero() {
 #[test]
 fn invalid_utf8_line_is_bad_message_and_process_survives() {
     let mut s = Sidecar::spawn();
-    s.next();
+    s.started();
     s.send_raw(&[0xff, 0xfe, b'\n']);
     assert_error(&s.next_event(), "bad_message");
     assert!(s.child.try_wait().unwrap().is_none());
@@ -159,7 +197,7 @@ fn invalid_utf8_line_is_bad_message_and_process_survives() {
 #[test]
 fn fractional_and_negative_seek_are_accepted() {
     let mut s = Sidecar::spawn();
-    s.next();
+    s.started();
     s.send(r#"{"v":1,"type":"seek","positionMs":1234.5}"#);
     s.send(r#"{"v":1,"type":"seek","positionMs":-5}"#);
     s.send(r#"{"v":1,"type":"seekRelative","deltaMs":-10000.4}"#);
@@ -170,7 +208,7 @@ fn fractional_and_negative_seek_are_accepted() {
 #[test]
 fn loop_and_stop_sound_commands_are_accepted_and_never_error() {
     let mut s = Sidecar::spawn();
-    s.next();
+    s.started();
     s.send(r#"{"v":1,"type":"playSound","name":"motor","loop":true}"#);
     s.send(r#"{"v":1,"type":"stopSound","name":"motor"}"#);
     s.send(r#"{"v":1,"type":"stopSound","name":"nope"}"#);
