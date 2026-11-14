@@ -29,7 +29,8 @@ const check = (name, ok, info = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + info}`)
 }
 
-async function launch(port) {
+// `want`: how many windows must be up (side windows closed in a previous run stay closed).
+async function launch(port, want = 5) {
   const child = spawn(electron, ['.', `--inspect=${port}`, `--user-data-dir=${ud}`, ...extra], {
     cwd: appDir,
     env: { ...process.env, RETRO_SIDECAR: process.env.RETRO_SIDECAR },
@@ -58,13 +59,13 @@ async function launch(port) {
         ${expr} })()`
       ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: body, awaitPromise: true, returnByValue: true } }))
     })
-  // Slow first launches (macOS runners): wait until the player and all four side windows are up.
+  // Slow first launches (macOS runners): wait until the player and the side windows are up.
   let up = 0
-  for (let i = 0; i < 200 && up < 5; i++) {
+  for (let i = 0; i < 200 && up < want; i++) {
     await sleep(200)
     up = await ev(`return all.filter((w) => w.isVisible()).length`).catch(() => 0)
   }
-  if (up < 5) throw new Error('windows not up: ' + JSON.stringify(await ev(`return all.map((w) => [w.webContents.getURL(), w.isVisible()])`)))
+  if (up < want) throw new Error('windows not up: ' + JSON.stringify(await ev(`return all.map((w) => [w.webContents.getURL(), w.isVisible()])`)))
   return { child, ev, ws }
 }
 
@@ -152,6 +153,8 @@ check('side resize: both side windows take the new height, still docked', r.play
   await sleep(800)
   r = await R(app.ev)
   check('rack proportion: a width drag ends in proportion, still docked', nearR(r.rack.width, Math.round(r.rack.height * RK)) && flush.top(r.player, r.rack), fmt(r) + ' from ' + fmt(rk))
+  await app.ev(`byId('rack').setSize(${Math.round(H * RK)}, ${H})`) // back to the player height: it reopens above the player later
+  await sleep(700)
   await app.ev(`byId('rack').close()`)
   await sleep(500)
   r = await R(app.ev)
@@ -167,7 +170,8 @@ check('side resize: both side windows take the new height, still docked', r.play
   await app.ev(`const w = byId('power'); w.setSize(${Math.round(H * PD)}, ${H})`)
   await sleep(700)
   r = await R(app.ev)
-  check('power resize: takes the new height, still docked', r.power.height === H && flush.right(r.playlist, r.power), fmt(r))
+  // The deck is about 1:2, so a 1 px width rounding moves the proportional height by about 2 px.
+  check('power resize: takes the new height, still docked', Math.abs(r.power.height - H) <= 2 && flush.right(r.playlist, r.power), fmt(r))
   await drag(app.ev, 'player', -40, 20)
   r = await R(app.ev)
   check('power: follows a player drag through the playlist', flush.right(r.player, r.playlist) && flush.right(r.playlist, r.power) && r.power.y === r.playlist.y, fmt(r))
@@ -204,64 +208,6 @@ check('side resize: both side windows take the new height, still docked', r.play
   check('power close: hides it, the app keeps running', r.power === null && !!r.player, fmt(r))
 }
 
-// One taskbar/dock icon for the app, and activating it (it activates the player) brings every window forward.
-{
-  const ids = await app.ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, Number(byId(k).getMediaSourceId().split(':')[1])]))`)
-  const entries = taskbarEntries(Object.values(ids), app.child.pid)
-  check('taskbar: one entry for all windows', entries === 1, `${entries} entries`)
-  // Another app's window covers all three and is in front.
-  const box = await app.ev(`const bs = all.filter((w) => w.isVisible()).map((w) => w.getBounds());
-    const x = Math.min(...bs.map((b) => b.x)), y = Math.min(...bs.map((b) => b.y));
-    return [x, y, Math.max(...bs.map((b) => b.x + b.width)) - x, Math.max(...bs.map((b) => b.y + b.height)) - y]`)
-  const coverUp = async () => {
-    const cover = spawn(electron, [join(here, 'cover.cjs'), ...extra, ...box.map(String)], { stdio: ['ignore', 'pipe', 'ignore'] })
-    const id = await new Promise((res) => {
-      let out = ''
-      cover.stdout.on('data', (d) => {
-        out += d
-        const m = /COVER (\d+)/.exec(out)
-        if (m) res(Number(m[1]))
-      })
-    })
-    return { cover, id }
-  }
-  let { cover, id: coverId } = await coverUp()
-  const order = () => stackTopFirst([coverId, ...Object.values(ids)])
-  const o1 = order()
-  check('raise: cover window starts on top', o1[0] === coverId, fmt(o1))
-  // What a taskbar/Dock click does: X11 taskbars ask the window manager to activate the window, Windows switches
-  // to it, and macOS activates the app.
-  if (process.platform === 'linux') execFileSync('python3', [join(here, 'activate-linux.py'), String(ids.player)])
-  else if (process.platform === 'win32') execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'activate-win.ps1'), String(ids.player)])
-  else await app.ev(`app.focus({ steal: true })`)
-  await sleep(800)
-  const o2 = order()
-  check('raise: activating the player brings every window above the cover', o2.indexOf(coverId) === 3, fmt(o2) + ' cover ' + coverId)
-  cover.kill()
-  await sleep(300)
-  // The same with a real mouse click on the app's taskbar button / Dock icon (the CI Linux desktop has no taskbar).
-  if (process.platform !== 'linux') {
-    ;({ cover, id: coverId } = await coverUp())
-    check('real click: cover window starts on top', order()[0] === coverId, fmt(order()))
-    const [cmd, argv] = process.platform === 'win32'
-      ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'click-taskbar-win.ps1'), '^Electron']] // buttons are named after the app; ours launched first
-      : ['swift', [join(here, 'click-dock-mac.swift'), '^Electron$', '0']] // ours launched before the cover, so it comes first
-    let out = ''
-    try {
-      out = execFileSync(cmd, argv).toString()
-    } catch (e) {
-      out = `exit ${e.status}\n${e.stdout}`
-    }
-    console.log(out.trim())
-    // Ours and the cover each have one button/icon; on Windows ours counts its windows ("Electron - 1 running window").
-    check('real click: the app has one taskbar button / Dock icon', /matches: 2\b/.test(out) && !/Electron - [2-9]/.test(out), 'see the list above')
-    await sleep(1000)
-    const o3 = order()
-    check('real click: clicking it brings every window above the cover', o3.indexOf(coverId) === 3, fmt(o3) + ' cover ' + coverId)
-    cover.kill()
-    await sleep(300)
-  }
-}
 const top = work.y + 2 // a player here has room for one window below it
 const bottomY = work.y + work.height - H - 2 // a player here has room for one window above it
 // A user drag of window k to an absolute spot.
@@ -496,34 +442,181 @@ await drag(app.ev, 'player', -20, 0)
 r = await R(app.ev)
 check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist), fmt(r))
 
-// A real OS pointer drag on the player's body (not a button): the window manager moves it, docked windows follow.
+// The five-window layout: the rack above the player, the playlist right of it with the power deck on its right, and
+// the album above the playlist (clear of the rack). The playlist is unshaded and the player set back to height H first.
+const toggleShade = (k) => app.ev(`const { ipcMain } = process.mainModule.require('electron'); const w = byId('${k}'); ipcMain.emit('window:toggleShade', { sender: w.webContents, senderFrame: w.webContents.mainFrame })`)
+const fiveDocked = (m) => flush.top(m.player, m.rack) && m.rack.x === m.player.x && flush.right(m.player, m.playlist) && flush.right(m.playlist, m.power) && m.power.y === m.playlist.y && flush.top(m.playlist, m.album)
+await toggleShade('playlist')
+await app.ev(`const w = byId('player'); const b = w.getBounds(); w.setSize(Math.round(${H} * b.width / b.height), ${H})`)
+await sleep(700)
+r = await R(app.ev)
+await dragTo('player', work.x + 10, work.y + H + 2)
+r = await R(app.ev)
 {
+  const rackW = await app.ev(`return byId('rack').getBounds().width`) // hidden: R() reports null
+  await dragTo('album', r.player.x + rackW + 16, r.playlist.y - r.album.height - 6)
   r = await R(app.ev)
-  await drag(app.ev, 'player', work.x + 200 - r.player.x, 0)
+  check('layout: album snaps above the playlist, clear of where the rack docks', flush.top(r.playlist, r.album) && r.album.x >= r.player.x + rackW + 10, fmt(r))
+}
+
+// The player's right-click menu, live: the real 'context-menu' handler builds it; popup() is intercepted so the menu is
+// captured instead of shown. `click` picks the submenu item with that label.
+const menu = (click = '') => app.ev(`const { Menu } = process.mainModule.require('electron'); const orig = Menu.prototype.popup; let m;
+  Menu.prototype.popup = function () { m = this }
+  try { byId('player').webContents.emit('context-menu', { preventDefault() {} }, {}) } finally { Menu.prototype.popup = orig }
+  const items = m.items[0].submenu.items; items.find((i) => i.label === ${JSON.stringify(click)})?.click()
+  return items.map((i) => [i.label, i.checked])`)
+const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), path = process.mainModule.require('path');
+  return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8')).hiddenWindows ?? []`)
+{
+  const hashOf = { Playlist: 'playlist', Album: 'album', 'Cassette Rack': 'rack', 'Power Deck': 'power' }
+  const marksMatch = (items, v) => items.length === 4 && items.every(([l, c]) => hashOf[l] && c === !!v[hashOf[l]])
+  let items = await menu()
+  r = await R(app.ev)
+  check('menu: lists the four side windows, checked when visible', marksMatch(items, r) && r.rack === null && r.power === null, fmt(items))
+  let hid = await hiddenSaved()
+  check('menu: the closed rack and power deck are saved hidden', hid.includes('rack') && hid.includes('power'), fmt(hid))
+  await menu('Cassette Rack')
+  await sleep(1000)
+  r = await R(app.ev)
+  check('menu: Cassette Rack shows it docked above the player', !!r.rack && flush.top(r.player, r.rack) && r.rack.x === r.player.x, fmt(r))
+  await menu('Power Deck')
+  await sleep(1000)
+  r = await R(app.ev)
+  check('menu: Power Deck shows it docked right of the playlist', !!r.power && flush.right(r.playlist, r.power) && r.power.y === r.playlist.y, fmt(r))
+  hid = await hiddenSaved()
+  check('menu: shown windows are no longer saved hidden', !hid.includes('rack') && !hid.includes('power'), fmt(hid))
+  items = await menu()
+  check('menu: all four checked once visible', marksMatch(items, r) && items.every(([, c]) => c), fmt(items))
+  const al = r.album
+  await menu('Album')
+  await sleep(800)
+  r = await R(app.ev)
+  hid = await hiddenSaved()
+  check('menu: Album hides it and saves it hidden', r.album === null && hid.includes('album'), fmt(r) + ' ' + fmt(hid))
+  check('menu: its mark clears', marksMatch(await menu(), r), '')
+  await menu('Album')
+  await sleep(1000)
+  r = await R(app.ev)
+  hid = await hiddenSaved()
+  check('menu: Album shows it again, docked where it was', !!r.album && r.album.x === al.x && r.album.y === al.y && flush.top(r.playlist, r.album) && !hid.includes('album'), fmt(r) + ' was ' + fmt(al) + ' ' + fmt(hid))
+  check('menu: all five windows docked', fiveDocked(r), fmt(r))
+}
+
+// One taskbar/dock icon for the app, and activating it (it activates the player) brings every window forward.
+{
+  const ids = await app.ev(`return Object.fromEntries(['player','playlist','album','rack','power'].map((k) => [k, Number(byId(k).getMediaSourceId().split(':')[1])]))`)
+  const entries = taskbarEntries(Object.values(ids), app.child.pid)
+  check('taskbar: one entry for all windows', entries === 1, `${entries} entries`)
+  // Another app's window covers all five and is in front.
+  const box = await app.ev(`const bs = all.filter((w) => w.isVisible()).map((w) => w.getBounds());
+    const x = Math.min(...bs.map((b) => b.x)), y = Math.min(...bs.map((b) => b.y));
+    return [x, y, Math.max(...bs.map((b) => b.x + b.width)) - x, Math.max(...bs.map((b) => b.y + b.height)) - y]`)
+  const coverUp = async () => {
+    const cover = spawn(electron, [join(here, 'cover.cjs'), ...extra, ...box.map(String)], { stdio: ['ignore', 'pipe', 'ignore'] })
+    const id = await new Promise((res) => {
+      let out = ''
+      cover.stdout.on('data', (d) => {
+        out += d
+        const m = /COVER (\d+)/.exec(out)
+        if (m) res(Number(m[1]))
+      })
+    })
+    return { cover, id }
+  }
+  let { cover, id: coverId } = await coverUp()
+  const order = () => stackTopFirst([coverId, ...Object.values(ids)])
+  const o1 = order()
+  check('raise: cover window starts on top', o1[0] === coverId, fmt(o1))
+  // What a taskbar/Dock click does: X11 taskbars ask the window manager to activate the window, Windows switches
+  // to it, and macOS activates the app.
+  if (process.platform === 'linux') execFileSync('python3', [join(here, 'activate-linux.py'), String(ids.player)])
+  else if (process.platform === 'win32') execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'activate-win.ps1'), String(ids.player)])
+  else await app.ev(`app.focus({ steal: true })`)
+  await sleep(800)
+  const o2 = order()
+  check('raise: activating the player brings every window above the cover', o2.indexOf(coverId) === Object.keys(ids).length, fmt(o2) + ' cover ' + coverId)
+  cover.kill()
+  await sleep(300)
+  // The same with a real mouse click on the app's taskbar button / Dock icon (the CI Linux desktop has no taskbar).
+  if (process.platform !== 'linux') {
+    ;({ cover, id: coverId } = await coverUp())
+    check('real click: cover window starts on top', order()[0] === coverId, fmt(order()))
+    const [cmd, argv] = process.platform === 'win32'
+      ? ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'click-taskbar-win.ps1'), '^Electron']] // buttons are named after the app; ours launched first
+      : ['swift', [join(here, 'click-dock-mac.swift'), '^Electron$', '0']] // ours launched before the cover, so it comes first
+    let out = ''
+    try {
+      out = execFileSync(cmd, argv).toString()
+    } catch (e) {
+      out = `exit ${e.status}\n${e.stdout}`
+    }
+    console.log(out.trim())
+    // Ours and the cover each have one button/icon; on Windows ours counts its windows ("Electron - 1 running window").
+    check('real click: the app has one taskbar button / Dock icon', /matches: 2\b/.test(out) && !/Electron - [2-9]/.test(out), 'see the list above')
+    await sleep(1000)
+    const o3 = order()
+    check('real click: clicking it brings every window above the cover', o3.indexOf(coverId) === Object.keys(ids).length, fmt(o3) + ' cover ' + coverId)
+    cover.kill()
+    await sleep(300)
+  }
+}
+
+// An OS minimize of the rack shades it instead, like the playlist; then a shaded rack and power deck follow the player.
+{
+  const full = await R(app.ev)
+  await app.ev(`byId('rack').minimize()`)
+  await sleep(1500) // macOS animates the minimize before the app can bring the window back
+  r = await R(app.ev)
+  if (await app.ev(`return byId('player').isMinimized()`)) {
+    console.log('the window manager minimized the whole group')
+    await app.ev(`byId('player').restore()`)
+    await sleep(1000)
+    r = await R(app.ev)
+    check('rack OS minimize (group): restoring the player brings all four side windows back, docked', fiveDocked(r), fmt(r))
+    await toggleShade('rack') // shade it, as the rest of the run expects
+    await sleep(600)
+    r = await R(app.ev)
+  }
+  const minFlag = await app.ev(`return byId('rack').isMinimized()`)
+  check('rack OS minimize: shades, stays docked, not stuck minimized', !minFlag && r.rack?.height < 100 && flush.top(r.player, r.rack), fmt(r) + ' minimized=' + minFlag)
+  await toggleShade('power')
+  await sleep(600)
+  await drag(app.ev, 'player', 20, 0)
+  r = await R(app.ev)
+  check('shade: shaded rack and power deck follow', r.rack.height < 100 && r.power.height < 60 && flush.top(r.player, r.rack) && r.rack.x === r.player.x && flush.right(r.playlist, r.power), fmt(r))
+  await toggleShade('rack')
+  await toggleShade('power')
+  await sleep(700)
+  await drag(app.ev, 'player', -20, 0)
+  r = await R(app.ev)
+  check('unshade: rack and power deck back to their size, docked', r.rack.height === full.rack.height && r.power.height === full.power.height && fiveDocked(r), fmt(r) + ' was ' + fmt(full))
+}
+
+// A real OS pointer drag on the player's body (not a button): the window manager moves it, all four docked windows follow.
+{
   const pt = await app.ev(`const w = byId('player'); const c = w.getContentBounds();
     const p = await w.webContents.executeJavaScript(\`(() => { const cp = document.querySelector('.cp'); const r = cp.getBoundingClientRect();
       for (let y = r.top + 40; y < r.bottom - 20; y += 8) for (let x = r.left + 40; x < r.right - 20; x += 8) {
         const e = document.elementFromPoint(x, y); if (e && cp.contains(e) && !e.closest('button, .cp-menu')) return { x, y } } return null })()\`);
     return p && { x: c.x + p.x, y: c.y + p.y, scale: screen.getDisplayMatching(c).scaleFactor }`)
   const start = await R(app.ev)
-  const dx = 160
-  const dy = 0 // horizontal: the player has a window above it and little room below on small screens
+  const dx = 100 // the five-window group is about 2.7 player heights wide: room for this on a 1024 px screen
+  const dy = 0 // horizontal: the player has windows above it and little room below on small screens
   let samples = 0
   let flushSamples = 0
   let done = false
   // Also check right after each of the app's own move events (Windows' move loop blocks the inspector mid-drag):
   // this listener is added after the app's, so it sees the result of the app's follow.
   await app.ev(`const w = byId('player'); globalThis.__rec = [];
-    const f = () => { const p = w.getBounds(), pl = byId('playlist').getBounds(), al = byId('album').getBounds();
-      __rec.push(pl.x === p.x + p.width && pl.y < p.y + p.height && p.y < pl.y + pl.height &&
-        al.y + al.height === p.y && al.x < p.x + p.width && p.x < al.x + al.width) };
+    const f = () => __rec.push(Object.fromEntries(['player','playlist','album','rack','power'].map((k) => [k, byId(k).getBounds()])));
     w.on('move', f); globalThis.__recOff = () => w.off('move', f)`)
   const dragging = realDrag(pt.x, pt.y, dx, dy, pt.scale).finally(() => (done = true))
   while (!done) {
     const m = await R(app.ev)
     if (m.player.x !== start.player.x || m.player.y !== start.player.y) {
       samples++
-      if (flush.right(m.player, m.playlist) && flush.top(m.player, m.album)) flushSamples++
+      if (fiveDocked(m)) flushSamples++
     }
     await sleep(40)
   }
@@ -531,32 +624,43 @@ check('OS minimize: shaded playlist follows', flush.right(r.player, r.playlist),
   await sleep(500)
   const rec = await app.ev(`__recOff(); return __rec`)
   samples += rec.length
-  flushSamples += rec.filter(Boolean).length
+  flushSamples += rec.filter(fiveDocked).length
   r = await R(app.ev)
   const mx = r.player.x - start.player.x
   const my = r.player.y - start.player.y
   // OS drag thresholds (GTK, Windows, macOS) swallow the first few pixels of the pointer path.
   check('real drag: the OS moved the player', mx >= dx / 2 && Math.abs(my) <= 10, `moved ${mx},${my} from ${fmt(start.player)} at ${fmt(pt)}`)
-  check('real drag: docked windows flush after the drop', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
+  check('real drag: docked windows flush after the drop', fiveDocked(r), fmt(r))
   check('real drag: docked windows follow during the drag', samples > 0 && flushSamples / samples >= 0.8, `${flushSamples}/${samples} mid-drag samples flush`)
 }
 
+const quit = async () => {
+  void app.ev(`setTimeout(() => app.quit(), 50)`).catch(() => {})
+  app.ws.close() // --inspect holds the exit until the debugger disconnects
+  await new Promise((res) => app.child.on('exit', res))
+}
 // Quit (saves settings), relaunch: docks come back from the saved positions.
 const before = await R(app.ev)
-void app.ev(`setTimeout(() => app.quit(), 50)`).catch(() => {})
-app.ws.close() // --inspect holds the exit until the debugger disconnects
-await new Promise((res) => app.child.on('exit', res))
-app = await launch(9342)
+await quit()
+app = await launch(9342, 5)
 r = await R(app.ev)
+const sameOffset = (k, to) => r[k].x - r[to].x === before[k].x - before[to].x && r[k].y - r[to].y === before[k].y - before[to].y
 check('restart: playlist docked right again', flush.right(r.player, r.playlist), fmt(r))
-check('restart: side windows keep their own sizes', r.playlist.width === before.playlist.width && r.album.width === before.album.width, fmt(r) + ' before ' + fmt(before))
-check('restart: album docked on top again', flush.top(r.player, r.album) && r.album.x - r.player.x === before.album.x - before.player.x, fmt(r) + ' before ' + fmt(before))
+check('restart: side windows keep their own sizes', ['playlist', 'album', 'rack', 'power'].every((k) => r[k].width === before[k].width && r[k].height === before[k].height), fmt(r) + ' before ' + fmt(before))
+check('restart: album docked on top of the playlist again', flush.top(r.playlist, r.album) && sameOffset('album', 'playlist'), fmt(r) + ' before ' + fmt(before))
+check('restart: rack docked above the player again', flush.top(r.player, r.rack) && sameOffset('rack', 'player'), fmt(r) + ' before ' + fmt(before))
+check('restart: power deck docked right of the playlist again', flush.right(r.playlist, r.power) && sameOffset('power', 'playlist'), fmt(r) + ' before ' + fmt(before))
 await drag(app.ev, 'player', -25, 15)
 r = await R(app.ev)
-check('restart: both follow the player', flush.right(r.player, r.playlist) && flush.top(r.player, r.album), fmt(r))
-void app.ev(`setTimeout(() => app.quit(), 50)`).catch(() => {})
-app.ws.close() // --inspect holds the exit until the debugger disconnects
-await new Promise((res) => app.child.on('exit', res))
+check('restart: all four follow the player', fiveDocked(r), fmt(r))
+// Closed side windows stay closed at the next launch.
+await app.ev(`byId('rack').close(); byId('power').close()`)
+await sleep(500)
+await quit()
+app = await launch(9343, 3)
+r = await R(app.ev)
+check('restart: closed side windows stay closed', r.rack === null && r.power === null && !!r.playlist && !!r.album, fmt(r))
+await quit()
 
 console.log(failures ? `${failures} FAILED` : 'ALL PASS')
 process.exit(failures ? 1 : 0)
