@@ -1,0 +1,14 @@
+html, body, #root { margin: 0; height: 100%; }
+body { background: transparent; overflow: hidden; }
+.pd-stage { position: fixed; inset: 0; overflow: hidden; }
+.pd { position: absolute; transform-origin: 0 0; overflow: hidden; user-select: none; -webkit-user-select: none; }
+.pd-layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
+/* The one and only drag region (see PowerView.tsx); everything else stays non-draggable. */
+.pd-titlebar { position: absolute; left: 0; top: 0; -webkit-app-region: drag; }
+.pd .pd-chrome { position: absolute; margin: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
+.pd .pd-chrome:hover { background-color: rgba(255, 255, 255, 0.12); }
+.pd .pd-chrome:active { background-color: rgba(0, 0, 0, 0.25); transform: translateY(1px); }
+.pd .pd-chrome:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.45); }
+/* Placeholder restore glyph (see ASSETS_TODO): a dark patch hides the baked minimize icon, an outlined square marks "restore". */
+.pd .pd-chrome.shaded, .pd .pd-chrome.shaded:hover { background-color: #2f3138; }
+.pd .pd-chrome.shaded::after { content: ''; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #ddd; border-top-width: 4px; }

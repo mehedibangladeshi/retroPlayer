@@ -13,7 +13,7 @@ export function defaultPlayerSize(
   return { width, height: Math.round(width / aspect) }
 }
 
-interface Migratable { layoutVersion?: number; window?: unknown; playlistWindow?: unknown; albumWindow?: unknown }
+interface Migratable { layoutVersion?: number; window?: unknown; playlistWindow?: unknown; albumWindow?: unknown; rackWindow?: unknown; powerWindow?: unknown }
 
 // Old layout: drop saved bounds once and stamp the current version.
 export function migrateSettings<T extends Migratable>(s: T): T {
@@ -22,6 +22,8 @@ export function migrateSettings<T extends Migratable>(s: T): T {
   delete out.window
   delete out.playlistWindow
   delete out.albumWindow
+  delete out.rackWindow
+  delete out.powerWindow
   return out
 }
 

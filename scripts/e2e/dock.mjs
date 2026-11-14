@@ -54,21 +54,21 @@ async function launch(port) {
       pending.set(i, (d) => (d.result?.exceptionDetails ? reject(new Error(d.result.exceptionDetails.exception?.description)) : resolve(d.result?.result?.value)))
       const body = `(async () => { const { BrowserWindow, screen, app } = process.mainModule.require('electron');
         const all = BrowserWindow.getAllWindows();
-        const byId = (k) => all.find((w) => k === 'player' ? !/#(playlist|album)/.test(w.webContents.getURL()) : w.webContents.getURL().endsWith('#' + k));
+        const byId = (k) => all.find((w) => k === 'player' ? !/#(playlist|album|rack|power)/.test(w.webContents.getURL()) : w.webContents.getURL().endsWith('#' + k));
         ${expr} })()`
       ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: body, awaitPromise: true, returnByValue: true } }))
     })
-  // Slow first launches (macOS runners): wait until the player and both side windows are up.
+  // Slow first launches (macOS runners): wait until the player and all four side windows are up.
   let up = 0
-  for (let i = 0; i < 200 && up < 3; i++) {
+  for (let i = 0; i < 200 && up < 5; i++) {
     await sleep(200)
     up = await ev(`return all.filter((w) => w.isVisible()).length`).catch(() => 0)
   }
-  if (up < 3) throw new Error('windows not up: ' + JSON.stringify(await ev(`return all.map((w) => [w.webContents.getURL(), w.isVisible()])`)))
+  if (up < 5) throw new Error('windows not up: ' + JSON.stringify(await ev(`return all.map((w) => [w.webContents.getURL(), w.isVisible()])`)))
   return { child, ev, ws }
 }
 
-const R = (ev) => ev(`return Object.fromEntries(['player','playlist','album'].map((k) => [k, byId(k)?.isVisible() ? byId(k).getBounds() : null]))`)
+const R = (ev) => ev(`return Object.fromEntries(['player','playlist','album','rack','power'].map((k) => [k, byId(k)?.isVisible() ? byId(k).getBounds() : null]))`)
 const move = (ev, k, x, y) => ev(`byId('${k}').setPosition(${x}, ${y})`)
 // A user drag: many small steps, like a window manager delivers them.
 async function drag(ev, k, dx, dy, steps = 15) {
@@ -90,7 +90,7 @@ const fmt = (r) => JSON.stringify(r)
 // ---- run 1
 let app = await launch(9341)
 const r0 = await R(app.ev) // first launch: side windows open at the player's height (or their minimum size)
-const mins = await app.ev(`return Object.fromEntries(['playlist','album'].map((k) => [k, byId(k).getMinimumSize()]))`)
+const mins = await app.ev(`return Object.fromEntries(['playlist','album','rack','power'].map((k) => [k, byId(k).getMinimumSize()]))`)
 const atPlayerHeight = (k) => Math.abs(r0[k].height - r0.player.height) <= 2 || r0[k].width === mins[k][0]
 // Windows small enough that two stacked ones fit the work area with a little room (CI screens are as small as
 // 1024x677, and macOS also keeps windows above the bottom of the work area), but not below the player's minimum.
@@ -104,12 +104,105 @@ check('startup: playlist docked right of player', flush.right(r.player, r.playli
 check('startup: album docked left of player', flush.left(r.player, r.album), fmt(r))
 check('startup: side windows open at the player height', atPlayerHeight('playlist') && atPlayerHeight('album'), fmt(r0) + ' min ' + fmt(mins))
 check('startup: a player resize leaves the side windows their own size', r.playlist.height === r0.playlist.height && r.album.height === r0.album.height, fmt(r))
-check('every window is user-resizable', await app.ev(`return ['player','playlist','album'].every((k) => byId(k).isResizable())`))
+check('every window is user-resizable', await app.ev(`return ['player','playlist','album','rack','power'].every((k) => byId(k).isResizable())`))
 // The checks below expect every window at the player's height: resize the side windows to it, as a user would.
 await app.ev(`for (const k of ['playlist', 'album']) { const w = byId(k); const b = w.getBounds(); w.setSize(Math.round(${H} * b.width / b.height), ${H}) }`)
 await sleep(700)
 r = await R(app.ev)
 check('side resize: both side windows take the new height, still docked', r.playlist.height === H && r.album.height === H && flush.right(r.player, r.playlist) && flush.left(r.player, r.album), fmt(r))
+
+// The cassette rack: docked above the player, it follows, shades, tears off and snaps back, and resizes in proportion
+// within its limits. Then it is closed (hidden), so the checks below keep their three-window layout.
+{
+  const RK = 1623 / 936
+  const nearR = (a, b) => Math.abs(a - b) <= 2
+  check('rack startup: docked above the player at the player height', flush.top(r.player, r.rack) && atPlayerHeight('rack'), fmt(r0) + ' min ' + fmt(mins))
+  await app.ev(`const w = byId('rack'); w.setSize(${Math.round(H * RK)}, ${H})`)
+  await sleep(700)
+  r = await R(app.ev)
+  check('rack resize: takes the new height, still docked above', r.rack.height === H && flush.top(r.player, r.rack), fmt(r))
+  // Room above the player for the rack: the player just below the top of the work area.
+  await drag(app.ev, 'player', work.x + Math.round((work.width - r.player.width) / 2) - r.player.x, work.y + H + 50 - r.player.y)
+  r = await R(app.ev)
+  check('rack: follows a player drag', flush.top(r.player, r.rack) && r.rack.x === r.player.x, fmt(r))
+  const lim = await app.ev(`const w = byId('rack'); return [...w.getMinimumSize(), ...w.getMaximumSize()]`)
+  check('rack limits: 534x308 to 1602x924', fmt(lim) === fmt([534, 308, 1602, 924]), fmt(lim))
+  const rackShade = `const { ipcMain } = process.mainModule.require('electron'); const w = byId('rack'); ipcMain.emit('window:toggleShade', { sender: w.webContents, senderFrame: w.webContents.mainFrame })`
+  const full = r.rack
+  await app.ev(rackShade)
+  await sleep(600)
+  r = await R(app.ev)
+  check('rack shade: rolls up to its bar, still docked above', r.rack.height < 100 && flush.top(r.player, r.rack), fmt(r))
+  await app.ev(rackShade)
+  await sleep(600)
+  r = await R(app.ev)
+  check('rack unshade: back to its size, docked', r.rack.width === full.width && r.rack.height === full.height && flush.top(r.player, r.rack), fmt(r))
+  await drag(app.ev, 'rack', 160, -30) // clear of the snap distance (12 px)
+  r = await R(app.ev)
+  const torn = r.rack
+  check('rack tear-off: leaves the player', !flush.top(r.player, r.rack), fmt(r))
+  await drag(app.ev, 'player', 0, 6)
+  r = await R(app.ev)
+  check('rack tear-off: a loose rack does not follow', r.rack.x === torn.x && r.rack.y === torn.y, fmt(r))
+  await drag(app.ev, 'rack', r.player.x + 4 - r.rack.x, r.player.y - r.rack.height - 6 - r.rack.y)
+  r = await R(app.ev)
+  check('rack snap: dropped 6 px above, snaps flush and aligns', flush.top(r.player, r.rack) && r.rack.x === r.player.x, fmt(r))
+  const rk = r.rack
+  await app.ev(`byId('rack').setBounds(${JSON.stringify({ ...rk, width: rk.width + 40 })})`)
+  await sleep(800)
+  r = await R(app.ev)
+  check('rack proportion: a width drag ends in proportion, still docked', nearR(r.rack.width, Math.round(r.rack.height * RK)) && flush.top(r.player, r.rack), fmt(r) + ' from ' + fmt(rk))
+  await app.ev(`byId('rack').close()`)
+  await sleep(500)
+  r = await R(app.ev)
+  check('rack close: hides it, the app keeps running', r.rack === null && !!r.player, fmt(r))
+}
+
+// The power deck: docked right of the playlist (so it follows the player through it), it shades, tears off and snaps
+// back, and resizes in proportion within its limits. Then it is closed (hidden) like the rack.
+{
+  const PD = 451 / 934
+  const nearR = (a, b) => Math.abs(a - b) <= 2
+  check('power startup: docked right of the playlist at the player height', flush.right(r0.playlist, r0.power) && r0.power.y === r0.playlist.y && atPlayerHeight('power'), fmt(r0) + ' min ' + fmt(mins))
+  await app.ev(`const w = byId('power'); w.setSize(${Math.round(H * PD)}, ${H})`)
+  await sleep(700)
+  r = await R(app.ev)
+  check('power resize: takes the new height, still docked', r.power.height === H && flush.right(r.playlist, r.power), fmt(r))
+  await drag(app.ev, 'player', -40, 20)
+  r = await R(app.ev)
+  check('power: follows a player drag through the playlist', flush.right(r.player, r.playlist) && flush.right(r.playlist, r.power) && r.power.y === r.playlist.y, fmt(r))
+  const lim = await app.ev(`const w = byId('power'); return [...w.getMinimumSize(), ...w.getMaximumSize()]`)
+  check('power limits: 149x308 to 446x924', fmt(lim) === fmt([149, 308, 446, 924]), fmt(lim))
+  const shade = `const { ipcMain } = process.mainModule.require('electron'); const w = byId('power'); ipcMain.emit('window:toggleShade', { sender: w.webContents, senderFrame: w.webContents.mainFrame })`
+  const full = r.power
+  await app.ev(shade)
+  await sleep(600)
+  r = await R(app.ev)
+  check('power shade: rolls up to its bar, still docked', r.power.height < 60 && r.power.width === full.width && flush.right(r.playlist, r.power), fmt(r))
+  await app.ev(shade)
+  await sleep(600)
+  r = await R(app.ev)
+  check('power unshade: back to its size, docked', r.power.width === full.width && r.power.height === full.height && flush.right(r.playlist, r.power), fmt(r))
+  await drag(app.ev, 'power', 40, 60) // clear of the snap distance (12 px)
+  r = await R(app.ev)
+  const torn = r.power
+  check('power tear-off: leaves the playlist', !flush.right(r.playlist, r.power), fmt(r))
+  await drag(app.ev, 'player', 0, 6)
+  r = await R(app.ev)
+  check('power tear-off: a loose power deck does not follow', r.power.x === torn.x && r.power.y === torn.y, fmt(r))
+  await drag(app.ev, 'power', r.playlist.x + r.playlist.width + 6 - r.power.x, r.playlist.y + 4 - r.power.y)
+  r = await R(app.ev)
+  check('power snap: dropped 6 px right of the playlist, snaps flush and aligns', flush.right(r.playlist, r.power) && r.power.y === r.playlist.y, fmt(r))
+  const pd = r.power
+  await app.ev(`byId('power').setBounds(${JSON.stringify({ ...pd, width: pd.width + 40 })})`)
+  await sleep(800)
+  r = await R(app.ev)
+  check('power proportion: a width drag ends in proportion, still docked', nearR(r.power.width, Math.round(r.power.height * PD)) && flush.right(r.playlist, r.power), fmt(r) + ' from ' + fmt(pd))
+  await app.ev(`byId('power').close()`)
+  await sleep(500)
+  r = await R(app.ev)
+  check('power close: hides it, the app keeps running', r.power === null && !!r.player, fmt(r))
+}
 
 // One taskbar/dock icon for the app, and activating it (it activates the player) brings every window forward.
 {

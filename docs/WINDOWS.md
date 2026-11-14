@@ -6,7 +6,7 @@ window must follow every rule here. A fix or change must not break any rule. To 
 then update this file and add an entry to `docs/DECISIONS.md` in the same commit.
 
 Terms: the **player** is the main window. A **side window** (called a satellite in code) is any other window, today the
-playlist (`playlist`) and the album art (`album`). Each window's id in the dock graph is its hash, and the player is `player`.
+playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and the power deck (`power`). Each window's id in the dock graph is its hash, and the player is `player`.
 
 ## Every window
 
@@ -52,6 +52,10 @@ playlist (`playlist`) and the album art (`album`). Each window's id in the dock 
    with it (openbox minimizes a transient window's whole group), that is a minimize of the app, and restoring the player brings it back.
 7. Minimizing the player hides the visible side windows, and restoring the player shows them again.
 8. Closing the player saves every window's bounds, then closes them all.
+9. Closing a side window only hides it. A right-click anywhere on the player opens a native menu whose Windows submenu
+   lists every side window with a checkmark for visible; picking one shows or hides it (`app/src/main/contextMenu.ts`).
+   Closed windows are saved (`hiddenWindows` in settings.json) and stay closed at the next launch until shown again.
+   On Windows the drag region's OS window menu (`system-context-menu`) is replaced by this menu.
 
 ## Docking
 

@@ -21,7 +21,7 @@ test('defaultPlayerSize: height cap wins on short wide areas', () => {
 
 test('migrateSettings: drops bounds when version missing or old, keeps the rest', () => {
   const w = { x: 1, y: 2, width: 3, height: 4 }
-  const s = { lastOpenDir: '/m', window: w, playlistWindow: w, albumWindow: w }
+  const s = { lastOpenDir: '/m', window: w, playlistWindow: w, albumWindow: w, rackWindow: w, powerWindow: w }
   assert.deepEqual(migrateSettings(s), { lastOpenDir: '/m', layoutVersion: LAYOUT_VERSION })
   assert.deepEqual(migrateSettings({ ...s, layoutVersion: 1 }), { lastOpenDir: '/m', layoutVersion: LAYOUT_VERSION })
   assert.deepEqual(migrateSettings({ ...s, layoutVersion: 2 }), { lastOpenDir: '/m', layoutVersion: LAYOUT_VERSION })

@@ -1,13 +1,14 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { parseHidden } from './contextMenu'
 import { parseSession, type Session } from './session'
 import { LAYOUT_VERSION, migrateSettings } from './windowSize'
 
 export { LAYOUT_VERSION, migrateSettings }
 
 export interface WindowState { x: number; y: number; width: number; height: number }
-export interface Settings { layoutVersion?: number; lastOpenDir?: string; window?: WindowState; playlistWindow?: WindowState; albumWindow?: WindowState; session?: Session }
+export interface Settings { layoutVersion?: number; lastOpenDir?: string; window?: WindowState; playlistWindow?: WindowState; albumWindow?: WindowState; rackWindow?: WindowState; powerWindow?: WindowState; hiddenWindows?: string[]; session?: Session }
 
 let cache: Settings | null = null
 
@@ -38,6 +39,12 @@ function parse(raw: unknown): Settings {
   if (pl) out.playlistWindow = pl
   const al = parseWindow(r.albumWindow)
   if (al) out.albumWindow = al
+  const rk = parseWindow(r.rackWindow)
+  if (rk) out.rackWindow = rk
+  const pd = parseWindow(r.powerWindow)
+  if (pd) out.powerWindow = pd
+  const hidden = parseHidden(r.hiddenWindows)
+  if (hidden) out.hiddenWindows = hidden
   const session = parseSession(r.session)
   if (session) out.session = session
   return out
