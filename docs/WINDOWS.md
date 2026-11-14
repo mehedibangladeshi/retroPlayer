@@ -26,9 +26,14 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    composition to fill the rest (`stretchFit`): its art layers are drawn nine-slice (`nineSlice`, borders in `SLICE` in
    `layout.ts`) so the corners keep the title, buttons, lamps and grip, and only plain frame stretches. Text may keep a fixed screen size instead: the playlist divides
    `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`).
-8. User-resizable within fixed limits: every window's height stays within 308..924 px (50%..150% of the player's
-   design height), and its width within the widths its design aspect gives at those heights (`sizeLimits` in
-   `windowSize.ts`, passed as the window's min and max size). The player, album and power deck keep their design
+8. User-resizable within limits that depend on the display the window is on. With `H` the work-area height of that
+   display: the height stays within `minHeight = clamp(round(0.30·H), 200, 308)` and
+   `maxHeight = max(minHeight, min(round(0.90·H), 2 × the window's design height))`, and the width within the widths its
+   design aspect gives at those heights (`displayLimits` in `windowSize.ts`, passed as the window's min and max size).
+   The default player height (`defaultPlayerHeight`) fits the default five-window group in 75% of the primary work area.
+   Limits are re-applied on display metrics changes, display added or removed, and when a window's move ends on another
+   display. A window now out of range is clamped (`clampToLimits`, aspect kept) and stays docked. A shaded window is not
+   resized; its limits apply when it is unshaded. The numbers and sources are in `docs/DECISIONS.md`. The player, album and power deck keep their design
    aspect (`setAspectRatio`). An X11 window manager (KWin) does not enforce the aspect on an edge resize, so when a user
    resize ends the window is brought back in proportion (`proportional`): the dimension the user changed most leads,
    and the edge the user moved stays put. The playlist and the cassette rack are **free** (`free: true` in
@@ -37,7 +42,7 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
 ## Side windows
 
 1. Added to the `satellites` list in `app/src/main/index.ts` with its `hash`, `title`, `aspect`, `free`, size limits
-   (`...sizeLimits(aspect)`) and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
+   (`...displayLimits(...)`, rule 8 above) and settings `key`. Everything below then comes from the shared satellite code. Do not write per-window copies of it.
 2. Opens at launch with the player (after the player is shown, so it can dock), unless the user hid it.
 3. No taskbar or Dock entry of its own: the app has one icon, and activating it (a taskbar or Dock click) brings every
    visible window forward. Side windows are `skipTaskbar: true`, and on Windows and Linux they are always children of the
@@ -58,13 +63,17 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    with it (openbox minimizes a transient window's whole group), that is a minimize of the app, and restoring the player brings it back.
 7. Minimizing the player hides the visible side windows, and restoring the player shows them again.
 8. Closing the player saves every window's bounds, then closes them all.
-9. Closing a side window only hides it. A right-click anywhere on the player opens a native menu whose Windows submenu
-   lists every side window with a checkmark for visible; picking one shows or hides it (`app/src/main/contextMenu.ts`).
+9. Closing a side window only hides it. A right-click anywhere on the player opens a native menu, built only from the
+   page's `context-menu` event on every OS (`app/src/main/contextMenu.ts`). Its Windows submenu lists every side window
+   with a checkmark for visible, a separator, `Reset Windows` and `Fill Gaps`. Picking a window shows or hides it.
    Its Keyboard Shortcuts submenu lists every shortcut with its key, for display only (the windows handle the keys).
    Closed windows are saved (`hiddenWindows` in settings.json) and stay closed at the next launch until shown again.
-   On Windows the drag region's OS window menu (`system-context-menu`) is replaced by this menu. Windows and Linux report a
-   right-click on a drag region twice (`system-context-menu` and the page's `context-menu`), so the menu opens once per
-   click (`oncePerClick`): two menus back to back leave none open on Windows.
+   On Windows and Linux, `system-context-menu` comes first on a right-click over a drag region. It is only
+   `preventDefault()`ed to hide the OS window menu and never opens a menu: a menu popped from it closed about 5 ms
+   later on Linux, and two back to back left none open on Windows.
+10. `Windows → Reset Windows` does what a first launch does: all four side windows are shown and unshaded,
+    `hiddenWindows` is cleared, the player goes to its default size on its display, the side windows go to the player's
+    height, `DEFAULT_DOCKS` applies, the group is nudged onto the work area, and the bounds are saved once every window is shown.
 
 ## Docking
 
@@ -72,8 +81,14 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    player: `Dock { to, side, ratio }`, where the ratio is the offset along the shared edge.
 2. Windows docked to a window follow it, so everything docked to the player, directly or through a chain, moves
    with the player, live while it is dragged.
-3. A window dropped within `SNAP_PX` (12 px) of another window's edge snaps flush. Its start edge also aligns if that
-   is within 12 px too.
+3. A window dropped within `SNAP_PX` (12 px) of another window's edge snaps flush. Its start or end edge also aligns
+   with that window's, whichever is closer, if that is within 12 px too (`snap`).
+3a. Tiling: when a user resize ends, each edge it moved snaps to a parallel edge of another window within 12 px
+   (`snapResize` in `dock.ts`). A free window snaps each edge on its own. An aspect window snaps by the dimension the
+   user changed most. This runs at resize end on every OS, because `will-resize` does not exist on Linux.
+3b. `Windows → Fill Gaps` (`fillGaps`) is on demand, never automatic. Inside the bounding box of the player's visible
+   group, each visible free window grows right, down, left, then up into empty space, until it meets another window
+   (a shaded bar counts) or the box edge, within its limits. Aspect windows never change.
 4. Dragging a docked side window tears it off its dock. Windows docked to it come along. Dropping the player near
    a loose window snaps the player to it and picks the window up.
 5. A side window never ends up over the player. If it is saved over the player, it is docked back to its default side.
@@ -116,7 +131,7 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
 - [ ] Its view is covered by `app/test/dragRegions.test.ts`.
 - [ ] `scripts/e2e/dock.mjs` covers it: it docks on each side, follows a player drag, tears off and snaps back, has no
       taskbar entry of its own, comes forward when the player is activated, keeps its dock when it or the player is
-      resized, and has the shared size limits and ends a resize in proportion (or, if free, keeps its new width and
+      resized, and has the per-display size limits and ends a resize in proportion (or, if free, keeps its new width and
       height).
       Run the script locally and on CI (`.github/workflows/dock-e2e.yml`) on Linux, Windows and macOS.
 - [ ] `docs/ARCHITECTURE.md` and this file are updated if anything changed.

@@ -516,3 +516,27 @@ Why: This is an owner-approved exception to the "no native controls" rule. Most 
 Decision: The playlist and cassette rack windows resize in width and height independently (`free: true` in `satellites`): no `setAspectRatio`, no proportion fix when a resize ends, and saved sizes are fitted to the screen per dimension (`fitSize`). They keep the shared limits (height 308..924, width from the design aspect at those heights). Their views scale by the tighter side and grow the composition to fill the window (`stretchFit`), drawing each art layer nine-slice (`nineSlice`, borders in `PLAYLIST.SLICE` / `RACK.SLICE`) at whole screen pixels. The list area, cover and right-edge buttons follow the window. A shaded free window's bar keeps the scale its art had. The player, album and power deck still keep their design aspect. This changes rule 8 of `docs/WINDOWS.md` (owner request).
 
 Why: Both windows hold lists (songs, cassettes) that are worth more room in one direction without growing in the other. Their art is plain frames with details in the corners and edges, so nine-slicing grows them without redrawing or distorting artwork; the other windows are fixed compositions where stretching would distort them.
+
+## 2026-11-14 — The right-click menu opens only from the page's context-menu event
+
+Decision: On every OS the right-click menu (`app/src/main/contextMenu.ts`) opens only from the page's `context-menu` event. On Windows and Linux, `system-context-menu` is still raised first over a drag region, but it is only `preventDefault()`ed to hide the OS window menu. `oncePerClick` is removed. This supersedes the once-per-click part of the 2026-11-14 "A native right-click menu on the player" entry and rule 9 of the side-window rules in `docs/WINDOWS.md` as they were.
+
+Why: On Linux a menu popped from `system-context-menu` closed about 5 ms later, and on Windows two menus back to back left none open. One source for the menu avoids both.
+
+## 2026-11-14 — Window sizes follow the display they are on
+
+Decision: The height limits of a window come from the work area of its display (`displayLimits` in `app/src/main/windowSize.ts`). With `H` the work-area height: `minHeight = clamp(round(0.30·H), 200, 308)`, and `maxHeight = max(minHeight, min(round(0.90·H), 2 × the window's design height))`. Widths follow the design aspect. Free windows (playlist, rack) have `minWidth = minHeight`. The default player height (`defaultPlayerHeight`) is chosen so the default five-window group (album, player, playlist and power deck wide; rack and player tall) fits 75% of the primary work area. Limits are re-applied on `display-metrics-changed`, `display-added` and `display-removed`, and when a window's move ends on another display. A window out of range is clamped (`clampToLimits`: aspect kept, free windows per dimension) and stays docked. A shaded window is not resized; its limits apply when it is unshaded. Examples: a 1280x720 display (work area 680 px) gives 204..612 with a default player of 255; 1920x1080 (work area 1040 px) gives 308..936, default 386; 2560x1440 (work area 1400 px) gives 308..1232, default 515.
+
+Why: The owner asked for a researched responsive system. The old fixed 308..924 px range fits a 1280x720 display badly, since the maximum is larger than its work area, and it is small on 2560x1440. The formula scales with the screen. Sources: the GNOME HIG (1024x600 is the smallest display to support), Microsoft (1366x768 is common, and layout uses effective pixels), and the Electron screen API (`workArea` in DIP, and display events). The WCAG 24 px target floor was not applied: the art's chrome buttons are 30 px in a 937 px design.
+
+## 2026-11-14 — Tiling help: edge snapping and Fill Gaps
+
+Decision: Three changes help windows fit together as tiles. (1) A dropped window aligns its start or end edge with the neighbour's, whichever is closer, within 12 px (`snap`). Before, only the start edge aligned. (2) When a user resize ends, each edge it moved snaps to a parallel edge of another window within 12 px (`snapResize` in `app/src/main/dock.ts`). Free windows snap per edge. Aspect windows snap by the most-changed dimension. This runs on every OS at resize end, because `will-resize` does not exist on Linux. (3) `Windows → Fill Gaps` (`fillGaps`) is an on-demand menu action. Inside the bounding box of the player's visible group, each visible free window grows right, down, left, then up until it meets another window (a shaded bar counts) or the box edge, within its limits. Aspect windows never change. The free-window minimum width is now `minHeight`, which is looser than the aspect width it had before.
+
+Why: The owner wants windows arranged as tiles. Aligning either edge and snapping on resize make windows meet each other. The owner chose on-demand Fill Gaps over automatic filling, so the user keeps control of each size.
+
+## 2026-11-14 — Reset Windows is a first launch
+
+Decision: `Windows → Reset Windows` (`resetWindows`) does what a first launch does. All four side windows are shown and unshaded, `hiddenWindows` is cleared, the player goes to its default size on its display, the side windows go to the player's height, `DEFAULT_DOCKS` applies, the group is nudged onto the work area, and the bounds are saved once every window is shown.
+
+Why: The owner chose to show closed windows too, so one action gives a known layout after windows have been closed or moved out of reach.

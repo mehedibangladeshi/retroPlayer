@@ -26,12 +26,18 @@ const SHORTCUTS: ([label: string, key: string] | null)[] = [
 // The player's right-click menu. `toggle(i, show)` shows or hides windows[i].
 export function contextMenu(
   windows: { label: string; visible: boolean }[],
-  toggle: (i: number, show: boolean) => void
+  toggle: (i: number, show: boolean) => void,
+  actions: { reset: () => void; fillGaps: () => void }
 ): MenuItemConstructorOptions[] {
   return [
     {
       label: 'Windows',
-      submenu: windows.map((w, i) => ({ label: w.label, type: 'checkbox', checked: w.visible, click: () => toggle(i, !w.visible) }))
+      submenu: [
+        ...windows.map((w, i): MenuItemConstructorOptions => ({ label: w.label, type: 'checkbox', checked: w.visible, click: () => toggle(i, !w.visible) })),
+        { type: 'separator' },
+        { label: 'Reset Windows', click: actions.reset },
+        { label: 'Fill Gaps', click: actions.fillGaps }
+      ]
     },
     {
       label: 'Keyboard Shortcuts',
@@ -44,17 +50,6 @@ export function contextMenu(
     { label: 'Check for Updates…' },
     { label: 'About' }
   ]
-}
-
-// Linux reports one right-click on a drag region twice (the page's 'context-menu' and 'system-context-menu'):
-// calls within 300 ms of the last shown menu are the same click.
-export function oncePerClick(show: () => void): (now?: number) => void {
-  let last = -Infinity
-  return (now = Date.now()) => {
-    if (now - last < 300) return
-    last = now
-    show()
-  }
 }
 
 // Side windows the user closed (by their hash), saved so they stay closed at the next launch.
