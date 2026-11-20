@@ -84,11 +84,12 @@ async function drag(ev, k, dx, dy, steps = 15) {
   }
   await sleep(400) // drop + settle (120 ms) + async X11 configure
 }
+const GAP = 2 // transparent gap between docked windows (dock.ts GAP); `flush` below means "docked"
 const flush = {
-  right: (a, b) => b.x === a.x + a.width && b.y < a.y + a.height && a.y < b.y + b.height,
-  left: (a, b) => b.x + b.width === a.x && b.y < a.y + a.height && a.y < b.y + b.height,
-  bottom: (a, b) => b.y === a.y + a.height && b.x < a.x + a.width && a.x < b.x + b.width,
-  top: (a, b) => b.y + b.height === a.y && b.x < a.x + a.width && a.x < b.x + b.width
+  right: (a, b) => b.x === a.x + a.width + GAP && b.y < a.y + a.height && a.y < b.y + b.height,
+  left: (a, b) => b.x + b.width + GAP === a.x && b.y < a.y + a.height && a.y < b.y + b.height,
+  bottom: (a, b) => b.y === a.y + a.height + GAP && b.x < a.x + a.width && a.x < b.x + b.width,
+  top: (a, b) => b.y + b.height + GAP === a.y && b.x < a.x + a.width && a.x < b.x + b.width
 }
 const fmt = (r) => JSON.stringify(r)
 // Each window's size limits come from the work area of its display: [minW, minH, maxW, maxH] as the app computes them.

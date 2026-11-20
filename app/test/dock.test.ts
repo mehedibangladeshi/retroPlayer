@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fillGaps, fitGroup, inferDocks, layout, overlaps, snap, snapResize, subtree, type Docks, type Limits, type Rect } from '../src/main/dock.ts'
+import { GAP, fillGaps, fitGroup, inferDocks, layout, overlaps, snap, snapResize, subtree, type Docks, type Limits, type Rect } from '../src/main/dock.ts'
 
 const r = (x: number, y: number, width: number, height: number): Rect => ({ x, y, width, height })
 const P = r(100, 100, 400, 300) // player
@@ -13,15 +13,16 @@ test('overlaps: true, false and touching edges', () => {
 })
 
 test('snap: each of the four sides, within tolerance', () => {
-  assert.deepEqual(snap(r(508, 150, 80, 200), { player: P }), r(500, 150, 80, 200)) // right
-  assert.deepEqual(snap(r(15, 150, 80, 200), { player: P }), r(20, 150, 80, 200)) // left
-  assert.deepEqual(snap(r(200, 395, 80, 50), { player: P }), r(200, 400, 80, 50)) // bottom
-  assert.deepEqual(snap(r(200, 40, 80, 50), { player: P }), r(200, 50, 80, 50)) // top
+  assert.deepEqual(snap(r(508, 150, 80, 200), { player: P }), r(502, 150, 80, 200)) // right
+  assert.deepEqual(snap(r(15, 150, 80, 200), { player: P }), r(18, 150, 80, 200)) // left
+  assert.deepEqual(snap(r(200, 395, 80, 50), { player: P }), r(200, 402, 80, 50)) // bottom
+  assert.deepEqual(snap(r(200, 40, 80, 50), { player: P }), r(200, 48, 80, 50)) // top
+  assert.equal(GAP, 2)
 })
 
 test('snap: aligns the start edge with the window it docks to', () => {
-  assert.deepEqual(snap(r(505, 108, 80, 200), { player: P }), r(500, 100, 80, 200))
-  assert.deepEqual(snap(r(95, 405, 80, 50), { player: P }), r(100, 400, 80, 50))
+  assert.deepEqual(snap(r(505, 108, 80, 200), { player: P }), r(502, 100, 80, 200))
+  assert.deepEqual(snap(r(95, 405, 80, 50), { player: P }), r(100, 402, 80, 50))
 })
 
 test('snap: too far, or no overlap on the other axis, leaves the rect alone', () => {
@@ -32,7 +33,7 @@ test('snap: too far, or no overlap on the other axis, leaves the rect alone', ()
 test('snap: picks the nearest edge among several windows', () => {
   const others = { player: P, album: r(500, 420, 100, 100) }
   // 6 px right of the player, 3 px above the album's top: the album wins.
-  assert.deepEqual(snap(r(506, 317, 100, 100), others), r(500, 320, 100, 100))
+  assert.deepEqual(snap(r(506, 317, 100, 100), others), r(500, 318, 100, 100))
 })
 
 test('inferDocks: windows flush to the root dock to it, chains dock to the window they touch', () => {
@@ -40,6 +41,14 @@ test('inferDocks: windows flush to the root dock to it, chains dock to the windo
   const d = inferDocks(rects, ['player'])
   assert.deepEqual(d.playlist, { to: 'player', side: 'right', ratio: 0 })
   assert.deepEqual(d.album, { to: 'playlist', side: 'bottom', ratio: 0 })
+})
+
+test('inferDocks: windows flush (old layouts) or GAP apart both dock', () => {
+  const rects = { player: P, flush: r(500, 100, 80, 300), gapped: r(100, 400 + GAP, 80, 50) }
+  const d = inferDocks(rects, ['player'])
+  assert.deepEqual(d.flush, { to: 'player', side: 'right', ratio: 0 })
+  assert.deepEqual(d.gapped, { to: 'player', side: 'bottom', ratio: 0 })
+  assert.equal(inferDocks({ player: P, far: r(500 + GAP + 2, 100, 80, 300) }, ['player']).far, undefined)
 })
 
 test('inferDocks: a window that only touches at a corner, or not at all, stays undocked', () => {
@@ -77,17 +86,17 @@ test('layout: docked windows follow a moved player, in chains, on every side', (
     loose: r(900, 900, 10, 10)
   }
   const out = layout(rects, docks)
-  assert.deepEqual(out.right, r(550, 130, 80, 300))
-  assert.deepEqual(out.left, r(70, 130, 80, 300))
-  assert.deepEqual(out.top, r(350, 80, 60, 50))
-  assert.deepEqual(out.below, r(550, 430, 80, 80))
+  assert.deepEqual(out.right, r(552, 130, 80, 300))
+  assert.deepEqual(out.left, r(68, 130, 80, 300))
+  assert.deepEqual(out.top, r(350, 78, 60, 50))
+  assert.deepEqual(out.below, r(552, 432, 80, 80))
   assert.deepEqual(out.loose, r(900, 900, 10, 10))
   assert.deepEqual(out.player, rects.player)
 })
 
-test('layout: a resized anchor keeps the dock flush and scales the offset', () => {
+test('layout: a resized anchor keeps the dock GAP away and scales the offset', () => {
   const out = layout({ player: r(100, 100, 800, 600), a: r(200, 400, 80, 80) }, { a: { to: 'player', side: 'bottom', ratio: 0.25 } })
-  assert.deepEqual(out.a, r(300, 700, 80, 80))
+  assert.deepEqual(out.a, r(300, 702, 80, 80))
 })
 
 test('layout: a dock to a missing (hidden) window leaves the window where it is', () => {
@@ -118,14 +127,14 @@ test('fitGroup: a group too big for the work area clamps the player in, start ed
 
 test('snap: aligns the end edge when it is closer than the start edge', () => {
   // Right of the player, bottom 5 px above the player's bottom (400), top 25 px off: bottoms align.
-  assert.deepEqual(snap(r(505, 125, 80, 270), { player: P }), r(500, 130, 80, 270))
+  assert.deepEqual(snap(r(505, 125, 80, 270), { player: P }), r(502, 130, 80, 270))
   // Below the player, right edge 4 px short of the player's right (500): rights align.
-  assert.deepEqual(snap(r(196, 405, 300, 50), { player: P }), r(200, 400, 300, 50))
+  assert.deepEqual(snap(r(196, 405, 300, 50), { player: P }), r(200, 402, 300, 50))
 })
 
 test('snap: the start edge still wins when it is closer', () => {
   // top 3 px off the player's top, bottom 10 px off its bottom.
-  assert.deepEqual(snap(r(505, 103, 80, 287), { player: P }), r(500, 100, 80, 287))
+  assert.deepEqual(snap(r(505, 103, 80, 287), { player: P }), r(502, 100, 80, 287))
 })
 
 const L: Limits = { minWidth: 50, minHeight: 50, maxWidth: 2000, maxHeight: 2000 }
@@ -136,10 +145,15 @@ test('snapResize: a free window right edge snaps to a neighbour right edge, heig
   assert.deepEqual(snapResize(cur, from, [P], null, L), r(100, 400, 400, 210))
 })
 
+test('snapResize: a bottom edge stops GAP short of a window below', () => {
+  const from = r(100, 0, 400, 90)
+  assert.deepEqual(snapResize(r(100, 0, 400, 95), from, [P], null, L), r(100, 0, 400, 100 - GAP))
+})
+
 test('snapResize: a free window top edge snaps to a neighbour bottom edge', () => {
   const from = r(100, 420, 300, 200)
   const cur = r(100, 406, 300, 214) // top dragged up to 406, 6 px below the player's bottom (400)
-  assert.deepEqual(snapResize(cur, from, [P], null, L), r(100, 400, 300, 220))
+  assert.deepEqual(snapResize(cur, from, [P], null, L), r(100, 402, 300, 218))
 })
 
 test('snapResize: no edge within 12 px leaves the rect unchanged', () => {
@@ -163,7 +177,7 @@ test('snapResize: an aspect window led by width snaps its width and derives its 
 test('snapResize: an aspect window dragged by its left edge keeps its right and bottom edges', () => {
   const from = r(600, 200, 200, 100) // aspect 2, right at 800, bottom at 300
   const cur = r(505, 180, 295, 120) // left dragged to 505 (5 px off the player's right) and top moved
-  assert.deepEqual(snapResize(cur, from, [P], 2, L), r(500, 150, 300, 150))
+  assert.deepEqual(snapResize(cur, from, [P], 2, L), r(502, 151, 298, 149))
 })
 
 test('snapResize: the result is clamped to the limits, keeping the unmoved edge', () => {
@@ -193,7 +207,7 @@ test('fillGaps: a free window stops at an aspect window in its way', () => {
   }
   // Right: blocked by the album at 300. Down/left/up: already at the bbox or blocked by the player.
   const out = fillGaps(rects, ['playlist'], { playlist: L })
-  assert.deepEqual(out, { playlist: r(0, 300, 300, 200) })
+  assert.deepEqual(out, { playlist: r(0, 300, 300 - GAP, 200) })
 })
 
 test('fillGaps: maxWidth is respected', () => {
@@ -229,12 +243,12 @@ test('snapResize: an aspect window clamped by maxHeight gets an integer size wit
 
 test('fillGaps: grows left up to the nearest window', () => {
   const rects = { player: r(0, 0, 400, 300), album: r(0, 300, 100, 200), playlist: r(200, 300, 200, 200) }
-  assert.deepEqual(fillGaps(rects, ['playlist'], { playlist: L }), { playlist: r(100, 300, 300, 200) })
+  assert.deepEqual(fillGaps(rects, ['playlist'], { playlist: L }), { playlist: r(100 + GAP, 300, 300 - GAP, 200) })
 })
 
 test('fillGaps: grows up to the nearest window', () => {
   const rects = { player: r(0, 0, 200, 300), album: r(200, 0, 200, 100), playlist: r(200, 200, 200, 300) }
-  assert.deepEqual(fillGaps(rects, ['playlist'], { playlist: L }), { playlist: r(200, 100, 200, 400) })
+  assert.deepEqual(fillGaps(rects, ['playlist'], { playlist: L }), { playlist: r(200, 100 + GAP, 200, 400 - GAP) })
 })
 
 test('fillGaps: maxHeight is respected', () => {
