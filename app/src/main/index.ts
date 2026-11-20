@@ -12,10 +12,10 @@ import { isValidCommand } from './ndjson'
 import { contextMenu, setHidden } from './contextMenu'
 import { loadSettings, saveSettings, type WindowState } from './settings'
 import { AWAITING, optionsCommands, optionsStep } from './options'
-import { nextSession, restoreCommands, restoreStep, type Session } from './session'
+import { nextSession, restoreCommands, restoreStep, shouldSaveSession, type Session } from './session'
 import { clampToLimits, defaultPlayerHeight, displayLimits, fitsWorkArea, fitSize, initialHeight, proportional, type Limits } from './windowSize'
 import { Sidecar } from './sidecar'
-import { foldResume, rackPlayCommands, record, remove, reorder, resumePlan, setSort, view, type RackFile } from './rack'
+import { clear, foldResume, rackPlayCommands, record, remove, reorder, resumePlan, setSort, view, type RackFile } from './rack'
 import { loadRack, makeSpine, saveRack } from './rackStore'
 import { dirArg, dirsArg, rackMenuTemplate } from './rackIpc'
 import { scanWaiter } from './rackTracks'
@@ -74,8 +74,10 @@ let session: Session | undefined // read at whenReady: userData is set further d
 let sessionAlbum: Album | null = null
 let sessionSavedAt = 0
 let restoreLeft = 0 // restore states still to come (restoreStep)
+let clearedAlbum: string | null = null // album still loaded when the rack was cleared: its progress stays unsaved (shouldSaveSession)
+let clearing = false // the confirm dialog is open
 function saveSession(): void {
-  if (!session) return
+  if (!session || !shouldSaveSession(nowPlaying, clearedAlbum)) return
   saveSettings({ session })
   sessionSavedAt = Date.now()
 }
@@ -113,7 +115,10 @@ const sidecar = new Sidecar(
     // A rack preview's answer must not bump the album in Recent.
     const preview = evt.type === 'albumInfo' && previewScans.answer(evt.path, evt.album)
     if (preview && !evt.album) setRack(remove(rackFile, evt.path)) // unreadable folder (a timeout keeps the spine)
-    if ((evt.type === 'playlist' || evt.type === 'albumInfo') && evt.album && !preview) setRack(record(rackFile, makeSpine(evt.album), Date.now()))
+    if ((evt.type === 'playlist' || evt.type === 'albumInfo') && evt.album && !preview) {
+      clearedAlbum = null // re-added: starts fresh
+      setRack(record(rackFile, makeSpine(evt.album), Date.now()))
+    }
     restoreLeft = restoreStep(restoreLeft, evt)
     if (restoreLeft > 0) return o.forward
     // (restoreLeft above also covers a rack:play's load+seek, whose 0:00 state must not overwrite the resume point.)
@@ -127,7 +132,7 @@ const sidecar = new Sidecar(
       }
     }
     const next = nextSession(session, sessionAlbum, evt)
-    if (next === session) return o.forward
+    if (next === session || !shouldSaveSession(nowPlaying, clearedAlbum)) return o.forward
     session = next
     if (evt.type === 'state' || Date.now() - sessionSavedAt >= SESSION_SAVE_MS) saveSession()
     return o.forward
@@ -881,6 +886,7 @@ if (relaunch) {
     if (!existsSync(dir)) return setRack(remove(rackFile, dir))
     // A scan timeout or failure gives no plan: the album then starts at track 1 (its playlist event re-records it, Recent order).
     const album = entry.resume ? await previewScans.request(dir).catch(() => null) : null
+    if (!rackFile.entries.some((x) => x.dir === dir)) return // cleared or removed during the scan
     const cmds = rackPlayCommands(dir, resumePlan(entry.resume, album?.tracks.map((t) => t.path) ?? []))
     restoreLeft = cmds.length > 1 ? cmds.length - 1 : 0 // the paused load's (and seek's) states, as in a session restore
     for (const c of cmds) sidecar.send(c)
@@ -903,9 +909,28 @@ if (relaunch) {
     if (!fromAppWindow(e) || !w) return
     const dir = dirArg(arg)
     const hasDir = dir !== null && rackFile.entries.some((x) => x.dir === dir)
-    const template = rackMenuTemplate(rackFile.sort, hasDir, {
+    const template = rackMenuTemplate(rackFile.sort, hasDir, rackFile.entries.length, {
       setSort: (s) => setRack(setSort(rackFile, s)),
-      remove: () => dir && setRack(remove(rackFile, dir))
+      remove: () => dir && setRack(remove(rackFile, dir)),
+      clear: async () => {
+        if (clearing) return
+        clearing = true
+        const n = rackFile.entries.length
+        try {
+          const r = await dialog.showMessageBox(w, {
+            type: 'warning', buttons: ['Cancel', 'Clear All'], defaultId: 0, cancelId: 0,
+            message: 'Clear the cassette rack?',
+            detail: `This removes all ${n} cassettes and their saved playback progress (track and time). Your music files are not deleted.`
+          })
+          if (r.response !== 1) return
+          clearedAlbum = nowPlaying
+          setRack(clear(rackFile))
+          session = undefined
+          saveSettings({ session }) // JSON drops the undefined key; playback itself is untouched
+        } finally {
+          clearing = false
+        }
+      }
     })
     Menu.buildFromTemplate(template).popup({ window: w })
   })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hexRgb, inkFor, meanRgb, nameColor, foldResume, parseRack, rackPlayCommands, record, remove, reorder, resumePlan, setSort, spineCrop, spineText, view, type RackFile } from '../src/main/rack.ts'
+import { hexRgb, inkFor, meanRgb, nameColor, clear, foldResume, parseRack, rackPlayCommands, record, remove, reorder, resumePlan, setSort, spineCrop, spineText, view, type RackFile } from '../src/main/rack.ts'
 import { restoreStep } from '../src/main/session.ts'
 import { SPINE_ASPECT, type Spine } from '../src/shared/rack.ts'
 
@@ -216,4 +216,11 @@ test('rack:play with a plan: load and seek states are skipped by restoreLeft, th
   }
   assert.equal(left, 0)
   assert.equal(f.entries[0].resume?.positionMs, 5000)
+})
+
+test('clear: drops every entry (and with them their resume points), keeps the sort', () => {
+  const f = file('/a', '/b')
+  f.entries[0].resume = { index: 1, path: '/a/2.flac', positionMs: 5 }
+  f.sort = 'custom'
+  assert.deepEqual(clear(f), { sort: 'custom', entries: [] })
 })

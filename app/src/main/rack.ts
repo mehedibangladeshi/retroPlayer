@@ -117,6 +117,10 @@ export function remove(f: RackFile, dir: string): RackFile {
   return { ...f, entries: f.entries.filter((e) => e.dir !== dir) }
 }
 
+export function clear(f: RackFile): RackFile {
+  return { sort: f.sort, entries: [] }
+}
+
 export function reorder(f: RackFile, dirs: string[]): RackFile {
   const first = [...new Set(dirs)].flatMap((d) => f.entries.filter((e) => e.dir === d))
   const listed = new Set(first.map((e) => e.dir))
