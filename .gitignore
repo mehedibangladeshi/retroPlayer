@@ -10,3 +10,4 @@ app/build/sidecar/
 
 # Claude Code local state (worktrees, locks)
 .claude/
+graphify-out/
