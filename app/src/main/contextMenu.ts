@@ -29,8 +29,10 @@ const SHORTCUTS: ([label: string, key: string] | null)[] = [
 export function contextMenu(
   windows: { label: string; visible: boolean }[],
   toggle: (i: number, show: boolean) => void,
-  actions: { reset: () => void; fillGaps: () => void },
-  boost: { db: number; set: (db: number) => void }
+  actions: { reset: () => void; fillGaps: () => void; toggleLock?: () => void },
+  boost: { db: number; set: (db: number) => void },
+  locked = false,
+  canLock = false
 ): MenuItemConstructorOptions[] {
   return [
     {
@@ -39,7 +41,8 @@ export function contextMenu(
         ...windows.map((w, i): MenuItemConstructorOptions => ({ label: w.label, type: 'checkbox', checked: w.visible, click: () => toggle(i, !w.visible) })),
         { type: 'separator' },
         { label: 'Reset Windows', click: actions.reset },
-        { label: 'Fill Gaps', click: actions.fillGaps }
+        { label: 'Fill Gaps', click: actions.fillGaps },
+        { label: 'Lock Windows', type: 'checkbox', checked: locked, enabled: locked || canLock, click: () => actions.toggleLock?.() }
       ]
     },
     {
@@ -67,4 +70,8 @@ export function setHidden(list: string[] | undefined, hash: string, hidden: bool
 
 export function parseHidden(v: unknown): string[] | undefined {
   return Array.isArray(v) ? v.filter((h): h is string => typeof h === 'string' && h !== '') : undefined
+}
+
+export function parseLocked(v: unknown): boolean | undefined {
+  return typeof v === 'boolean' ? v : undefined
 }

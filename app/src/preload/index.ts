@@ -27,6 +27,14 @@ const api: RetroApi = {
       ipcRenderer.removeListener(IPC.shaded, listener)
     }
   },
+  getLocked: () => ipcRenderer.invoke(IPC.getLocked) as Promise<boolean>,
+  onLocked: (cb) => {
+    const listener = (_e: IpcRendererEvent, locked: boolean): void => cb(locked)
+    ipcRenderer.on(IPC.windowLocked, listener)
+    return () => {
+      ipcRenderer.removeListener(IPC.windowLocked, listener)
+    }
+  },
   getRack: () => ipcRenderer.invoke(IPC.rackGet) as Promise<RackState>,
   doubleClickMs: () => ipcRenderer.invoke(IPC.doubleClickMs) as Promise<number>,
   onRack: (cb) => {
