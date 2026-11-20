@@ -507,6 +507,22 @@ function fitPlayerGroup(rects: Record<string, Rect>, extra?: Satellite): boolean
   return true
 }
 
+// Like sync(), but a window cannot go above the work area's top: a docked window that would (the player dragged a few
+// px up, a rack above it) is clamped there and loses its GAP. Push the player down instead so the group keeps its gaps.
+function syncKeepTop(): void {
+  const rects = rectsNow()
+  const laid = layout(rects, docks)
+  const group = [...subtree(docks, 'player')].filter((id) => id !== 'player' && laid[id]).map((id) => laid[id])
+  const { dy } = laid.player ? fitGroup([laid.player, ...group], screen.getDisplayMatching(laid.player).workArea) : { dy: 0 }
+  if (dy <= 0 || !live(win)) {
+    sync()
+    return
+  }
+  const moved = { ...laid.player, y: laid.player.y + dy }
+  programmatic(win, moved)
+  sync({ player: moved })
+}
+
 function lastOpenDir(): string | undefined {
   const dir = loadSettings().lastOpenDir
   if (!dir) return undefined
@@ -650,7 +666,7 @@ function createWindow(): void {
     // Locked: a resize is applied to the whole group when it ends (settleLocked); a drag moves the group (lockedDrag).
     // macOS has no move events mid-drag and carries the docked windows as child windows, so sync() stays there.
     if (locked && !resized && process.platform !== 'darwin') return lockedDrag('player', prev)
-    if (!(locked && resized)) sync()
+    if (!(locked && resized)) syncKeepTop()
   }
   w.on('resize', followPlayer)
   w.on('move', followPlayer)

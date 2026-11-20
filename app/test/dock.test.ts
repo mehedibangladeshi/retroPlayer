@@ -156,6 +156,13 @@ test('snapResize: a free window top edge snaps to a neighbour bottom edge', () =
   assert.deepEqual(snapResize(cur, from, [P], null, L), r(100, 402, 300, 218))
 })
 
+test('snapResize: a neighbour GAP away along the other axis still counts as touching', () => {
+  // Player P is 100..500 x 100..400. A window left of it with a GAP between (right edge at 98) shares its span only through the gap.
+  const from = r(0, 100, 98, 300)
+  const cur = r(0, 100, 98, 305) // bottom 405, 5 px past P's bottom (400)
+  assert.equal(snapResize(cur, from, [P], null, L).height, 300)
+})
+
 test('snapResize: no edge within 12 px leaves the rect unchanged', () => {
   const from = r(100, 420, 300, 200)
   const cur = r(100, 420, 370, 200) // right at 470, 30 px from 500

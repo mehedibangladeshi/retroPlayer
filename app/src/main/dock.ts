@@ -180,8 +180,10 @@ function nearest(v: number, edges: number[]): number | null {
  * edge of the dimension that changed most and derives the other, keeping the unmoved edges fixed. cur if no target.
  */
 export function snapResize(cur: Rect, from: Rect, others: Rect[], aspect: number | null, l: Limits): Rect {
-  const touchY = others.filter((o) => o.y <= cur.y + cur.height && cur.y <= o.y + o.height)
-  const touchX = others.filter((o) => o.x <= cur.x + cur.width && cur.x <= o.x + o.width)
+  // Docked neighbours sit GAP apart, so "touching" tolerates GAP (+1 for rounding) on the shared span.
+  const t = GAP + 1
+  const touchY = others.filter((o) => o.y <= cur.y + cur.height + t && cur.y <= o.y + o.height + t)
+  const touchX = others.filter((o) => o.x <= cur.x + cur.width + t && cur.x <= o.x + o.width + t)
   // Per moved edge: align with a neighbour's same-side edge, or sit GAP away from its facing edge.
   const xsL = touchY.flatMap((o) => [o.x, o.x + o.width + GAP])
   const xsR = touchY.flatMap((o) => [o.x - GAP, o.x + o.width])
