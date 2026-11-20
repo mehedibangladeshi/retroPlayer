@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { nineSlice } from './stretchFit'
-import { useStretchFit } from './useStretchFit'
+import { useChromeFit } from './chromeFit'
+import { FREE_MIN_COMP } from '@shared/freeMin'
 import { RACK as R, type Rect } from '@shared/layout'
 import { SHADE } from '@shared/shade'
 import { cassetteCount } from './rackCount'
@@ -51,7 +52,7 @@ export default function RackView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   // A free window: the composition grows to fill it, the art drawn nine-slice (see RACK.SLICE).
-  const fit = useStretchFit(R.WINDOW.w, R.WINDOW.h, SHADE.rack.barH, shaded)
+  const fit = useChromeFit(FREE_MIN_COMP.rack, shaded)
   const dw = fit.w - R.WINDOW.w
   const dh = fit.h - R.WINDOW.h
 

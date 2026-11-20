@@ -12,7 +12,8 @@ import { textMetrics } from './playlistText'
 import TrackRows from './TrackRows'
 import TitleText from './TitleText'
 import { nineSlice } from './stretchFit'
-import { useStretchFit } from './useStretchFit'
+import { useChromeFit } from './chromeFit'
+import { FREE_MIN_COMP } from '@shared/freeMin'
 import './PlaylistView.css'
 
 const urls = import.meta.glob<string>('@assets/playlist/*.png', { query: '?url', import: 'default', eager: true })
@@ -36,7 +37,7 @@ export default function PlaylistView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   // A free window: the composition grows to fill it, the art drawn nine-slice (see PLAYLIST.SLICE).
-  const fit = useStretchFit(P.WINDOW.w, P.WINDOW.h, SHADE.playlist.barH, shaded)
+  const fit = useChromeFit(FREE_MIN_COMP.playlist, shaded)
   const dw = fit.w - P.WINDOW.w
   const dh = fit.h - P.WINDOW.h
   const slice = (id: string): React.CSSProperties => nineSlice(layerUrl(id), P.SLICE, P.ASSET_SCALE, fit)
