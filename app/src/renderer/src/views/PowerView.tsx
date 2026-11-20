@@ -3,6 +3,7 @@ import { POWER as R, type Circle, type Rect } from '@shared/layout'
 import { boostLabel, nextBoost, stepBoost } from '@shared/boost'
 import { setBoost, setLoop, setShuffle } from '../engine/commands'
 import { useEngine } from '../engine/useEngine'
+import { useLocked } from '../useLocked'
 import { importAlbumToRack } from '../input/importAlbum'
 import { useKeyboard } from '../input/useKeyboard'
 import { useSeekHold } from '../input/useSeekHold'
@@ -61,6 +62,7 @@ export default function PowerView() {
   // Bar space: fixed size, hit boxes anchored to the right edge like the baked icons.
   const bar = (r: Rect): React.CSSProperties => ({ left: win.w - (R.WINDOW.w - r.x) * CHROME_SCALE, top: r.y * CHROME_SCALE, width: r.w * CHROME_SCALE, height: r.h * CHROME_SCALE })
   const { options, optionsKnown } = useEngine()
+  const locked = useLocked()
   useKeyboard(useSeekHold())
   const [importLit, setImportLit] = useState(false)
   const [importDown, setImportDown] = useState(false)
@@ -68,7 +70,7 @@ export default function PowerView() {
   const shuffle = switchLamps(options.shuffle)
 
   return (
-    <div className="pd-stage">
+    <div className={`pd-stage${locked ? ' locked' : ''}`}>
       <div className="pd-bar" style={{ height: fit.barPx }}>
         {/* Base and top stretch between the caps; the mid layer holds the left-anchored title text, so it is not stretched. */}
         <div style={barSlice(layerUrl('power/power-base.png'), R.WINDOW.h, barH, CAP_L, CAP_R, R.ASSET_SCALE)} />

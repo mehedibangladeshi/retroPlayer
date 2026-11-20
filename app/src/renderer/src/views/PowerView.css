@@ -24,3 +24,6 @@ body { background: transparent; overflow: hidden; }
 /* BOOST lamp: dim when off (the only lamp with a visible off state) and its code-drawn label, in the app font. */
 .pd-lamp.off { background: #2a2f2a; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.7); }
 .pd-boost-text { position: absolute; text-align: center; font-size: 8px; line-height: 10px; letter-spacing: 1px; text-transform: uppercase; color: #8b9099; pointer-events: none; }
+/* While locked, the empty body drags the whole window group; every control opts out (drag regions swallow mouse events). */
+.pd-stage.locked .pd-body { -webkit-app-region: drag; }
+.pd-stage.locked button, .pd-stage.locked input, .pd-stage.locked .pk-hit, .pd-stage.locked .ps, .pd-stage.locked .pvis { -webkit-app-region: no-drag; }

@@ -17,3 +17,6 @@ body { background: transparent; overflow: hidden; }
 /* Placeholder restore glyph (see ASSETS_TODO): a dark patch hides the baked minimize icon, an outlined square marks "restore". */
 .al-bar .al-chrome.shaded, .al-bar .al-chrome.shaded:hover { background-color: #2f3138; }
 .al-bar .al-chrome.shaded::after { content: ''; position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; box-sizing: border-box; border: 1px solid #ddd; border-top-width: 2px; }
+/* While locked, the empty body drags the whole window group; every control opts out (drag regions swallow mouse events). */
+.al-stage.locked .al-body { -webkit-app-region: drag; }
+.al-stage.locked button, .al-stage.locked input { -webkit-app-region: no-drag; }

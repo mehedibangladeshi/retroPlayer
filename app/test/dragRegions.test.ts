@@ -6,10 +6,10 @@ import { readFileSync } from 'node:fs'
 // inherits -webkit-app-region: drag swallows clicks, so the strip must be the
 // only drag region and must be an empty self-closing element.
 const views = [
-  { name: 'Playlist', css: 'PlaylistView.css', tsx: 'PlaylistView.tsx', strip: 'pl-titlebar' },
-  { name: 'Album', css: 'AlbumView.css', tsx: 'AlbumView.tsx', strip: 'al-titlebar' },
-  { name: 'Rack', css: 'RackView.css', tsx: 'RackView.tsx', strip: 'rk-titlebar' },
-  { name: 'Power deck', css: 'PowerView.css', tsx: 'PowerView.tsx', strip: 'pd-titlebar' },
+  { name: 'Playlist', css: 'PlaylistView.css', tsx: 'PlaylistView.tsx', strip: 'pl-titlebar', lockedDrag: false },
+  { name: 'Album', css: 'AlbumView.css', tsx: 'AlbumView.tsx', strip: 'al-titlebar', lockedDrag: true },
+  { name: 'Rack', css: 'RackView.css', tsx: 'RackView.tsx', strip: 'rk-titlebar', lockedDrag: false },
+  { name: 'Power deck', css: 'PowerView.css', tsx: 'PowerView.tsx', strip: 'pd-titlebar', lockedDrag: true },
 ]
 
 const read = (file: string) => readFileSync(new URL(`../src/renderer/src/views/${file}`, import.meta.url), 'utf8')
@@ -31,10 +31,10 @@ function cssRules(css: string) {
 for (const v of views) {
   test(`${v.name}: the only app-region rule is .${v.strip} { app-region: drag }`, () => {
     const css = stripCssComments(read(v.css))
-    // Strip is the only drag region, so a no-drag escape hatch is not allowed either.
-    assert.ok(!/no-drag/.test(css), `${v.css}: contains "no-drag"; remove it and keep the strip as the only drag region`)
+    // Album and power may also set app-region, but only in .locked selectors (see the locked test below).
+    if (!v.lockedDrag) assert.ok(!/no-drag/.test(css), `${v.css}: contains "no-drag"; remove it and keep the strip as the only drag region`)
 
-    const hits = cssRules(css).filter(r => /app-region/.test(r.body))
+    const hits = cssRules(css).filter(r => /app-region/.test(r.body) && !(v.lockedDrag && /\.locked/.test(r.selector)))
     assert.equal(hits.length, 1, `${v.css}: expected exactly one rule with app-region, found ${hits.length}: ${hits.map(r => r.selector).join(' | ')}`)
 
     const [rule] = hits
@@ -43,6 +43,24 @@ for (const v of views) {
 
     const values = rule.body.split(';').map(d => d.trim()).filter(d => /app-region\s*:/.test(d)).map(d => d.split(':')[1].trim())
     assert.ok(values.length > 0 && values.every(x => x === 'drag'), `${v.css}: .${v.strip} app-region must be "drag", got ${JSON.stringify(values)}`)
+  })
+
+  if (v.lockedDrag) {
+    test(`${v.name}: app-region beyond the strip only under .locked, drag paired with no-drag on button and input`, () => {
+      const rules = cssRules(stripCssComments(read(v.css))).filter(r => /app-region/.test(r.body) && /\.locked/.test(r.selector))
+      const withValue = (val: string) => rules.filter(r => new RegExp(`app-region\\s*:\\s*${val}\\b`).test(r.body))
+      assert.ok(withValue('drag').length > 0, `${v.css}: no .locked rule makes the empty area draggable`)
+      const noDrag = withValue('no-drag').flatMap(r => r.selector.split(',').map(s => s.trim()))
+      for (const el of ['button', 'input']) {
+        assert.ok(noDrag.some(s => new RegExp(`\\.locked\\b.*\\b${el}$`).test(s)), `${v.css}: no ".locked ... ${el}" no-drag selector`)
+      }
+    })
+  }
+
+  test(`${v.name}: root element gets the locked class in ${v.tsx}`, () => {
+    if (!v.lockedDrag) return
+    const src = read(v.tsx)
+    assert.ok(/useLocked\(\)/.test(src) && /\$\{locked \? . locked./.test(src), `${v.tsx}: must use useLocked and add a "locked" class`)
   })
 
   test(`${v.name}: no inline app-region in ${v.tsx}`, () => {

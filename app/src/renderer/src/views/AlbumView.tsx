@@ -4,6 +4,7 @@ import { CHROME_SCALE } from '@shared/chrome'
 import { SHADE } from '@shared/shade'
 import { barSlice, splitFit } from './splitFit'
 import { useEngine } from '../engine/useEngine'
+import { useLocked } from '../useLocked'
 import './AlbumView.css'
 
 const urls = import.meta.glob<string>('@assets/album/*.png', { query: '?url', import: 'default', eager: true })
@@ -36,6 +37,7 @@ const box = (r: Rect): React.CSSProperties => ({ left: r.x, top: r.y, width: r.w
 
 export default function AlbumView() {
   const { artwork } = useEngine()
+  const locked = useLocked()
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   const win = useWindowSize(shaded)
@@ -46,7 +48,7 @@ export default function AlbumView() {
   const bar = (r: Rect): React.CSSProperties => ({ left: win.w - (A.WINDOW.w - r.x) * CHROME_SCALE, top: r.y * CHROME_SCALE, width: r.w * CHROME_SCALE, height: r.h * CHROME_SCALE })
 
   return (
-    <div className="al-stage">
+    <div className={`al-stage${locked ? ' locked' : ''}`}>
       <div className="al-bar" style={{ height: fit.barPx }}>
         <div style={barSlice(layerUrl('base'), A.WINDOW.h, barH, CAP_L, CAP_R, A.ASSET_SCALE)} />
         <div style={barSlice(top, A.WINDOW.h, barH, CAP_L, CAP_R, A.ASSET_SCALE)} />
