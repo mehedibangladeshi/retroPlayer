@@ -5,14 +5,16 @@ import { IPC } from '@shared/api'
 import { ALBUM, PLAYLIST, POWER, RACK, WINDOW } from '@shared/layout'
 import { SUPPORTED_EXTENSIONS, type Album, type Command } from '@shared/protocol'
 import { SHADE } from '@shared/shade'
+import { bodyAspect, chromeBarPx, wholeAspect } from '@shared/chrome'
 import { clampInto, expandedAt, shadedBounds } from './shade'
-import { fillGaps, fitGroup, inferDocks, layout, matchHeight, overlaps, snap, snapResize, subtree, type Docks, type Rect } from './dock'
+import { fillGaps, fitGroup, inferDocks, layout, overlaps, snap, snapResize, subtree, type Docks, type Rect } from './dock'
 import { x11Relaunch } from './platform'
 import { isValidCommand } from './ndjson'
 import { contextMenu, setHidden } from './contextMenu'
 import { loadSettings, saveSettings, type WindowState } from './settings'
 import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, shouldSaveSession, type Session } from './session'
+import { FREE_MIN_COMP, freeMinWindow } from '@shared/freeMin'
 import { clampToLimits, defaultPlayerHeight, displayLimits, fitsWorkArea, fitSize, initialHeight, proportional, type Limits } from './windowSize'
 import { Sidecar } from './sidecar'
 import { clear, foldResume, rackPlayCommands, record, remove, reorder, resumePlan, setSort, view, type RackFile } from './rack'
@@ -29,8 +31,10 @@ let quitting = false
 interface Satellite {
   hash: 'playlist' | 'album' | 'rack' | 'power' // also its id in the dock graph (the player is 'player')
   title: string
-  aspect: number // its design shape: the first-open size, and kept on resize unless `free`
+  aspect: number // its design shape (for a bar window, its body's: width / (height - extraH)): the first-open size, and kept on resize unless `free`
+  extraH: number // fixed DIP height of its title bar, outside `aspect` (album, power); 0 for the others
   free: boolean // resized in width and height independently (playlist, rack); the others keep their aspect
+  freeMin?: { width: number; height: number } // a free window's smallest size (shared/freeMin.ts)
   designH: number // its design height: caps its max height (windowSize.ts heightRange)
   // Size limits from the work area of the display it is on (applyLimits); set when it is created.
   minWidth: number
@@ -50,18 +54,30 @@ const AL_ASPECT = ALBUM.WINDOW.w / ALBUM.WINDOW.h
 const RK_ASPECT = RACK.WINDOW.w / RACK.WINDOW.h
 const PD_ASPECT = POWER.WINDOW.w / POWER.WINDOW.h
 const playlist: Satellite = {
-  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, free: true, designH: PLAYLIST.WINDOW.h, ...UNSET, key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
+  hash: 'playlist', title: 'Cassette Player: Playlist', aspect: PL_ASPECT, extraH: 0, free: true, freeMin: freeMinWindow(FREE_MIN_COMP.playlist), designH: PLAYLIST.WINDOW.h, ...UNSET, key: 'playlistWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const album: Satellite = {
-  hash: 'album', title: 'Cassette Player: Album', aspect: AL_ASPECT, free: false, designH: ALBUM.WINDOW.h, ...UNSET, key: 'albumWindow', win: null, wanted: false, shaded: false, expanded: null
+  hash: 'album', title: 'Cassette Player: Album', aspect: bodyAspect(ALBUM.WINDOW.w, ALBUM.WINDOW.h, SHADE.album.barH), extraH: chromeBarPx(SHADE.album.barH), free: false, designH: ALBUM.WINDOW.h, ...UNSET, key: 'albumWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const rack: Satellite = {
-  hash: 'rack', title: 'Cassette Player: Cassette Rack', aspect: RK_ASPECT, free: true, designH: RACK.WINDOW.h, ...UNSET, key: 'rackWindow', win: null, wanted: false, shaded: false, expanded: null
+  hash: 'rack', title: 'Cassette Player: Cassette Rack', aspect: RK_ASPECT, extraH: 0, free: true, freeMin: freeMinWindow(FREE_MIN_COMP.rack), designH: RACK.WINDOW.h, ...UNSET, key: 'rackWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const power: Satellite = {
-  hash: 'power', title: 'Cassette Player: Power Deck', aspect: PD_ASPECT, free: false, designH: POWER.WINDOW.h, ...UNSET, key: 'powerWindow', win: null, wanted: false, shaded: false, expanded: null
+  hash: 'power', title: 'Cassette Player: Power Deck', aspect: bodyAspect(POWER.WINDOW.w, POWER.WINDOW.h, SHADE.power.barH), extraH: chromeBarPx(SHADE.power.barH), free: false, designH: POWER.WINDOW.h, ...UNSET, key: 'powerWindow', win: null, wanted: false, shaded: false, expanded: null
 }
 const satellites = [playlist, album, rack, power]
+// A bar window's size rule is w / (h - extraH) = aspect. macOS enforces it natively through setAspectRatio's extraSize.
+// Windows and Linux ignore extraSize, so there the native lock gets the whole-window aspect at the window's current
+// height. That ratio changes with height, so it is refreshed whenever the size changes (programmatic, resize end,
+// limits, unshade); `keepProportion` corrects the small remaining error when a resize ends.
+const lockAspect = (w: BrowserWindow, s: Satellite, height = w.getBounds().height): void => {
+  if (s.free) w.setAspectRatio(0)
+  else if (s.extraH === 0) w.setAspectRatio(s.aspect)
+  else if (process.platform === 'darwin') w.setAspectRatio(s.aspect, { width: 0, height: s.extraH })
+  else w.setAspectRatio(wholeAspect(height, s.aspect, s.extraH))
+}
+// A satellite's first-open size at a height (width from its aspect, never below `minWidth`).
+const sizeAt = (s: Satellite, height: number, minWidth: number): { width: number; height: number } => ({ width: Math.max(minWidth, Math.round((height - s.extraH) * s.aspect)), height })
 // Who is docked to whom (in memory; read back from the saved positions at startup). Any window can dock to any side
 // of any other; docked windows follow their anchor, so everything docked to the player moves with it.
 const DEFAULT_DOCKS: Docks = { playlist: { to: 'player', side: 'right', ratio: 0 }, album: { to: 'player', side: 'left', ratio: 0 }, rack: { to: 'player', side: 'top', ratio: 0 }, power: { to: 'playlist', side: 'right', ratio: 0 } }
@@ -153,7 +169,7 @@ const areaOf = (b?: { x?: number; y?: number; width: number; height: number }): 
 
 // Sizes below are content sizes (the window is frameless, so content == window).
 // Returns the saved bounds fitted to a visible display, or null if there are none or they are off-screen.
-function fitSaved(saved: WindowState | undefined, aspect: number, designH: number, free: boolean): { x: number; y: number; width: number; height: number } | null {
+function fitSaved(saved: WindowState | undefined, aspect: number, designH: number, free: boolean, extraH = 0, freeMin?: { width: number; height: number }): { x: number; y: number; width: number; height: number } | null {
   if (!saved) return null
   const visible = screen.getAllDisplays().some((d) => {
     const a = d.workArea
@@ -165,7 +181,7 @@ function fitSaved(saved: WindowState | undefined, aspect: number, designH: numbe
   // Fitted to the work area of the display the window lands on (null aspect: a free window).
   const a = screen.getDisplayMatching({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }).workArea
   if (!fitsWorkArea(saved, a)) return null
-  return { x: Math.round(saved.x), y: Math.round(saved.y), ...fitSize(saved, free ? null : aspect, displayLimits(aspect, a, designH, free), a) }
+  return { x: Math.round(saved.x), y: Math.round(saved.y), ...fitSize(saved, free ? null : aspect, displayLimits(aspect, a, designH, free, extraH, freeMin), a, extraH) }
 }
 
 function initialBounds(): { x?: number; y?: number; width: number; height: number } {
@@ -179,11 +195,11 @@ function initialBounds(): { x?: number; y?: number; width: number; height: numbe
 // A side window reopens at its saved bounds (if still on screen); the first time it takes the player's height.
 // A docked window is placed by its dock when it is shown, so its start position does not matter much.
 function satelliteBounds(s: Satellite): { x?: number; y?: number; width: number; height: number } {
-  const fitted = fitSaved(loadSettings()[s.key], s.aspect, s.designH, s.free)
+  const fitted = fitSaved(loadSettings()[s.key], s.aspect, s.designH, s.free, s.extraH, s.freeMin)
   if (fitted) return fitted
   const p = live(win) ? win.getBounds() : undefined
-  const l = displayLimits(s.aspect, areaOf(p), s.designH, s.free)
-  const size = matchHeight(Math.min(l.maxHeight, Math.max(l.minHeight, p?.height ?? 0)), s.aspect, l.minWidth)
+  const l = displayLimits(s.aspect, areaOf(p), s.designH, s.free, s.extraH, s.freeMin)
+  const size = sizeAt(s, Math.min(l.maxHeight, Math.max(l.minHeight, p?.height ?? 0)), l.minWidth)
   return p ? { ...size, x: p.x + p.width, y: p.y } : size
 }
 
@@ -223,6 +239,8 @@ function programmatic(w: BrowserWindow, r: Rect): void {
   // A pure move uses setPosition: on Windows at fractional display scaling, setBounds can drift the size by a pixel.
   if (b.width === r.width && b.height === r.height) w.setPosition(r.x, r.y)
   else w.setBounds(r)
+  const sat = satellites.find((x) => x.win === w)
+  if (sat && sat.extraH > 0 && !sat.shaded) lockAspect(w, sat, r.height) // the lock's ratio depends on height
 }
 // `sized`: a resize is ours only if the size matches too (a user resize from the far corner keeps the position).
 function isOwn(w: BrowserWindow, sized = false): boolean {
@@ -325,17 +343,20 @@ function keepProportion(id: string): Record<string, Rect> {
   const w = windowOf(id)
   if (!from || !live(w) || s?.shaded) return {}
   const cur = w.getBounds()
+  if (s && s.extraH > 0) lockAspect(w, s, cur.height) // resize ended: relock at the new height
   const lim = s ?? PLAYER
   // Moved edges snap to nearby edges of the other windows (so windows tile); that also keeps an aspect window's aspect.
   const others = Object.entries(rectsNow()).filter(([k]) => k !== id).map(([, r]) => r)
-  const snapped = snapResize(cur, from, others, s?.free ? null : s ? s.aspect : ASPECT, lim)
+  const snapped = snapResize(cur, from, others, s?.free ? null : s ? (s.aspect * (cur.height - s.extraH)) / cur.height : ASPECT, lim)
   if (!sameRect(snapped, cur)) {
-    programmatic(w, snapped)
-    resizeTarget.set(id, snapped)
-    return { [id]: snapped }
+    // snapResize assumes the whole window keeps one aspect; for a bar window re-impose the body aspect on its result.
+    const fixed = s && s.extraH > 0 ? proportional(snapped, cur, s.aspect, lim, s.extraH) : snapped
+    programmatic(w, fixed)
+    resizeTarget.set(id, fixed)
+    return { [id]: fixed }
   }
   if (s?.free) return {} // a free window keeps the size the user gave it
-  const want = proportional(cur, from, s ? s.aspect : ASPECT, lim)
+  const want = proportional(cur, from, s ? s.aspect : ASPECT, lim, s?.extraH)
   if (Math.abs(want.width - cur.width) <= 1 && Math.abs(want.height - cur.height) <= 1) return {}
   programmatic(w, want)
   resizeTarget.set(id, want)
@@ -420,17 +441,17 @@ function lastOpenDir(): string | undefined {
 // (Linux applies them asynchronously). A shaded side window keeps its bar; its new limits apply on unshade.
 const lastDisplay = new Map<string, number>()
 function applyLimits(over: Record<string, Rect> = {}): void {
-  const all = [{ id: 'player', w: win, aspect: ASPECT, designH: WINDOW.height, free: false, l: PLAYER, shaded: false }, ...satellites.map((s) => ({ id: s.hash, w: s.win, aspect: s.aspect, designH: s.designH, free: s.free, l: s as Limits, shaded: s.shaded }))]
+  const all = [{ id: 'player', w: win, aspect: ASPECT, designH: WINDOW.height, free: false, extraH: 0, freeMin: undefined, l: PLAYER, shaded: false }, ...satellites.map((s) => ({ id: s.hash, w: s.win, aspect: s.aspect, designH: s.designH, free: s.free, extraH: s.extraH, freeMin: s.freeMin, l: s as Limits, shaded: s.shaded }))]
   const resized: Record<string, Rect> = {}
-  for (const { id, w, aspect, designH, free, l, shaded } of all) {
+  for (const { id, w, aspect, designH, free, extraH, freeMin, l, shaded } of all) {
     if (!live(w)) continue
     const b = over[id] ?? w.getBounds()
     const d = screen.getDisplayMatching(b)
     lastDisplay.set(id, d.id)
-    Object.assign(l, displayLimits(aspect, d.workArea, designH, free))
+    Object.assign(l, displayLimits(aspect, d.workArea, designH, free, extraH, freeMin))
     if (shaded) continue
     const out = b.width < l.minWidth || b.width > l.maxWidth || b.height < l.minHeight || b.height > l.maxHeight
-    const r = clampToLimits(b, free ? null : aspect, l)
+    const r = clampToLimits(b, free ? null : aspect, l, extraH)
     // A lower max before the shrink would let the OS shrink it first, a move we could read as a user resize.
     const grow = r.width > b.width || r.height > b.height
     if (!out || grow) w.setMaximumSize(l.maxWidth, l.maxHeight)
@@ -592,11 +613,11 @@ function toggleShade(s: Satellite, from?: Rect): void {
   } else {
     s.shaded = false
     // Limits may have changed while shaded (applyLimits): the restored size honours the current ones.
-    const next = clampInto(clampToLimits(expandedAt(cur, s.expanded ?? cur), s.free ? null : s.aspect, s), screen.getDisplayMatching(cur).workArea)
+    const next = clampInto(clampToLimits(expandedAt(cur, s.expanded ?? cur), s.free ? null : s.aspect, s, s.extraH), screen.getDisplayMatching(cur).workArea)
     s.expanded = null
     w.setMaximumSize(s.maxWidth, s.maxHeight)
     resizeFixed(w, next, [s.minWidth, s.minHeight], true)
-    w.setAspectRatio(s.free ? 0 : s.aspect)
+    lockAspect(w, s, next.height)
     sync({ [s.hash]: next }) // back to its size, docked
   }
   w.webContents.send(IPC.shaded, s.shaded)
@@ -604,7 +625,7 @@ function toggleShade(s: Satellite, from?: Rect): void {
 
 function createSatellite(s: Satellite): BrowserWindow {
   const b = satelliteBounds(s)
-  Object.assign(s, displayLimits(s.aspect, areaOf(b), s.designH, s.free))
+  Object.assign(s, displayLimits(s.aspect, areaOf(b), s.designH, s.free, s.extraH, s.freeMin))
   const w = new BrowserWindow({
     ...(b.x !== undefined && b.y !== undefined ? { x: b.x, y: b.y } : { center: true }),
     width: b.width,
@@ -636,7 +657,7 @@ function createSatellite(s: Satellite): BrowserWindow {
     }
   })
   s.win = w
-  w.setAspectRatio(s.free ? 0 : s.aspect)
+  lockAspect(w, s)
   w.once('ready-to-show', () => {
     if (s.wanted) showSatellite(s)
   })
@@ -784,8 +805,8 @@ async function resetWindows(): Promise<void> {
   const height = defaultPlayerHeight(area, AL_ASPECT + ASPECT + PL_ASPECT + PD_ASPECT, 2)
   const rects: Record<string, Rect> = { player: { x: p.x, y: p.y, width: Math.round(height * ASPECT), height } }
   for (const s of satellites) {
-    const l = displayLimits(s.aspect, area, s.designH, s.free)
-    rects[s.hash] = { x: 0, y: 0, ...matchHeight(Math.min(l.maxHeight, Math.max(l.minHeight, height)), s.aspect, l.minWidth) }
+    const l = displayLimits(s.aspect, area, s.designH, s.free, s.extraH)
+    rects[s.hash] = { x: 0, y: 0, ...sizeAt(s, Math.min(l.maxHeight, Math.max(l.minHeight, height)), l.minWidth) }
   }
   const laid = layout(rects, docks)
   const { dx, dy } = fitGroup(Object.values(laid), area)
