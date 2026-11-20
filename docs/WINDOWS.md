@@ -25,11 +25,11 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    window, so its artwork coordinates stay in design px. A free window (rule 8) scales by its tighter side and grows the
    composition to fill the rest (`stretchFit`): its art layers are drawn nine-slice (`nineSlice`, borders in `SLICE` in
    `layout.ts`) so the corners keep the title, buttons, lamps and grip, and only plain frame stretches. Text may keep a
-   fixed screen size instead: the playlist divides `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`).
+   fixed screen size instead: the playlist divides `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`). Side-window chrome is the exception: it is drawn at a fixed scale (see Chrome scale).
 8. User-resizable within limits that depend on the display the window is on. With `H` the work-area height of that
    display: the height stays within `minHeight = 200` (flat, so small screens work) and
    `maxHeight = max(200, min(round(0.90·H), 2 × the window's design height))`, and the width within the widths its
-   design aspect gives at those heights (`displayLimits` in `windowSize.ts`, passed as the window's min and max size).
+   design aspect gives at those heights (`displayLimits` in `windowSize.ts`, passed as the window's min and max size). The playlist and the rack use their own minimum sizes instead, 220x218 and 330x178 DIP (`app/src/shared/freeMin.ts`).
    With no saved bounds, or saved bounds that no longer fit the display's work area (`fitsWorkArea`), a window opens
    at `initialHeight` (about 60% of `H`, never above its design height, aspect kept). The default player height (`defaultPlayerHeight`) fits the default five-window group in 75% of the primary work area.
    Limits are re-applied on display metrics changes, display added or removed, and when a window's move ends on another
@@ -53,12 +53,14 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    Closing it only hides it, and quitting closes it for real. Its bounds are saved under its settings key.
 4. User-resizable on its own (`resizable: true`), keeping its design aspect ratio (`setAspectRatio`) unless it is free
    (rule 8 above). It opens at the player's height and its design shape the first time (`matchHeight`), then at its
-   saved size. A shaded free window's bar is drawn at the scale its art had (`shadedBounds` with the design height).
-   Resizing the player never resizes it. A docked window keeps its dock while it is resized: it is placed flush against
-   its anchor again (a drag on its docked edge grows it the other way), and windows docked to it follow. A shaded
+   saved size. A shaded window's bar is drawn at the fixed chrome scale (see Chrome scale).
+   Resizing the player never resizes it. Resizing one window leaves the others alone, unless the windows are locked
+   (see Window lock). A docked window keeps its dock while it is resized: it is placed back 2 px from
+   its anchor (a drag on its docked edge grows it the other way), and windows docked to it follow. A shaded
    window is not resizable.
 5. Exactly one drag region: a childless strip in its top bar, to the left of minimize and close. Nothing else in the
-   view sets `-webkit-app-region`. `app/test/dragRegions.test.ts` enforces this, so add the new view to that test.
+   view sets `-webkit-app-region`, except the empty body of the album and power windows while the windows are locked
+   (see Window lock). `app/test/dragRegions.test.ts` enforces this, so add the new view to that test.
 6. Minimize does not minimize. It rolls the window up into its top bar (the window shade) and back. It needs a `SHADE`
    entry (design width and top-bar height) in `app/src/shared/shade.ts`. If the OS minimizes it anyway, main brings it back and shades it. If the window manager minimizes the player
    with it (openbox minimizes a transient window's whole group), that is a minimize of the app, and restoring the player brings it back.
@@ -66,11 +68,12 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
 8. Closing the player saves every window's bounds, then closes them all.
 9. Closing a side window only hides it. A right-click anywhere on the player opens a native menu, built only from the
    page's `context-menu` event on every OS (`app/src/main/contextMenu.ts`). Its Windows submenu lists every side window
-   with a checkmark for visible, a separator, `Reset Windows` and `Fill Gaps`. Picking a window shows or hides it.
+   with a checkmark for visible, a separator, `Reset Windows`, `Fill Gaps` and, last, `Lock Windows` (see Window lock). Picking a window shows or hides it.
    Its Keyboard Shortcuts submenu lists every shortcut with its key, for display only (the windows handle the keys).
    Closed windows are saved (`hiddenWindows` in settings.json) and stay closed at the next launch until shown again.
-   The cassette rack has its own native right-click menu (Sort: Recent / Sort: Custom, and Remove from rack over a
-   spine). The rack page asks for it over `rack:menu` with the spine under the pointer; main pops it on the rack window.
+   The cassette rack has its own native right-click menu (Sort: Recent / Sort: Custom, Remove from rack over a
+   spine, and `Clear cassette rack…`, disabled when the rack is empty; it asks first and drops the saved progress,
+   see `docs/ARCHITECTURE.md`, Rack history). The rack page asks for it over `rack:menu` with the spine under the pointer; main pops it on the rack window.
    On Windows and Linux, `system-context-menu` comes first on a right-click over a drag region. It is only
    `preventDefault()`ed to hide the OS window menu and never opens a menu: a menu popped from it closed about 5 ms
    later on Linux, and two back to back left none open on Windows.
@@ -84,15 +87,15 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    player: `Dock { to, side, ratio }`, where the ratio is the offset along the shared edge.
 2. Windows docked to a window follow it, so everything docked to the player, directly or through a chain, moves
    with the player, live while it is dragged.
-3. A window dropped within `SNAP_PX` (12 px) of another window's edge snaps flush. Its start or end edge also aligns
+3. A window dropped within `SNAP_PX` (12 px) of another window's edge snaps to a 2 px gap from it (rule 10). Its start or end edge also aligns
    with that window's, whichever is closer, if that is within 12 px too (`snap`).
 3a. Tiling: when a user resize ends, each edge it moved snaps to a parallel edge of another window within 12 px
-   (`snapResize` in `dock.ts`). A free window snaps each edge on its own. An aspect window snaps by the dimension the
+   (`snapResize` in `dock.ts`), leaving the 2 px gap. A free window snaps each edge on its own. An aspect window snaps by the dimension the
    user changed most. This runs at resize end on every OS, because `will-resize` does not exist on Linux.
 3b. `Windows → Fill Gaps` (`fillGaps`) is on demand, never automatic. Inside the bounding box of the player's visible
-   group, each visible free window grows right, down, left, then up into empty space, until it meets another window
+   group, each visible free window grows right, down, left, then up into empty space, until it stops at the 2 px gap from another window
    (a shaded bar counts) or the box edge, within its limits. Aspect windows never change.
-4. Dragging a docked side window tears it off its dock. Windows docked to it come along. Dropping the player near
+4. Dragging a docked side window tears it off its dock, unless the windows are locked (see Window lock). Windows docked to it come along. Dropping the player near
    a loose window snaps the player to it and picks the window up.
 5. A side window never ends up over the player. If it is saved over the player, it is docked back to its default side.
 6. Docks are not saved. They are rebuilt from the window positions (`inferDocks`) after every drop and at startup, so
@@ -103,6 +106,58 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    window, so it is retried every 250 ms until the group fits (`fitSoon`).
 9. Pure geometry lives in `app/src/main/dock.ts` and is unit-tested in `app/test/dock.test.ts`. Window code calls it.
    Do not put geometry in `index.ts`.
+10. Attached windows are 2 px apart. `GAP = 2` in `dock.ts` is in DIP, so the gap is the same at any display scaling.
+    Snap, place, layout, `snapResize` and `fillGaps` all leave exactly that gap, including at the corners where three
+    windows meet. Dock inference accepts windows 0 to 3 px apart, so an older flush layout re-docks and gets the gap.
+    The windows are transparent, so the desktop shows through the gap. A detached window has no gap rule.
+
+## Chrome scale
+
+Side-window chrome (the title bar, its title and icons, the frame and the border) is drawn at one fixed scale,
+`CHROME_SCALE = 0.55` in `app/src/shared/chrome.ts`, so it keeps its size when the window is resized. Before, each view
+drew its whole design composition, title bar included, inside one `scale(fit)` transform that followed the window size.
+1. Album and power: the composition is split at design y = `barH`. The bar is drawn at `CHROME_SCALE` and nine-sliced to
+   the window width. The body below scales with the window (`winW / designW`). The window keeps
+   `w / (h − extraH) = designW / (designH − barH)`, with `extraH = barH · 0.55`. On macOS this is `setAspectRatio` with
+   `extraSize`. On Windows and Linux a whole-window aspect lock is refreshed for each height, with a correction at resize
+   end, so a long drag can jump slightly at the end.
+2. Playlist and rack: their nine-slice frame art also holds the paper and cover edges, so the whole window is drawn at
+   `CHROME_SCALE`, and resizing shows more or less area instead of enlarging the art. This is the owner's choice over
+   misaligned frames or new art.
+3. A shaded window's bar is `round(barH · 0.55)` tall at any size.
+4. The player is unchanged, because its bezel is product art, not chrome.
+
+Limitation: the power window's side and bottom border is baked into its body art, so it still scales. Only its title bar
+is fixed. The "SUPER LX- RETRO" title is drawn as an `<img>` in the fixed bar.
+
+## Window lock
+
+"Lock Windows" is a checkbox, the last item of the player menu's Windows submenu. It is saved as `windowsLocked` in
+`settings.json`, broadcast to every window over `window:locked` (read with `window:getLocked`), and read in the renderer
+through `useLocked()`.
+1. It can be turned on only when every visible window is attached in the player's group, or when it is already on.
+   Turning it off is always allowed and changes no geometry.
+2. At startup the saved lock is restored. If the restored layout is not one attached group, the lock is cleared and
+   saved as false.
+3. While locked, dragging any window moves every visible window in the group together. There is no tear-off, no snap and
+   no change of docks, and the gaps stay at 2 px.
+4. A single move report that jumps more than 200 px is ignored, unless the next report agrees or the position holds for
+   50 ms. Openbox sends such bogus reports.
+5. While locked, resizing any window resizes the whole group by one factor at resize end (`groupResize` in `dock.ts`).
+   Every window's limits are respected. Fixed bars and gaps do not scale, matched heights stay matched, and the group's
+   top-left corner stays put.
+6. Display or work-area changes resize the group as a whole and keep it on screen (`fitGroup`). One window is never
+   resized alone.
+7. A window docked to a hidden window is re-anchored to the nearest visible ancestor for layout. A window reopened while
+   locked returns to its dock spot.
+8. The empty areas of the album and power windows become drag surfaces only while locked: the body gets the `.locked`
+   class and `-webkit-app-region: drag`, and every button is `no-drag`. Rack and playlist content never drags.
+   `app/test/dragRegions.test.ts` enforces this.
+
+Limitation: on macOS no move events arrive during a drag, so the group follows at the drop. Group resize applies at
+resize end, so windows can overlap briefly during a drag. Untested on Windows and macOS.
+
+## OS rules (keep these when you change window code)
 
 ## OS rules (keep these when you change window code)
 
