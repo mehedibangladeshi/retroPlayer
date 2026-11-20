@@ -3,7 +3,7 @@ import { POWER as R, type Circle, type Rect } from '@shared/layout'
 import { boostLabel, nextBoost, stepBoost } from '@shared/boost'
 import { setBoost, setLoop, setShuffle } from '../engine/commands'
 import { useEngine } from '../engine/useEngine'
-import { openAlbum } from '../input/openFile'
+import { importAlbumToRack } from '../input/importAlbum'
 import { useKeyboard } from '../input/useKeyboard'
 import { useSeekHold } from '../input/useSeekHold'
 import PowerKnob from './power/PowerKnob'
@@ -54,7 +54,7 @@ export default function PowerView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   const fit = useFitScale(shaded)
-  const { options } = useEngine()
+  const { options, optionsKnown } = useEngine()
   useKeyboard(useSeekHold())
   const [importLit, setImportLit] = useState(false)
   const [importDown, setImportDown] = useState(false)
@@ -69,8 +69,8 @@ export default function PowerView() {
         <PowerMeter />
         <PowerKnob scale={fit.scale} />
         <PowerSeek scale={fit.scale} />
-        <button type="button" role="switch" aria-checked={options.loop} aria-label="Loop song" className="pd-btn" style={box(R.LOOP)} onClick={() => setLoop(!options.loop)} />
-        <button type="button" role="switch" aria-checked={options.shuffle} aria-label="Shuffle" className="pd-btn" style={box(R.SHUFFLE)} onClick={() => setShuffle(!options.shuffle)} />
+        <button type="button" role="switch" aria-checked={options.loop} aria-label="Loop song" disabled={!optionsKnown} className="pd-btn" style={box(R.LOOP)} onClick={() => setLoop(!options.loop)} />
+        <button type="button" role="switch" aria-checked={options.shuffle} aria-label="Shuffle" disabled={!optionsKnown} className="pd-btn" style={box(R.SHUFFLE)} onClick={() => setShuffle(!options.shuffle)} />
         {lamp(R.LOOP_RED, 'red', loop.red)}
         {lamp(R.LOOP_GREEN, 'green', loop.green)}
         {lamp(R.SHUFFLE_RED, 'red', shuffle.red)}
@@ -81,6 +81,7 @@ export default function PowerView() {
           type="button"
           aria-label={`Volume boost ${boostLabel(options.boostDb)}`}
           className="pd-btn"
+          disabled={!optionsKnown}
           style={box(BOOST_BTN)}
           onClick={() => setBoost(nextBoost(options.boostDb))}
           onWheel={(e) => setBoost(stepBoost(options.boostDb, e.deltaY < 0 ? 1 : -1))}
@@ -89,6 +90,7 @@ export default function PowerView() {
           type="button"
           aria-label="Import album"
           className="pd-btn"
+          disabled={!optionsKnown}
           style={box(R.IMPORT)}
           onPointerDown={() => setImportDown(true)}
           onPointerUp={() => setImportDown(false)}
@@ -96,7 +98,7 @@ export default function PowerView() {
           onClick={() => {
             setImportLit(true)
             setTimeout(() => setImportLit(false), 300)
-            void openAlbum()
+            void importAlbumToRack()
           }}
         />
         {lamp(R.IMPORT_LAMP, 'red', importDown || importLit)}

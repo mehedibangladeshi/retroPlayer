@@ -599,3 +599,15 @@ Why: A vertical drag does not match how a dial is turned. Following the pointer'
 Decision: Boost adds 0, +3, +6, +9 or +12 dB (Off by default) to the music, for quiet tracks. The gain goes through a look-ahead peak limiter so it never clips: look-ahead 1.5 ms, release 80 ms, ceiling -1 dBFS sample peak, gain ramped over 20 ms, channels linked (`engine/crates/player-core/src/limiter.rs`). It runs inside the cpal output callback on the music only, before key sounds are mixed and before the knob volume. It is preallocated, so the callback does no allocation, and it resets when the output buffer is cleared (seek, load, stop). At Off the music passes bit-identical, only delayed 1.5 ms. At exactly 0 dB nothing is limited, by design. The knob's curve (-40..0 dB, max 1.0) is unchanged, and the knob only attenuates. Protocol: the command `setBoost {boostDb}` (the engine clamps to [0,12]), and the `options` event gains `boostDb`. It is saved with the other options in `settings.json` (a file without it loads as Off) and re-sent after an engine restart. It is set from the right-click menu's "Volume boost" radio submenu or the BOOST lamp on the power deck.
 
 Why: Plain gain with a hard clip (what VLC does above 100%) distorts loud peaks. Rejected: extending `setVolume` to 0..2, which breaks the 1.0 = bit-perfect clamp. Rejected: placing the boost in the DspChain. The DspChain sits before the ~2 s output ring, so a change would be heard about 2 s late, and before the resampler, which can push peaks past any limiter. Auto-normalize (ReplayGain, an R128 scan, or compression) is deferred. Research and alternatives are in `docs/research/2026-11-14-volume-boost.md`.
+
+## 2026-11-20 — Windows fit small screens: flat 200 px minimum height, first-run size about 60% of the work area
+
+Decision: The minimum window height is a flat 200 px (was `clamp(0.30·H, 200, 308)`). With no saved bounds, or saved bounds that no longer fit the display's work area (taller or wider than it, or mostly outside it: `fitsWorkArea`), a window opens at `initialHeight(designH, H)`: `min(designH, round(0.6·H))`, within [200, maxHeight], aspect kept. It never exceeds the design size, so large screens with a saved size that fits look exactly as before. `maxHeight` is unchanged except it stays at least 200. The user approved this change to the window-size rule in `docs/WINDOWS.md` rule 8.
+
+Why: On small screens (laptops, 1280x680 work areas) the old minimum and default made the group too big to use. All renderers scale their design composition to the window, so any size renders correctly.
+
+## 2026-11-20 — Keyboard: S is Stop, shuffle moves to Shift+S, N and P play the seek sound
+
+Decision: The S key now stops, exactly like the Stop button, with its sound. Shuffle moves to Shift+S. N and P (next and previous track) now play the seek sound. This supersedes the earlier entry that says S toggles shuffle; that entry is left as written. Requested by the user.
+
+Why: S for Stop matches the button and the other transport keys, and shuffle is the less frequent action, so it takes the modifier.

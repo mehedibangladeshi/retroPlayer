@@ -50,9 +50,9 @@ export function proportional(cur: Box, rest: Box, aspect: number, l: { minHeight
 
 export interface Area { width: number; height: number }
 
-// Heights scale with the display's work area: 30%..90%, floor 200 / cap 2x design so tiny and huge screens stay usable.
+// Heights: a flat 200 px floor (small screens), up to 90% of the work area, capped at 2x design on huge screens.
 export function heightRange(area: Area, designH: number): { minHeight: number; maxHeight: number } {
-  const minHeight = Math.min(308, Math.max(200, Math.round(0.3 * area.height)))
+  const minHeight = 200
   return { minHeight, maxHeight: Math.max(minHeight, Math.min(Math.round(0.9 * area.height), Math.round(2 * designH))) }
 }
 
@@ -67,4 +67,18 @@ export function defaultPlayerHeight(area: Area, groupW: number, groupH: number):
   const { minHeight, maxHeight } = heightRange(area, 616)
   const h = Math.round(Math.min((0.75 * area.width) / groupW, (0.75 * area.height) / groupH))
   return Math.min(maxHeight, Math.max(minHeight, h))
+}
+
+// First-run height: about 60% of the work area, never above the design size (large screens look as before).
+export function initialHeight(designH: number, workAreaH: number): number {
+  const { maxHeight } = heightRange({ width: 0, height: workAreaH }, designH)
+  return Math.min(maxHeight, Math.max(200, Math.min(designH, Math.round(0.6 * workAreaH))))
+}
+
+// Whether a saved window rect still suits a work area: no bigger than it, and at least half of it visible.
+export function fitsWorkArea(b: Box, a: Box): boolean {
+  if (b.width > a.width || b.height > a.height) return false
+  const ow = Math.min(b.x + b.width, a.x + a.width) - Math.max(b.x, a.x)
+  const oh = Math.min(b.y + b.height, a.y + a.height) - Math.max(b.y, a.y)
+  return ow > 0 && oh > 0 && ow * oh >= 0.5 * b.width * b.height
 }

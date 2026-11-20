@@ -13,13 +13,16 @@ body { background: transparent; overflow: hidden; }
 .cp-btn:not(:disabled):hover { filter: brightness(1.12); }
 .cp-btn:not(:disabled):active, .cp-btn.pressed:not(:disabled), .cp-btn.latched { transform: translateY(3px); }
 .cp-btn:disabled { cursor: default; }
+/* Spring press for Play, Pause and Stop: dip past the pressed depth, rebound, then settle at 3px. Held state is the same 3px as .pressed. */
+@keyframes cp-spring { 0% { transform: translateY(0) } 55% { transform: translateY(4.5px) } 80% { transform: translateY(2.4px) } 100% { transform: translateY(3px) } }
+.cp-spring:not(:disabled):active { animation: cp-spring 170ms cubic-bezier(.3,.7,.4,1) both; }
 /* One dark shade: unavailable Pause and Stop, and every pressed, held or latched key, also under hover.
    Rewind, Play and Forward keep their normal look while nothing is loaded. */
 .cp-btn[aria-label="pause"]:disabled, .cp-btn[aria-label="stop"]:disabled, .cp-btn:active, .cp-btn.pressed, .cp-btn.latched, .cp-btn:not(:disabled):active:hover, .cp-btn.pressed:hover, .cp-btn.latched:hover { filter: var(--key-dark); }
 
 .cp-title { position: absolute; box-sizing: border-box; padding: 0 8px; pointer-events: none; color: #7f2a3c; font-size: 19px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 30px; text-align: center; }
 .cp-title.empty { opacity: 0.55; }
-.cp-time { position: absolute; pointer-events: none; text-align: right; color: #6b6c72; font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cp-time { position: absolute; pointer-events: none; text-align: right; color: #a4a6ad; font-size: 13px; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .cp-open { background: transparent; border-radius: 6px; transition: box-shadow 120ms, background-color 120ms; }
 .cp-open:hover { background-color: rgba(255, 255, 255, 0.06); }
@@ -32,7 +35,7 @@ body { background: transparent; overflow: hidden; }
 
 .cp-chrome { background: transparent; border-radius: 2px; }
 .cp-chrome:hover { background: rgba(255, 255, 255, 0.18); }
-@media (prefers-reduced-motion: reduce) { .cp-btn, .cp-open, .cp-hint { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .cp-btn, .cp-open, .cp-hint { transition: none; } .cp-spring:active { animation: none; } }
 
 .cp-menu { position: absolute; width: 140px; box-sizing: border-box; padding: 4px; border-radius: 6px; background: #2c2f38; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5); -webkit-app-region: no-drag; z-index: 20; }
 .cp .cp-menu button { position: static; display: block; width: 100%; padding: 6px 10px; border-radius: 4px; background: transparent; color: #e8e8ec; font-size: 13px; text-align: left; }

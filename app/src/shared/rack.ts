@@ -9,5 +9,6 @@ export interface Spine {
 export interface RackState {
   sort: SortMode
   spines: Spine[] // in display order
+  nowPlaying: string | null // dir of the album in the deck, if it is in the rack
 }
 export const SPINE_ASPECT = 211 / 1527 // width / height

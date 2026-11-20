@@ -36,21 +36,22 @@ test('optionsCommands: nothing saved sends nothing, else volume, loop, shuffle a
 const saved = { volume: 0.4, loop: true, shuffle: true, boostDb: 3 }
 
 test('optionsStep: the fresh engine\'s first options event is not saved, it cues the send and skips the 4 echoes', () => {
-  assert.deepEqual(optionsStep(AWAITING, opts(1), saved), { skip: 4, sync: true })
-  assert.deepEqual(optionsStep(AWAITING, opts(1), undefined), { skip: 0, sync: true })
+  assert.deepEqual(optionsStep(AWAITING, opts(1), saved), { skip: 4, sync: true, forward: false })
+  assert.deepEqual(optionsStep(AWAITING, opts(1), undefined), { skip: 0, sync: true, forward: true })
 })
 
 test('optionsStep: the half-applied echoes are not saved, the one after them is', () => {
   let r = optionsStep(4, opts(0.4), saved)
-  assert.deepEqual(r, { skip: 3, sync: false })
+  assert.deepEqual(r, { skip: 3, sync: false, forward: false })
   r = optionsStep(r.skip, opts(0.4, true), saved)
+  assert.equal(r.forward, false) // half-applied: the knob must not show it
   r = optionsStep(r.skip, opts(0.4, true, true), saved)
   r = optionsStep(r.skip, opts(0.4, true, true, 3), saved)
-  assert.deepEqual(r, { skip: 0, sync: false })
-  assert.deepEqual(optionsStep(r.skip, opts(0.2, true, true, 6), saved), { skip: 0, save: { volume: 0.2, loop: true, shuffle: true, boostDb: 6 }, sync: false })
+  assert.deepEqual(r, { skip: 0, sync: false, forward: true }) // the 4th echo is the full settled state: windows get it
+  assert.deepEqual(optionsStep(r.skip, opts(0.2, true, true, 6), saved), { skip: 0, save: { volume: 0.2, loop: true, shuffle: true, boostDb: 6 }, sync: false, forward: true })
 })
 
 test('optionsStep: an engine crash re-arms the wait; other events change nothing', () => {
-  assert.deepEqual(optionsStep(0, { v, type: 'error', code: 'engine_crashed', message: '' }, saved), { skip: AWAITING, sync: false })
-  assert.deepEqual(optionsStep(2, { v, type: 'ended' }, saved), { skip: 2, sync: false })
+  assert.deepEqual(optionsStep(0, { v, type: 'error', code: 'engine_crashed', message: '' }, saved), { skip: AWAITING, sync: false, forward: true })
+  assert.deepEqual(optionsStep(2, { v, type: 'ended' }, saved), { skip: 2, sync: false, forward: true })
 })

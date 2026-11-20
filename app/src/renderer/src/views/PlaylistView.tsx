@@ -54,7 +54,7 @@ export default function PlaylistView() {
   useEffect(() => {
     if (selected >= 0) (rowsRef.current?.querySelectorAll<HTMLElement>('.pl-row')[selected])?.focus()
   }, [selected])
-  // A selected name that is cut off scrolls to its end and back, starting 400 ms after selection.
+  // A selected name that is cut off scrolls to its end and back (3 times), starting 400 ms after selection.
   useEffect(() => {
     const name = rowsRef.current?.querySelectorAll<HTMLElement>('.pl-name')[selected]
     if (!name) return
@@ -64,13 +64,14 @@ export default function PlaylistView() {
       if (!m) return
       name.style.setProperty('--marquee-shift', `${m.shift / fit.scale}px`)
       name.style.setProperty('--marquee-ms', `${m.durationMs}ms`)
+      name.style.setProperty('--marquee-iterations', String(m.iterations))
       name.classList.add('marquee')
     }, MARQUEE_DELAY_MS)
     return () => {
       clearTimeout(t)
       name.classList.remove('marquee')
     }
-  }, [selected, album, fit.scale])
+  }, [selected, album, trackInfo?.path, fit.scale])
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
       if (e.ctrlKey || e.metaKey || e.altKey) return

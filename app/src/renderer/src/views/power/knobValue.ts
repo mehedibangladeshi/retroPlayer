@@ -9,3 +9,7 @@ export function settlePending(pending: Pending, engine: number, now: number): Pe
   if (!pending) return null
   return Math.abs(engine - pending.value) < 0.001 || now - pending.at >= PENDING_TIMEOUT_MS ? null : pending
 }
+
+/** Volume the disc should show, or null while the engine's options are unknown (no fake angle); a user-set value is always real. */
+export const knobVolume = (known: boolean, engine: number, pending: Pending): number | null =>
+  known || pending ? shownVolume(pending, engine) : null

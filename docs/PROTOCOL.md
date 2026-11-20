@@ -234,7 +234,7 @@ Sent when the track reaches its end. It is followed by a `state` event with `sta
 {"v":1,"type":"ended"}
 ```
 
-When a track ends and an album is active, the engine emits `ended`, then loads and plays the next track (its `state` and `position` events follow). After the last track it stays `stopped`, as above.
+When a track ends and an album is active, the engine emits `ended`, then loads and plays the next track (its `state` and `position` events follow). After the last track of an album, or a single file (with Loop Song off), the engine plays the `stop` sound and stays `stopped`, as above.
 
 ### error
 

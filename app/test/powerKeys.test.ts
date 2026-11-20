@@ -7,8 +7,10 @@ test('keys map to power actions, either case', () => {
   assert.equal(powerKeyAction({ key: 'ArrowDown' }), 'volumeDown')
   assert.equal(powerKeyAction({ key: 'l' }), 'loop')
   assert.equal(powerKeyAction({ key: 'L' }), 'loop')
-  assert.equal(powerKeyAction({ key: 's' }), 'shuffle')
-  assert.equal(powerKeyAction({ key: 'S' }), 'shuffle')
+  assert.equal(powerKeyAction({ key: 's' }), 'stop')
+  assert.equal(powerKeyAction({ key: 'S' }), 'stop') // CapsLock: no Shift, still Stop
+  assert.equal(powerKeyAction({ key: 'S', shiftKey: true }), 'shuffle')
+  assert.equal(powerKeyAction({ key: 's', shiftKey: true }), 'shuffle')
   assert.equal(powerKeyAction({ key: 'v' }), 'visualizer')
   assert.equal(powerKeyAction({ key: 'V' }), 'visualizer')
   assert.equal(powerKeyAction({ key: 'x' }), null)
@@ -18,6 +20,10 @@ test('any modifier gives null', () => {
     assert.equal(powerKeyAction({ key: 'ArrowUp', [m]: true }), null)
     assert.equal(powerKeyAction({ key: 'l', [m]: true }), null)
   }
+})
+test('Shift only changes S; other modified S and Shift+other keys stay ignored', () => {
+  for (const m of ['ctrlKey', 'metaKey', 'altKey'] as const) assert.equal(powerKeyAction({ key: 's', shiftKey: true, [m]: true }), null)
+  assert.equal(powerKeyAction({ key: 'L', shiftKey: true }), null)
 })
 test('repeat only counts for volume', () => {
   assert.equal(powerKeyAction({ key: 'ArrowUp', repeat: true }), 'volumeUp')

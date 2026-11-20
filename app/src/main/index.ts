@@ -13,9 +13,9 @@ import { contextMenu, setHidden } from './contextMenu'
 import { loadSettings, saveSettings, type WindowState } from './settings'
 import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, type Session } from './session'
-import { clampToLimits, defaultPlayerHeight, displayLimits, fitSize, proportional, type Limits } from './windowSize'
+import { clampToLimits, defaultPlayerHeight, displayLimits, fitsWorkArea, fitSize, initialHeight, proportional, type Limits } from './windowSize'
 import { Sidecar } from './sidecar'
-import { record, remove, reorder, setSort, view, type RackFile } from './rack'
+import { foldResume, rackPlayCommands, record, remove, reorder, resumePlan, setSort, view, type RackFile } from './rack'
 import { loadRack, makeSpine, saveRack } from './rackStore'
 import { dirArg, dirsArg, rackMenuTemplate } from './rackIpc'
 import { scanWaiter } from './rackTracks'
@@ -84,7 +84,12 @@ let rackFile: RackFile = { sort: 'recent', entries: [] }
 function setRack(f: RackFile): void {
   rackFile = f
   saveRack(f)
-  if (live(rack.win)) rack.win.webContents.send(IPC.rackChanged, view(f))
+  pushRack()
+}
+let rackSavedAt = 0
+let nowPlaying: string | null = null // dir of the album in the deck (null: a single file or nothing)
+function pushRack(): void {
+  if (live(rack.win)) rack.win.webContents.send(IPC.rackChanged, view(rackFile, nowPlaying))
 }
 // Options-save gate (see optionsStep): waits for a fresh engine's defaults, then skips the half-applied echoes.
 let optionsSkip = AWAITING
@@ -95,18 +100,37 @@ const sidecar = new Sidecar(
     optionsSkip = o.skip
     if (o.save) saveSettings({ options: o.save })
     if (o.sync) for (const c of optionsCommands(loadSettings().options)) sidecar.send(c)
-    if (evt.type === 'playlist') sessionAlbum = evt.album
-    if (evt.type === 'error' && evt.code === 'engine_crashed') previewScans.reset()
+    if (evt.type === 'playlist') {
+      sessionAlbum = evt.album
+      nowPlaying = evt.album?.dir ?? null
+      if (!evt.album) pushRack() // with an album, the setRack below pushes
+    }
+    if (evt.type === 'error' && evt.code === 'engine_crashed') {
+      previewScans.reset()
+      nowPlaying = null // the restored session's playlist event sets it again
+      pushRack()
+    }
     // A rack preview's answer must not bump the album in Recent.
     const preview = evt.type === 'albumInfo' && previewScans.answer(evt.path, evt.album)
     if (preview && !evt.album) setRack(remove(rackFile, evt.path)) // unreadable folder (a timeout keeps the spine)
     if ((evt.type === 'playlist' || evt.type === 'albumInfo') && evt.album && !preview) setRack(record(rackFile, makeSpine(evt.album), Date.now()))
     restoreLeft = restoreStep(restoreLeft, evt)
-    if (restoreLeft > 0) return
+    if (restoreLeft > 0) return o.forward
+    // (restoreLeft above also covers a rack:play's load+seek, whose 0:00 state must not overwrite the resume point.)
+    // Resume point of the loaded album: no rack:changed (renderers never see it), saved like the session.
+    const folded = foldResume(rackFile, sessionAlbum, evt)
+    if (folded !== rackFile) {
+      rackFile = folded
+      if (evt.type === 'state' || Date.now() - rackSavedAt >= SESSION_SAVE_MS) {
+        saveRack(rackFile)
+        rackSavedAt = Date.now()
+      }
+    }
     const next = nextSession(session, sessionAlbum, evt)
-    if (next === session) return
+    if (next === session) return o.forward
     session = next
     if (evt.type === 'state' || Date.now() - sessionSavedAt >= SESSION_SAVE_MS) saveSession()
+    return o.forward
   }
 )
 const previewScans = scanWaiter((path) => sidecar.send({ v: 1, type: 'scanAlbum', path }), 5000)
@@ -135,6 +159,7 @@ function fitSaved(saved: WindowState | undefined, aspect: number, designH: numbe
   if (!visible) return null
   // Fitted to the work area of the display the window lands on (null aspect: a free window).
   const a = screen.getDisplayMatching({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }).workArea
+  if (!fitsWorkArea(saved, a)) return null
   return { x: Math.round(saved.x), y: Math.round(saved.y), ...fitSize(saved, free ? null : aspect, displayLimits(aspect, a, designH, free), a) }
 }
 
@@ -142,7 +167,7 @@ function initialBounds(): { x?: number; y?: number; width: number; height: numbe
   const fitted = fitSaved(loadSettings().window, ASPECT, WINDOW.height, false)
   if (fitted) return fitted
   // The default group (album, player, playlist, power deck in a row, the rack above) fits the primary display.
-  const height = defaultPlayerHeight(areaOf(), AL_ASPECT + ASPECT + PL_ASPECT + PD_ASPECT, 2)
+  const height = Math.min(defaultPlayerHeight(areaOf(), AL_ASPECT + ASPECT + PL_ASPECT + PD_ASPECT, 2), initialHeight(WINDOW.height, areaOf().height))
   return { width: Math.round(height * ASPECT), height }
 }
 
@@ -838,7 +863,7 @@ if (relaunch) {
     if (dir) saveSettings({ lastOpenDir: dirname(dir) })
     return dir
   })
-  ipcMain.handle(IPC.rackGet, (e) => (fromAppWindow(e) ? view(rackFile) : null))
+  ipcMain.handle(IPC.rackGet, (e) => (fromAppWindow(e) ? view(rackFile, nowPlaying) : null))
   const doubleClickMs = readDoubleClickMs()
   ipcMain.handle(IPC.doubleClickMs, (e) => (fromAppWindow(e) ? doubleClickMs : DOUBLE_CLICK_FALLBACK_MS))
   ipcMain.handle(IPC.rackTracks, async (e, arg: unknown) => {
@@ -849,11 +874,16 @@ if (relaunch) {
     setRack(remove(rackFile, dir))
     return null
   })
-  ipcMain.on(IPC.rackPlay, (e, arg: unknown) => {
+  ipcMain.on(IPC.rackPlay, async (e, arg: unknown) => {
     const dir = dirArg(arg)
-    if (!fromAppWindow(e) || !dir || !rackFile.entries.some((x) => x.dir === dir)) return
-    if (!existsSync(dir)) setRack(remove(rackFile, dir))
-    else sidecar.send({ v: 1, type: 'loadAlbum', path: dir }) // its playlist event re-records it (Recent order)
+    const entry = rackFile.entries.find((x) => x.dir === dir)
+    if (!fromAppWindow(e) || !dir || !entry) return
+    if (!existsSync(dir)) return setRack(remove(rackFile, dir))
+    // A scan timeout or failure gives no plan: the album then starts at track 1 (its playlist event re-records it, Recent order).
+    const album = entry.resume ? await previewScans.request(dir).catch(() => null) : null
+    const cmds = rackPlayCommands(dir, resumePlan(entry.resume, album?.tracks.map((t) => t.path) ?? []))
+    restoreLeft = cmds.length > 1 ? cmds.length - 1 : 0 // the paused load's (and seek's) states, as in a session restore
+    for (const c of cmds) sidecar.send(c)
   })
   ipcMain.on(IPC.rackAdd, (e, arg: unknown) => {
     const dirs = dirsArg(arg)
@@ -907,7 +937,10 @@ if (relaunch) {
   })
   app.on('before-quit', () => {
     quitting = true
-    if (restoreLeft === 0) saveSession() // mid-restore the file still holds the right spot
+    if (restoreLeft === 0) {
+      saveSession() // mid-restore the files still hold the right spot
+      saveRack(rackFile)
+    }
     sidecar.stop()
   })
   app.on('window-all-closed', () => app.quit())

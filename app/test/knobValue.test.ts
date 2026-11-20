@@ -22,3 +22,10 @@ test('pending clears after the timeout if the echo is lost', () => {
 test('no pending stays null', () => {
   assert.equal(settlePending(null, 0.3, 1000), null)
 })
+
+test('knobVolume is null while the engine options are unknown, else the volume', async () => {
+  const { knobVolume } = await import('../src/renderer/src/views/power/knobValue.ts')
+  assert.equal(knobVolume(false, 1, null), null)
+  assert.equal(knobVolume(true, 0.3, null), 0.3)
+  assert.equal(knobVolume(false, 1, { value: 0.5, at: 0 }), 0.5) // the user's own value is real
+})

@@ -1,8 +1,10 @@
 // Pure model of the cassette-rack album history (no electron, no fs).
 import { SPINE_ASPECT, type RackState, type SortMode, type Spine } from '@shared/rack'
+import type { Command, EngineEvent } from '@shared/protocol'
 
 export interface RackEntry extends Spine {
   lastUsed: number
+  resume?: { index: number; path: string; positionMs: number } // where the album was left; main-only, never sent to renderers
 }
 export interface RackFile {
   sort: SortMode
@@ -26,7 +28,12 @@ export function parseRack(raw: unknown): RackFile {
     if (o.image !== null && typeof o.image !== 'string') continue
     if (typeof o.lastUsed !== 'number' || !Number.isFinite(o.lastUsed)) continue
     seen.add(o.dir)
-    entries.push({ dir: o.dir, text: o.text, image: o.image, bg: o.bg, ink: o.ink, lastUsed: o.lastUsed })
+    const entry: RackEntry = { dir: o.dir, text: o.text, image: o.image, bg: o.bg, ink: o.ink, lastUsed: o.lastUsed }
+    const rs = o.resume as Record<string, unknown> | null | undefined
+    if (rs && typeof rs === 'object' && Number.isInteger(rs.index) && (rs.index as number) >= 0 && typeof rs.path === 'string' && rs.path && typeof rs.positionMs === 'number' && Number.isFinite(rs.positionMs) && rs.positionMs >= 0) {
+      entry.resume = { index: rs.index as number, path: rs.path, positionMs: rs.positionMs }
+    }
+    entries.push(entry)
   }
   return { sort: r.sort === 'custom' ? 'custom' : 'recent', entries }
 }
@@ -101,9 +108,9 @@ export function spineCrop(w: number, h: number): { x: number; y: number; width: 
 }
 
 export function record(f: RackFile, s: Spine, now: number): RackFile {
-  const entry: RackEntry = { ...s, lastUsed: now }
-  const has = f.entries.some((e) => e.dir === s.dir)
-  return { ...f, entries: has ? f.entries.map((e) => (e.dir === s.dir ? entry : e)) : [...f.entries, entry] }
+  const old = f.entries.find((e) => e.dir === s.dir)
+  const entry: RackEntry = { ...s, lastUsed: now, ...(old?.resume && { resume: old.resume }) }
+  return { ...f, entries: old ? f.entries.map((e) => (e.dir === s.dir ? entry : e)) : [...f.entries, entry] }
 }
 
 export function remove(f: RackFile, dir: string): RackFile {
@@ -120,7 +127,42 @@ export function setSort(f: RackFile, sort: SortMode): RackFile {
   return { ...f, sort }
 }
 
-export function view(f: RackFile): RackState {
+export function view(f: RackFile, playing: string | null = null): RackState {
   const list = f.sort === 'recent' ? [...f.entries].sort((a, b) => b.lastUsed - a.lastUsed) : f.entries
-  return { sort: f.sort, spines: list.map((e) => ({ dir: e.dir, text: e.text, image: e.image, bg: e.bg, ink: e.ink })) }
+  return { sort: f.sort, nowPlaying: playing !== null && f.entries.some((e) => e.dir === playing) ? playing : null, spines: list.map((e) => ({ dir: e.dir, text: e.text, image: e.image, bg: e.bg, ink: e.ink })) }
+}
+
+/** Where to resume an album: the saved file's index in the album's current track list (by path), or null to start fresh. */
+export function resumePlan(resume: RackEntry['resume'] | undefined, trackPaths: string[]): { index: number; positionMs: number } | null {
+  const index = resume ? trackPaths.indexOf(resume.path) : -1
+  return resume && index >= 0 ? { index, positionMs: resume.positionMs } : null
+}
+
+/** Folds an engine event into the loaded album's resume point (like nextSession). Returns `f` itself when nothing changes. */
+export function foldResume(f: RackFile, album: { dir: string; tracks: { path: string }[] } | null, evt: EngineEvent): RackFile {
+  if (!album || (evt.type !== 'position' && evt.type !== 'state')) return f
+  const e = f.entries.find((x) => x.dir === album.dir)
+  if (!e) return f
+  let resume: RackEntry['resume']
+  if (evt.type === 'position') {
+    if (!e.resume) return f
+    resume = { ...e.resume, positionMs: evt.positionMs }
+  } else {
+    if (!evt.trackInfo) return f
+    const path = evt.trackInfo.path
+    const index = album.tracks.findIndex((t) => t.path === path)
+    if (index < 0) return f
+    resume = { index, path, positionMs: evt.positionMs }
+  }
+  return { ...f, entries: f.entries.map((x) => (x === e ? { ...x, resume } : x)) }
+}
+
+/** The commands for double-clicking a spine: a paused load, seek and play when there is a plan, else the engine's own track 1 autoplay. */
+export function rackPlayCommands(dir: string, plan: { index: number; positionMs: number } | null): Command[] {
+  if (!plan) return [{ v: 1, type: 'loadAlbum', path: dir }]
+  return [
+    { v: 1, type: 'loadAlbum', path: dir, index: plan.index, play: false },
+    ...(plan.positionMs > 0 ? [{ v: 1, type: 'seek', positionMs: plan.positionMs } as const] : []),
+    { v: 1, type: 'play' }
+  ]
 }

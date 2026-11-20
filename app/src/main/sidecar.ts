@@ -34,10 +34,12 @@ export class Sidecar {
 
   private lastPlaylist: EngineEvent | null = null
   private lastArtwork: EngineEvent | null = null
+  private lastOptions: EngineEvent | null = null
 
   constructor(
     private readonly getWindows: () => BrowserWindow[],
-    private readonly onEvent?: (evt: EngineEvent) => void
+    /** Return false to keep an event from the windows. */
+    private readonly onEvent?: (evt: EngineEvent) => boolean | void
   ) {}
 
   start(): void {
@@ -122,7 +124,7 @@ export class Sidecar {
 
   /** Re-send the cached state and playlist to one window (e.g. after a renderer reload). */
   resendState(win: BrowserWindow): void {
-    for (const evt of [this.lastState, this.lastPlaylist, this.lastArtwork]) if (evt) this.sendTo(win, evt)
+    for (const evt of [this.lastState, this.lastPlaylist, this.lastArtwork, this.lastOptions]) if (evt) this.sendTo(win, evt)
   }
 
   stop(): void {
@@ -138,7 +140,8 @@ export class Sidecar {
   }
 
   private emit(evt: EngineEvent): void {
-    this.onEvent?.(evt)
+    if (this.onEvent?.(evt) === false) return
+    if (evt.type === 'options') this.lastOptions = evt // replayed to a window that opens or reloads later
     for (const win of this.getWindows()) this.sendTo(win, evt)
   }
 

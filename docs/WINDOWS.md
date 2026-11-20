@@ -27,10 +27,11 @@ playlist (`playlist`), the album art (`album`), the cassette rack (`rack`) and t
    `layout.ts`) so the corners keep the title, buttons, lamps and grip, and only plain frame stretches. Text may keep a
    fixed screen size instead: the playlist divides `PLAYLIST.TEXT_PX` by its scale (`textMetrics` in `playlistText.ts`).
 8. User-resizable within limits that depend on the display the window is on. With `H` the work-area height of that
-   display: the height stays within `minHeight = clamp(round(0.30·H), 200, 308)` and
-   `maxHeight = max(minHeight, min(round(0.90·H), 2 × the window's design height))`, and the width within the widths its
+   display: the height stays within `minHeight = 200` (flat, so small screens work) and
+   `maxHeight = max(200, min(round(0.90·H), 2 × the window's design height))`, and the width within the widths its
    design aspect gives at those heights (`displayLimits` in `windowSize.ts`, passed as the window's min and max size).
-   The default player height (`defaultPlayerHeight`) fits the default five-window group in 75% of the primary work area.
+   With no saved bounds, or saved bounds that no longer fit the display's work area (`fitsWorkArea`), a window opens
+   at `initialHeight` (about 60% of `H`, never above its design height, aspect kept). The default player height (`defaultPlayerHeight`) fits the default five-window group in 75% of the primary work area.
    Limits are re-applied on display metrics changes, display added or removed, and when a window's move ends on another
    display. A window now out of range is clamped (`clampToLimits`, aspect kept) and stays docked. A shaded window is not
    resized; its limits apply when it is unshaded. The numbers and sources are in `docs/DECISIONS.md`. The player, album and power deck keep their design
