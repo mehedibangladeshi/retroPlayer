@@ -2,16 +2,18 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { clampInto, expandedAt, shadedBounds } from '../src/main/shade.ts'
 
-test('shadedBounds keeps x, y, width and scales the bar height', () => {
-  assert.deepEqual(shadedBounds({ x: 10, y: 20, width: 937, height: 700 }, 937, 80), { x: 10, y: 20, width: 937, height: 80 })
-  assert.deepEqual(shadedBounds({ x: 0, y: 5, width: 468, height: 500 }, 937, 80), { x: 0, y: 5, width: 468, height: 40 })
+test('shadedBounds keeps x, y, width and sets the bar height at the fixed chrome scale', () => {
+  assert.deepEqual(shadedBounds({ x: 10, y: 20, width: 937, height: 700 }, 937, 80), { x: 10, y: 20, width: 937, height: Math.round(80 * 0.55) })
+  assert.deepEqual(shadedBounds({ x: 0, y: 5, width: 468, height: 500 }, 937, 80), { x: 0, y: 5, width: 468, height: Math.round(80 * 0.55) })
 })
 
-test('shadedBounds: a window wider than its design shape keeps the bar at the scale its height sets', () => {
-  // 1200x308 rack (design 1623x936, bar 64): the art is drawn at 308/936, so the bar is 64*308/936 = 21 px tall.
-  assert.deepEqual(shadedBounds({ x: 0, y: 0, width: 1200, height: 308 }, 1623, 64, 936), { x: 0, y: 0, width: 1200, height: 21 })
-  // Taller than its shape: the width sets the scale, as before.
-  assert.deepEqual(shadedBounds({ x: 0, y: 0, width: 468, height: 900 }, 937, 80, 937), { x: 0, y: 0, width: 468, height: 40 })
+test('shadedBounds: the shaded bar height does not depend on the window size', () => {
+  // 1200x308 rack and 2000x1000 rack (design 1623x936, bar 64) both roll up to the same bar.
+  const bar = Math.round(64 * 0.55)
+  assert.deepEqual(shadedBounds({ x: 0, y: 0, width: 1200, height: 308 }, 1623, 64, 936), { x: 0, y: 0, width: 1200, height: bar })
+  assert.deepEqual(shadedBounds({ x: 0, y: 0, width: 2000, height: 1000 }, 1623, 64, 936), { x: 0, y: 0, width: 2000, height: bar })
+  // Taller than its shape: still the same bar.
+  assert.deepEqual(shadedBounds({ x: 0, y: 0, width: 468, height: 900 }, 937, 80, 937), { x: 0, y: 0, width: 468, height: Math.round(80 * 0.55) })
 })
 
 test('expandedAt takes position from current and size from expanded', () => {
