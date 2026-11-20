@@ -12,7 +12,8 @@ import { textMetrics } from './playlistText'
 import TrackRows from './TrackRows'
 import TitleText from './TitleText'
 import { nineSlice } from './stretchFit'
-import { useStretchFit } from './useStretchFit'
+import { useChromeFit } from './chromeFit'
+import { FREE_MIN_COMP } from '@shared/freeMin'
 import './PlaylistView.css'
 
 const urls = import.meta.glob<string>('@assets/playlist/*.png', { query: '?url', import: 'default', eager: true })
@@ -36,7 +37,7 @@ export default function PlaylistView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   // A free window: the composition grows to fill it, the art drawn nine-slice (see PLAYLIST.SLICE).
-  const fit = useStretchFit(P.WINDOW.w, P.WINDOW.h, SHADE.playlist.barH, shaded)
+  const fit = useChromeFit(FREE_MIN_COMP.playlist, shaded)
   const dw = fit.w - P.WINDOW.w
   const dh = fit.h - P.WINDOW.h
   const slice = (id: string): React.CSSProperties => nineSlice(layerUrl(id), P.SLICE, P.ASSET_SCALE, fit)
@@ -54,7 +55,7 @@ export default function PlaylistView() {
   useEffect(() => {
     if (selected >= 0) (rowsRef.current?.querySelectorAll<HTMLElement>('.pl-row')[selected])?.focus()
   }, [selected])
-  // A selected name that is cut off scrolls to its end and back, starting 400 ms after selection.
+  // A selected name that is cut off scrolls to its end and back (3 times), starting 400 ms after selection.
   useEffect(() => {
     const name = rowsRef.current?.querySelectorAll<HTMLElement>('.pl-name')[selected]
     if (!name) return
@@ -64,13 +65,14 @@ export default function PlaylistView() {
       if (!m) return
       name.style.setProperty('--marquee-shift', `${m.shift / fit.scale}px`)
       name.style.setProperty('--marquee-ms', `${m.durationMs}ms`)
+      name.style.setProperty('--marquee-iterations', String(m.iterations))
       name.classList.add('marquee')
     }, MARQUEE_DELAY_MS)
     return () => {
       clearTimeout(t)
       name.classList.remove('marquee')
     }
-  }, [selected, album, fit.scale])
+  }, [selected, album, trackInfo?.path, fit.scale])
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
       if (e.ctrlKey || e.metaKey || e.altKey) return

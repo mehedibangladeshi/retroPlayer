@@ -13,6 +13,11 @@ export function nextSession(s: Session | undefined, album: Album | null, evt: En
   return album && index >= 0 ? { path, album: album.dir, index, positionMs: evt.positionMs } : { path, album: null, index: 0, positionMs: evt.positionMs }
 }
 
+/** After "Clear cassette rack" the still-loaded album must not re-save its progress; single files always save. */
+export function shouldSaveSession(loadedAlbum: string | null, clearedAlbum: string | null): boolean {
+  return loadedAlbum === null || loadedAlbum !== clearedAlbum
+}
+
 /** Commands that put the engine back on the saved track and position, without playing. */
 export function restoreCommands(s: Session): Command[] {
   const v = PROTOCOL_VERSION

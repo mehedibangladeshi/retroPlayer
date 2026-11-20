@@ -23,10 +23,11 @@ export const AWAITING = -1
  * `options` event (its defaults) is never saved; it cues sending the saved options (`sync`). The engine then echoes
  * one event per command sent (4), and the first three are half-applied, so all 4 are skipped. Later ones are saved.
  */
-export function optionsStep(skip: number, evt: EngineEvent, saved: Options | undefined): { skip: number; save?: Options; sync: boolean } {
-  if (evt.type === 'error' && evt.code === 'engine_crashed') return { skip: AWAITING, sync: false }
-  if (evt.type !== 'options') return { skip, sync: false }
-  if (skip === AWAITING) return { skip: optionsCommands(saved).length, sync: true }
-  if (skip > 0) return { skip: skip - 1, sync: false }
-  return { skip: 0, save: { volume: evt.volume, loop: evt.loop, shuffle: evt.shuffle, boostDb: evt.boostDb }, sync: false }
+export function optionsStep(skip: number, evt: EngineEvent, saved: Options | undefined): { skip: number; save?: Options; sync: boolean; forward: boolean } {
+  if (evt.type === 'error' && evt.code === 'engine_crashed') return { skip: AWAITING, sync: false, forward: true }
+  if (evt.type !== 'options') return { skip, sync: false, forward: true }
+  // `forward`: windows only see settled options (not the fresh engine's defaults or half-applied echoes), so a knob never flashes a fake value.
+  if (skip === AWAITING) { const n = optionsCommands(saved).length; return { skip: n, sync: true, forward: n === 0 } }
+  if (skip > 0) return { skip: skip - 1, sync: false, forward: skip === 1 }
+  return { skip: 0, save: { volume: evt.volume, loop: evt.loop, shuffle: evt.shuffle, boostDb: evt.boostDb }, sync: false, forward: true }
 }

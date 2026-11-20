@@ -17,6 +17,8 @@ export interface Dock {
 export type Docks = Record<string, Dock | undefined>
 
 export const SNAP_PX = 12
+/** Transparent gap (DIP) kept between adjacent docked/snapped windows. */
+export const GAP = 2
 export type Limits = { minWidth: number; minHeight: number; maxWidth: number; maxHeight: number }
 
 /** Positive-area intersection; touching edges do not count. */
@@ -29,8 +31,8 @@ export function overlaps(a: Rect, b: Rect): boolean {
 const spanX = (a: Rect, b: Rect): boolean => a.x < b.x + b.width && b.x < a.x + a.width
 const spanY = (a: Rect, b: Rect): boolean => a.y < b.y + b.height && b.y < a.y + a.height
 
-/** Which side of `a` the window `b` is flush against (within tol), or null. A corner touch is not a dock. */
-function sideOf(a: Rect, b: Rect, tol = 1): Edge | null {
+/** Which side of `a` the window `b` sits against (0..GAP+1 px away, so old flush layouts still count), or null. A corner touch is not a dock. */
+function sideOf(a: Rect, b: Rect, tol = GAP + 1): Edge | null {
   if (spanY(a, b)) {
     if (Math.abs(b.x - (a.x + a.width)) <= tol) return 'right'
     if (Math.abs(a.x - (b.x + b.width)) <= tol) return 'left'
@@ -42,17 +44,17 @@ function sideOf(a: Rect, b: Rect, tol = 1): Edge | null {
   return null
 }
 
-/** `win` moved flush onto `side` of `a`, offset along the edge by `ratio`. */
+/** `win` moved onto `side` of `a`, offset along the edge by `ratio`. */
 function place(a: Rect, win: Rect, side: Edge, ratio: number): Rect {
   return {
     ...win,
-    x: Math.round(side === 'right' ? a.x + a.width : side === 'left' ? a.x - win.width : a.x + ratio * a.width),
-    y: Math.round(side === 'bottom' ? a.y + a.height : side === 'top' ? a.y - win.height : a.y + ratio * a.height)
+    x: Math.round(side === 'right' ? a.x + a.width + GAP : side === 'left' ? a.x - win.width - GAP : a.x + ratio * a.width),
+    y: Math.round(side === 'bottom' ? a.y + a.height + GAP : side === 'top' ? a.y - win.height - GAP : a.y + ratio * a.height)
   }
 }
 
 /**
- * Where a dropped window lands: flush against the nearest edge (within tol) of one of `others`, with its start or
+ * Where a dropped window lands: GAP away from the nearest edge (within tol) of one of `others`, with its start or
  * end edge (whichever is closer) aligned to that window if that is within tol too. Returns `win` unchanged if nothing is close.
  */
 /** Start of a span [p, p+len) with its start or end edge (whichever is closer, within tol) aligned to [q, q+qLen). */
@@ -69,13 +71,13 @@ export function snap(win: Rect, others: Record<string, Rect>, tol = SNAP_PX): Re
     const options: Array<[number, Rect]> = []
     if (spanY(win, o)) {
       const y = align(win.y, win.height, o.y, o.height, tol)
-      options.push([win.x - (o.x + o.width), { ...win, x: o.x + o.width, y }]) // on o's right
-      options.push([o.x - (win.x + win.width), { ...win, x: o.x - win.width, y }]) // on o's left
+      options.push([win.x - (o.x + o.width), { ...win, x: o.x + o.width + GAP, y }]) // on o's right
+      options.push([o.x - (win.x + win.width), { ...win, x: o.x - win.width - GAP, y }]) // on o's left
     }
     if (spanX(win, o)) {
       const x = align(win.x, win.width, o.x, o.width, tol)
-      options.push([win.y - (o.y + o.height), { ...win, x, y: o.y + o.height }]) // below o
-      options.push([o.y - (win.y + win.height), { ...win, x, y: o.y - win.height }]) // above o
+      options.push([win.y - (o.y + o.height), { ...win, x, y: o.y + o.height + GAP }]) // below o
+      options.push([o.y - (win.y + win.height), { ...win, x, y: o.y - win.height - GAP }]) // above o
     }
     for (const [gap, rect] of options) {
       if (Math.abs(gap) <= tol && (!best || Math.abs(gap) < best.gap)) best = { gap: Math.abs(gap), rect }
@@ -178,20 +180,25 @@ function nearest(v: number, edges: number[]): number | null {
  * edge of the dimension that changed most and derives the other, keeping the unmoved edges fixed. cur if no target.
  */
 export function snapResize(cur: Rect, from: Rect, others: Rect[], aspect: number | null, l: Limits): Rect {
-  const touchY = others.filter((o) => o.y <= cur.y + cur.height && cur.y <= o.y + o.height)
-  const touchX = others.filter((o) => o.x <= cur.x + cur.width && cur.x <= o.x + o.width)
-  const xs = touchY.flatMap((o) => [o.x, o.x + o.width])
-  const ys = touchX.flatMap((o) => [o.y, o.y + o.height])
+  // Docked neighbours sit GAP apart, so "touching" tolerates GAP (+1 for rounding) on the shared span.
+  const t = GAP + 1
+  const touchY = others.filter((o) => o.y <= cur.y + cur.height + t && cur.y <= o.y + o.height + t)
+  const touchX = others.filter((o) => o.x <= cur.x + cur.width + t && cur.x <= o.x + o.width + t)
+  // Per moved edge: align with a neighbour's same-side edge, or sit GAP away from its facing edge.
+  const xsL = touchY.flatMap((o) => [o.x, o.x + o.width + GAP])
+  const xsR = touchY.flatMap((o) => [o.x - GAP, o.x + o.width])
+  const ysT = touchX.flatMap((o) => [o.y, o.y + o.height + GAP])
+  const ysB = touchX.flatMap((o) => [o.y - GAP, o.y + o.height])
   const right = cur.x + cur.width
   const bottom = cur.y + cur.height
   const movedL = cur.x !== from.x
   const movedR = right !== from.x + from.width
   const movedT = cur.y !== from.y
   const movedB = bottom !== from.y + from.height
-  const tL = movedL ? nearest(cur.x, xs) : null
-  const tR = movedR ? nearest(right, xs) : null
-  const tT = movedT ? nearest(cur.y, ys) : null
-  const tB = movedB ? nearest(bottom, ys) : null
+  const tL = movedL ? nearest(cur.x, xsL) : null
+  const tR = movedR ? nearest(right, xsR) : null
+  const tT = movedT ? nearest(cur.y, ysT) : null
+  const tB = movedB ? nearest(bottom, ysB) : null
   const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v))
 
   if (aspect === null) {
@@ -223,7 +230,7 @@ export function snapResize(cur: Rect, from: Rect, others: Rect[], aspect: number
 }
 
 /**
- * Fill Gaps: each free window in order grows right, down, left then up to the nearest window whose span strictly
+ * Fill Gaps: each free window in order grows right, down, left then up to the nearest window (leaving GAP) whose span strictly
  * overlaps its own (or to the group's bounding box), within its max size, never shrinking. Returns changed windows only.
  */
 export function fillGaps(rects: Record<string, Rect>, free: string[], limits: Record<string, Limits>): Record<string, Rect> {
@@ -243,21 +250,92 @@ export function fillGaps(rects: Record<string, Rect>, free: string[], limits: Re
     const rest = (): Rect[] => Object.entries(cur).filter(([k]) => k !== id).map(([, r]) => r)
     // A window already overlapping this one counts as an obstacle at its (behind) near edge: no growth that way.
     // right
-    let edge = Math.min(bx1, ...rest().filter((o) => spanY(w, o) && (o.x >= w.x + w.width || overlaps(w, o))).map((o) => o.x))
+    let edge = Math.min(bx1, ...rest().filter((o) => spanY(w, o) && (o.x >= w.x + w.width || overlaps(w, o))).map((o) => o.x - GAP))
     w = { ...w, width: Math.max(w.width, Math.min(edge - w.x, l.maxWidth)) }
     // down
-    edge = Math.min(by1, ...rest().filter((o) => spanX(w, o) && (o.y >= w.y + w.height || overlaps(w, o))).map((o) => o.y))
+    edge = Math.min(by1, ...rest().filter((o) => spanX(w, o) && (o.y >= w.y + w.height || overlaps(w, o))).map((o) => o.y - GAP))
     w = { ...w, height: Math.max(w.height, Math.min(edge - w.y, l.maxHeight)) }
     // left
-    edge = Math.max(bx0, ...rest().filter((o) => spanY(w, o) && (o.x + o.width <= w.x || overlaps(w, o))).map((o) => o.x + o.width))
+    edge = Math.max(bx0, ...rest().filter((o) => spanY(w, o) && (o.x + o.width <= w.x || overlaps(w, o))).map((o) => o.x + o.width + GAP))
     const width = Math.max(w.width, Math.min(w.x + w.width - edge, l.maxWidth))
     w = { ...w, x: w.x + w.width - width, width }
     // up
-    edge = Math.max(by0, ...rest().filter((o) => spanX(w, o) && (o.y + o.height <= w.y || overlaps(w, o))).map((o) => o.y + o.height))
+    edge = Math.max(by0, ...rest().filter((o) => spanX(w, o) && (o.y + o.height <= w.y || overlaps(w, o))).map((o) => o.y + o.height + GAP))
     const height = Math.max(w.height, Math.min(w.y + w.height - edge, l.maxHeight))
     w = { ...w, y: w.y + w.height - height, height }
     cur[id] = w
     if (w.x !== start.x || w.y !== start.y || w.width !== start.width || w.height !== start.height) out[id] = w
   }
+  return out
+}
+
+export interface SizeRule { aspect: number | null; extraH: number; limits: Limits }
+
+/** New rects for every window in `rects` after the user resized `resized` to `next`, all scaled by one factor. */
+export function groupResize(rects: Record<string, Rect>, docks: Docks, rules: Record<string, SizeRule>, resized: string, next: Rect): Record<string, Rect> {
+  const old = rects[resized]
+  const dw = Math.abs(next.width / old.width - 1)
+  const dh = Math.abs(next.height / old.height - 1)
+  const f0 = dw >= dh ? next.width / old.width : next.height / old.height
+
+  // Every window's size at factor f, matched children included, in whole pixels (or gaps would come out fractional).
+  const sizeAt = (f: number): Record<string, Rect> => {
+    const widthFor = (id: string, h: number): number => (rules[id].aspect ? (h - rules[id].extraH) * rules[id].aspect! : rects[id].width * f)
+    const heightFor = (id: string, w: number): number => (rules[id].aspect ? w / rules[id].aspect! + rules[id].extraH : rects[id].height * f)
+    const whole = (r: Rect): Rect => ({ ...r, width: Math.round(r.width), height: Math.round(r.height) })
+    const scale = (id: string): Rect => ({ ...rects[id], width: rects[id].width * f, height: heightFor(id, rects[id].width * f) })
+    const sized: Record<string, Rect> = { ...rects }
+    const done = new Set(Object.keys(rects).filter((id) => !docks[id] || !rects[docks[id]!.to]))
+    for (const id of done) sized[id] = whole(scale(id))
+    // Parents before children, so a matched size follows the parent's new size.
+    for (let grew = true; grew; ) {
+      grew = false
+      for (const id of Object.keys(rects)) {
+        const d = docks[id]
+        if (done.has(id) || !d || !done.has(d.to)) continue
+        const o = rects[id]
+        const po = rects[d.to]
+        const pn = sized[d.to]
+        let s = scale(id)
+        if ((d.side === 'left' || d.side === 'right') && Math.abs(o.height - po.height) <= GAP) {
+          s = { ...o, height: pn.height, width: widthFor(id, pn.height) }
+        } else if ((d.side === 'top' || d.side === 'bottom') && Math.abs(o.width - po.width) <= GAP) {
+          s = { ...o, width: pn.width, height: heightFor(id, pn.width) }
+        }
+        sized[id] = whole(s)
+        done.add(id)
+        grew = true
+      }
+    }
+    return sized
+  }
+  // Sizes only grow with f, so "too small" and "too big" each flip once: bisect for the f range where nothing leaves its limits.
+  const bad = (f: number, dir: 'min' | 'max'): boolean =>
+    Object.entries(sizeAt(f)).some(([id, r]) => {
+      const l = rules[id].limits
+      return dir === 'min' ? r.width < l.minWidth || r.height < l.minHeight : r.width > l.maxWidth || r.height > l.maxHeight
+    })
+  const bisect = (dir: 'min' | 'max'): number => {
+    let a = 1e-3
+    let b = 1e3
+    for (let i = 0; i < 50; i++) {
+      const m = Math.sqrt(a * b)
+      if (bad(m, dir) === (dir === 'min')) a = m
+      else b = m
+    }
+    return dir === 'min' ? b : a
+  }
+  const lo = bisect('min')
+  const hi = bisect('max')
+  // lo > hi: no single factor fits every window, so leave the group as it is.
+  const f = lo > hi ? 1 : Math.min(Math.max(f0, lo), hi)
+  const sized = lo > hi ? rects : sizeAt(f)
+
+  // Re-place so gaps stay exactly GAP, then pin the group's top-left where it was.
+  const out = layout(sized, docks)
+  const ids = Object.keys(rects)
+  const dx = Math.min(...ids.map((i) => rects[i].x)) - Math.min(...ids.map((i) => out[i].x))
+  const dy = Math.min(...ids.map((i) => rects[i].y)) - Math.min(...ids.map((i) => out[i].y))
+  for (const i of ids) out[i] = { ...out[i], x: out[i].x + dx, y: out[i].y + dy }
   return out
 }

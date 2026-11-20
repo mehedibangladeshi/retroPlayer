@@ -17,7 +17,15 @@ The read-only tracklist that slides out of a spine on a single click in the rack
 _Avoid_: popup, peek, details
 
 **Mixtape**:
-A folder whose tracks do not all share one artist. Its track rows read "01. Artist – Title"; an album's rows read "01. Title".
+A folder whose tracks do not all share one artist. Its track rows read "01. Title", the same as an album's.
+
+**Now playing**:
+The album currently in the deck. Its spine is softly lit in the **Rack**.
+_Avoid_: active, selected
+
+**Resume point**:
+The track and time an album returns to when its **Spine** is double-clicked: where it was last paused, or the start of the track it was stopped on. An album never played starts at track 1, 0:00.
+_Avoid_: bookmark, saved session
 
 **Boost**:
 Extra gain on the music for quiet tracks: Off, +3, +6, +9 or +12 dB. It is limited so it does not clip, and it is separate from the volume knob, which only lowers the level.

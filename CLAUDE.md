@@ -14,6 +14,7 @@ Run all commands from the repo root. Per-OS setup (macOS, Linux, Windows) is in 
 - `pnpm dev`: builds the engine sidecar (cargo, debug), then starts electron-vite dev. The app spawns `engine/target/debug/engine-sidecar`. Override the path with `RETRO_SIDECAR=/path`.
 - `pnpm build`: production build of the Electron app into `app/out`. Run it with `cd app && pnpm exec electron .`.
 - `pnpm package`: release-builds the sidecar, stages it into `app/build/sidecar/`, and bundles the app for the host OS into `app/dist/`. Windows and macOS bundles come from the `package` GitHub Actions workflow (run it by hand, or push a `v*` tag to get a draft release). Its `check` job (typecheck, lint, `pnpm test`, cargo test, clippy) must pass before any bundle is built, and a tag must match `app/package.json`'s version without the suffix (`v0.1.2-beta` for 0.1.2), so bump the version first. Tester install notes: `docs/TESTING.md`.
+- `/release`: cuts a release end to end (readiness check, version bump via `scripts/release-bump.mjs`, merge `dev` into `main`, tag, CI, release notes). The skill is in `.claude/skills/release/`.
 - Pre-commit hook: `scripts/git-hooks/pre-commit` runs typecheck, lint, JS tests, cargo test and clippy and blocks a failing commit. `pnpm install` enables it (the `prepare` script sets `core.hooksPath`). The TDD rule lives in AGENTS.md item 8.
 - `pnpm typecheck`, `pnpm lint`, `pnpm test` (Node's `node:test` over `app/test/`, TypeScript run natively by Node 26).
 - `cargo test --manifest-path engine/Cargo.toml --workspace`: all Rust tests (no audio device needed).
@@ -36,3 +37,14 @@ JS unit tests use Node's built-in `node:test` (no dependency); they live in `app
 - The debug view opens with the URL hash `#debug` (`app/src/renderer/src/App.tsx`).
 - Window rules (side windows, docking, shade, OS fixes) are in `docs/WINDOWS.md`. Read it before touching any window code.
 - Plans and history are in `docs/plans/`.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. When the answer is under a Markdown heading, `graphify section "<heading>"` prints that section's text, so the .md need not be opened. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.

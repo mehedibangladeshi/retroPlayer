@@ -9,6 +9,8 @@ export interface EngineState {
   album: Album | null
   artwork: string | null
   options: { volume: number; loop: boolean; shuffle: boolean; boostDb: number }
+  /** False until the engine's first options event: `options` then holds placeholders, not engine values. */
+  optionsKnown: boolean
   /** performance.now() when positionMs was last set by the engine. */
   lastPositionAt: number
 }
@@ -24,6 +26,7 @@ let state: EngineState = {
   album: null,
   artwork: null,
   options: { volume: 1, loop: false, shuffle: false, boostDb: 0 },
+  optionsKnown: false,
   lastPositionAt: 0
 }
 const listeners = new Set<() => void>()
@@ -90,7 +93,7 @@ function handle(e: EngineEvent): void {
       set({ artwork: e.cover })
       break
     case 'options':
-      set({ options: { volume: e.volume, loop: e.loop, shuffle: e.shuffle, boostDb: e.boostDb } })
+      set({ optionsKnown: true, options: { volume: e.volume, loop: e.loop, shuffle: e.shuffle, boostDb: e.boostDb } })
       break
     case 'error':
       pendingAutoPlay = null

@@ -1,6 +1,7 @@
+import { FREE_MIN_COMP, freeMinWindow } from '../src/shared/freeMin.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clampToLimits, defaultPlayerHeight, displayLimits, fitSize, heightRange, migrateSettings, proportional, LAYOUT_VERSION } from '../src/main/windowSize.ts'
+import { clampToLimits, defaultPlayerHeight, displayLimits, fitSize, fitsWorkArea, heightRange, initialHeight, migrateSettings, proportional, LAYOUT_VERSION } from '../src/main/windowSize.ts'
 
 const A = 767 / 616
 
@@ -63,11 +64,11 @@ test('fitSize: a free window (no aspect) keeps its own width and height, each cl
 const GW = 1 + 767 / 616 + 1 + 451 / 934
 const GH = 2
 const areas: [number, number, number, number, number][] = [
-  [1280, 680, 204, 612, 255],
-  [1366, 728, 218, 655, 273],
-  [1920, 1040, 308, 936, 386],
-  [2560, 1400, 308, 1232, 515],
-  [3840, 2100, 308, 1232, 773]
+  [1280, 680, 200, 612, 255],
+  [1366, 728, 200, 655, 273],
+  [1920, 1040, 200, 936, 386],
+  [2560, 1400, 200, 1232, 515],
+  [3840, 2100, 200, 1232, 773]
 ]
 for (const [width, height, lo, hi, def] of areas) {
   test(`heightRange / defaultPlayerHeight on ${width}x${height}`, () => {
@@ -82,18 +83,27 @@ test('heightRange: min floor 200 on a tiny area', () => {
 
 test('displayLimits: free rack window ties min width to min height', () => {
   const l = displayLimits(1623 / 936, { width: 1920, height: 1040 }, 936, true)
-  assert.deepEqual(l, { minWidth: 308, minHeight: 308, maxWidth: 1623, maxHeight: 936 })
+  assert.deepEqual(l, { minWidth: 200, minHeight: 200, maxWidth: 1623, maxHeight: 936 })
+})
+
+test('displayLimits: a free window with its own minimum uses it for width and height', () => {
+  const l = displayLimits(1623 / 936, { width: 1920, height: 1040 }, 936, true, 0, freeMinWindow(FREE_MIN_COMP.rack))
+  assert.deepEqual(l, { minWidth: 330, minHeight: 178, maxWidth: 1623, maxHeight: 936 })
+})
+test('freeMinWindow: the composition at CHROME_SCALE, rounded up', () => {
+  assert.deepEqual(freeMinWindow(FREE_MIN_COMP.playlist), { width: 220, height: 218 })
+  assert.deepEqual(freeMinWindow(FREE_MIN_COMP.rack), { width: 330, height: 178 })
 })
 
 test('displayLimits: aspect window widths follow heights', () => {
   const l = displayLimits(A, { width: 1920, height: 1040 }, 616)
-  assert.deepEqual(l, { minWidth: Math.round(308 * A), minHeight: 308, maxWidth: Math.round(936 * A), maxHeight: 936 })
+  assert.deepEqual(l, { minWidth: Math.round(200 * A), minHeight: 200, maxWidth: Math.round(936 * A), maxHeight: 936 })
 })
 
 test('clampToLimits: an aspect window clamps its height and follows with its width, position kept', () => {
-  const l = displayLimits(A, { width: 1280, height: 680 }, 616) // 204..612 tall
+  const l = displayLimits(A, { width: 1280, height: 680 }, 616) // 200..612 tall
   assert.deepEqual(clampToLimits({ x: 5, y: 6, width: 1151, height: 924 }, A, l), { x: 5, y: 6, width: Math.round(612 * A), height: 612 })
-  assert.deepEqual(clampToLimits({ x: 5, y: 6, width: 100, height: 80 }, A, l), { x: 5, y: 6, width: Math.round(204 * A), height: 204 })
+  assert.deepEqual(clampToLimits({ x: 5, y: 6, width: 100, height: 80 }, A, l), { x: 5, y: 6, width: Math.round(200 * A), height: 200 })
   const ok = { x: 5, y: 6, width: Math.round(400 * A), height: 400 }
   assert.deepEqual(clampToLimits(ok, A, l), ok)
   // In range but a pixel off the exact aspect (an X11 window manager rounds it, e.g. a 199x414 power deck): left alone,
@@ -104,8 +114,55 @@ test('clampToLimits: an aspect window clamps its height and follows with its wid
 })
 
 test('clampToLimits: a free window clamps width and height on their own', () => {
-  const l = displayLimits(1623 / 936, { width: 1280, height: 680 }, 936, true) // 204..612 tall, 204..1061 wide
-  assert.deepEqual(clampToLimits({ x: 1, y: 2, width: 1600, height: 100 }, null, l), { x: 1, y: 2, width: l.maxWidth, height: 204 })
-  assert.deepEqual(clampToLimits({ x: 1, y: 2, width: 100, height: 900 }, null, l), { x: 1, y: 2, width: 204, height: 612 })
+  const l = displayLimits(1623 / 936, { width: 1280, height: 680 }, 936, true) // 200..612 tall, 200..1061 wide
+  assert.deepEqual(clampToLimits({ x: 1, y: 2, width: 1600, height: 100 }, null, l), { x: 1, y: 2, width: l.maxWidth, height: 200 })
+  assert.deepEqual(clampToLimits({ x: 1, y: 2, width: 100, height: 900 }, null, l), { x: 1, y: 2, width: 200, height: 612 })
   assert.deepEqual(clampToLimits({ x: 1, y: 2, width: 700, height: 300 }, null, l), { x: 1, y: 2, width: 700, height: 300 })
+})
+
+test('heightRange: the minimum is a flat 200 whatever the work area', () => {
+  for (const h of [400, 680, 1040, 2100]) assert.equal(heightRange({ width: 1920, height: h }, 616).minHeight, 200)
+})
+
+test('initialHeight: about 60% of the work area, never above the design size, within limits', () => {
+  assert.equal(initialHeight(616, 680), 408)
+  assert.equal(initialHeight(616, 1040), 616) // 624 would exceed the design size: large screens unchanged
+  assert.equal(initialHeight(616, 2100), 616)
+  assert.equal(initialHeight(616, 240), 200) // floor
+})
+
+test('fitsWorkArea: false when too big or mostly outside the work area', () => {
+  const area = { x: 0, y: 0, width: 1280, height: 680 }
+  assert.equal(fitsWorkArea({ x: 100, y: 50, width: 767, height: 616 }, area), true)
+  assert.equal(fitsWorkArea({ x: 0, y: 0, width: 767, height: 700 }, area), false) // taller
+  assert.equal(fitsWorkArea({ x: 0, y: 0, width: 1400, height: 400 }, area), false) // wider
+  assert.equal(fitsWorkArea({ x: 1200, y: 0, width: 767, height: 616 }, area), false) // mostly outside
+})
+
+// Bar windows: a fixed extra height on top of a body that keeps `aspect`.
+test('displayLimits with extraH: w / (h - extraH) = aspect at min and max; extraH 0 is unchanged', () => {
+  const a = 937 / 875
+  const x = 34.1
+  const l = displayLimits(a, { width: 1920, height: 1040 }, 937, false, x)
+  assert.ok(Math.abs(l.minWidth / (l.minHeight - x) - a) < 0.01)
+  assert.ok(Math.abs(l.maxWidth / (l.maxHeight - x) - a) < 0.01)
+  assert.deepEqual(displayLimits(1, { width: 1920, height: 1040 }, 937, false, 0), displayLimits(1, { width: 1920, height: 1040 }, 937))
+})
+test('fitSize with extraH keeps the body aspect, clamped to limits and the work area', () => {
+  const x = 40
+  const l = { minWidth: 160, minHeight: 200, maxWidth: 800, maxHeight: 840 }
+  assert.deepEqual(fitSize({ width: 400, height: 1 }, 1, l, area, x), { width: 400, height: 440 })
+  assert.deepEqual(fitSize({ width: 5000, height: 5000 }, 1, l, area, x), { width: 800, height: 840 })
+  assert.deepEqual(fitSize({ width: 900, height: 900 }, 1, l, { width: 1920, height: 700 }, x), { width: 660, height: 700 })
+})
+test('clampToLimits with extraH rebuilds the width from the body height', () => {
+  const l = { minWidth: 160, minHeight: 200, maxWidth: 800, maxHeight: 840 }
+  assert.deepEqual(clampToLimits({ x: 1, y: 2, width: 300, height: 2000 }, 1, l, 40), { x: 1, y: 2, width: 800, height: 840 })
+})
+test('proportional with extraH: a width drag sets height = width / aspect + extraH', () => {
+  const l = { minHeight: 200, maxHeight: 840 }
+  const r0 = { x: 100, y: 100, width: 400, height: 440 }
+  assert.deepEqual(proportional({ x: 100, y: 100, width: 480, height: 440 }, r0, 1, l, 40), { x: 100, y: 100, width: 480, height: 520 })
+  assert.deepEqual(proportional({ x: 100, y: 100, width: 400, height: 340 }, r0, 1, l, 40), { x: 100, y: 100, width: 300, height: 340 })
+  assert.deepEqual(proportional(r0, r0, 1, l, 40), r0)
 })

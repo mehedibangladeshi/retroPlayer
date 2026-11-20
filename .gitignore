@@ -9,4 +9,6 @@ engine/target/
 app/build/sidecar/
 
 # Claude Code local state (worktrees, locks)
-.claude/
+.claude/*
+!.claude/skills/
+graphify-out/

@@ -13,6 +13,8 @@ export interface RetroApi {
   toggleShade(): void  // satellite windows: roll up to the top bar / restore
   onShaded(cb: (shaded: boolean) => void): () => void
   getRack(): Promise<RackState>
+  getLocked(): Promise<boolean>
+  onLocked(cb: (locked: boolean) => void): () => void
   onRack(cb: (s: RackState) => void): () => void
   rackPlay(dir: string): void
   rackAdd(dirs: string[]): void
@@ -21,4 +23,4 @@ export interface RetroApi {
   rackTracks(dir: string): Promise<Album | null>
   doubleClickMs(): Promise<number>                      // the OS double-click time, read once at startup
 }
-export const IPC = { command: 'engine:command', event: 'engine:event', openDialog: 'dialog:open', openFolderDialog: 'dialog:openFolder', minimize: 'window:minimize', close: 'window:close', showPlaylist: 'window:showPlaylist', toggleShade: 'window:toggleShade', shaded: 'window:shaded', quit: 'app:quit', rackGet: 'rack:get', rackChanged: 'rack:changed', rackPlay: 'rack:play', rackAdd: 'rack:add', rackReorder: 'rack:reorder', rackMenu: 'rack:menu', rackTracks: 'rack:tracks', doubleClickMs: 'os:doubleClickMs' } as const
+export const IPC = { command: 'engine:command', event: 'engine:event', openDialog: 'dialog:open', openFolderDialog: 'dialog:openFolder', minimize: 'window:minimize', close: 'window:close', showPlaylist: 'window:showPlaylist', toggleShade: 'window:toggleShade', shaded: 'window:shaded', windowLocked: 'window:locked', getLocked: 'window:getLocked', quit: 'app:quit', rackGet: 'rack:get', rackChanged: 'rack:changed', rackPlay: 'rack:play', rackAdd: 'rack:add', rackReorder: 'rack:reorder', rackMenu: 'rack:menu', rackTracks: 'rack:tracks', doubleClickMs: 'os:doubleClickMs' } as const

@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hexRgb, inkFor, meanRgb, nameColor, parseRack, record, remove, reorder, setSort, spineCrop, spineText, view, type RackFile } from '../src/main/rack.ts'
+import { hexRgb, inkFor, meanRgb, nameColor, clear, foldResume, parseRack, rackPlayCommands, record, remove, reorder, resumePlan, setSort, spineCrop, spineText, view, type RackFile } from '../src/main/rack.ts'
+import { restoreStep } from '../src/main/session.ts'
 import { SPINE_ASPECT, type Spine } from '../src/shared/rack.ts'
 
 const sp = (dir: string, text = dir): Spine => ({ dir, text, image: null, bg: '#102030', ink: '#ffffff' })
@@ -143,4 +144,83 @@ test('functions do not mutate their input', () => {
   const snap = JSON.stringify(f)
   record(f, sp('/c'), 9); remove(f, '/a'); reorder(f, ['/b']); setSort(f, 'custom'); view(f)
   assert.equal(JSON.stringify(f), snap)
+})
+
+test('view: nowPlaying is the playing dir when it is in the rack, else null', () => {
+  const f = file('/a', '/b')
+  assert.equal(view(f, '/a').nowPlaying, '/a')
+  assert.equal(view(f, '/x').nowPlaying, null)
+  assert.equal(view(f, null).nowPlaying, null)
+  assert.equal(view(f).nowPlaying, null)
+})
+
+// ---- per-album resume point ----
+const rs = { index: 2, path: '/a/3.flac', positionMs: 5000 }
+const alb = { dir: '/a', tracks: [{ path: '/a/1.flac' }, { path: '/a/2.flac' }, { path: '/a/3.flac' }] }
+const st = (path: string, positionMs: number): never => ({ type: 'state', positionMs, trackInfo: { path } }) as never
+const withResume = (r?: unknown): RackFile => ({ sort: 'recent', entries: [{ ...sp('/a'), lastUsed: 1, ...(r === undefined ? {} : { resume: r }) } as never] })
+
+test('parseRack: keeps a valid resume, drops a malformed one but keeps the entry', () => {
+  assert.deepEqual(parseRack(withResume(rs)).entries[0].resume, rs)
+  for (const bad of [{ ...rs, index: -1 }, { ...rs, index: 1.5 }, { ...rs, positionMs: -1 }, { ...rs, positionMs: NaN }, { ...rs, path: '' }, 'x', null]) {
+    const e = parseRack(withResume(bad)).entries
+    assert.equal(e.length, 1)
+    assert.equal(e[0].resume, undefined)
+  }
+})
+
+test('view never exposes resume', () => {
+  assert.ok(!('resume' in view(withResume(rs)).spines[0]))
+})
+
+test('record keeps an existing resume', () => {
+  assert.deepEqual(record(withResume(rs), sp('/a'), 9).entries[0].resume, rs)
+})
+
+test('resumePlan: none or file gone -> null; reordered album re-derives the index', () => {
+  assert.equal(resumePlan(undefined, ['/a/3.flac']), null)
+  assert.equal(resumePlan(rs, ['/a/1.flac']), null)
+  assert.deepEqual(resumePlan(rs, ['/a/3.flac', '/a/1.flac']), { index: 0, positionMs: 5000 })
+})
+
+test('foldResume: state sets track and time, position updates time, stop resets to 0 on the same track', () => {
+  let f = foldResume(withResume(), alb, st('/a/2.flac', 0))
+  assert.deepEqual(f.entries[0].resume, { index: 1, path: '/a/2.flac', positionMs: 0 })
+  f = foldResume(f, alb, { type: 'position', positionMs: 7000 } as never)
+  assert.equal(f.entries[0].resume?.positionMs, 7000)
+  f = foldResume(f, alb, st('/a/2.flac', 7000)) // pause keeps time
+  assert.equal(f.entries[0].resume?.positionMs, 7000)
+  f = foldResume(f, alb, st('/a/2.flac', 0)) // stop
+  assert.deepEqual(f.entries[0].resume, { index: 1, path: '/a/2.flac', positionMs: 0 })
+})
+
+test('foldResume: single file and no entry leave the rack untouched', () => {
+  const f = withResume(rs)
+  assert.equal(foldResume(f, null, st('/x.flac', 1)), f)
+  assert.equal(foldResume(f, { dir: '/zzz', tracks: [{ path: '/x.flac' }] }, st('/x.flac', 1)), f)
+})
+
+test('rackPlayCommands: with a plan loads paused, seeks if > 0, then plays; without, a plain loadAlbum', () => {
+  assert.deepEqual(rackPlayCommands('/a', { index: 2, positionMs: 5000 }).map((c) => c.type), ['loadAlbum', 'seek', 'play'])
+  assert.deepEqual(rackPlayCommands('/a', { index: 1, positionMs: 0 }).map((c) => c.type), ['loadAlbum', 'play'])
+  assert.deepEqual(rackPlayCommands('/a', null), [{ v: 1, type: 'loadAlbum', path: '/a' }])
+})
+
+test('rack:play with a plan: load and seek states are skipped by restoreLeft, the seek state lands the time, play keeps it', () => {
+  let f = withResume(rs)
+  let left = 2 // rackPlayCommands(...).length - 1 for load, seek, play
+  for (const evt of [st('/a/3.flac', 0), st('/a/3.flac', 5000), st('/a/3.flac', 5000)]) {
+    left = restoreStep(left, evt)
+    if (left === 0) f = foldResume(f, alb, evt)
+    if (evt === undefined) break
+  }
+  assert.equal(left, 0)
+  assert.equal(f.entries[0].resume?.positionMs, 5000)
+})
+
+test('clear: drops every entry (and with them their resume points), keeps the sort', () => {
+  const f = file('/a', '/b')
+  f.entries[0].resume = { index: 1, path: '/a/2.flac', positionMs: 5 }
+  f.sort = 'custom'
+  assert.deepEqual(clear(f), { sort: 'custom', entries: [] })
 })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { contextMenu, parseHidden, setHidden } from '../src/main/contextMenu.ts'
+import { contextMenu, parseHidden, parseLocked, setHidden } from '../src/main/contextMenu.ts'
 
 const windows = [
   { label: 'Playlist', visible: true },
@@ -13,7 +13,7 @@ const boost = { db: 0, set: () => {} }
 test('contextMenu: Windows comes first and lists every window as a checkbox ticked by its visibility', () => {
   const [first] = contextMenu(windows, () => {}, acts, boost)
   assert.equal(first.label, 'Windows')
-  const sub = (first.submenu as { label: string; type: string; checked: boolean }[]).filter((i) => i.type === 'checkbox')
+  const sub = (first.submenu as { label: string; type: string; checked: boolean }[]).filter((i) => i.type === 'checkbox' && i.label !== 'Lock Windows')
   assert.deepEqual(sub.map(({ label, type, checked }) => ({ label, type, checked })), [
     { label: 'Playlist', type: 'checkbox', checked: true },
     { label: 'Album', type: 'checkbox', checked: false }
@@ -32,7 +32,7 @@ test('contextMenu: the Windows submenu ends with a separator, Reset Windows and 
   const calls: string[] = []
   const sub = contextMenu(windows, () => {}, { reset: () => calls.push('reset'), fillGaps: () => calls.push('fill') }, boost)[0].submenu as { label?: string; type?: string; click?: () => void }[]
   const tail = sub.slice(windows.length)
-  assert.deepEqual(tail.map((i) => i.label ?? i.type), ['separator', 'Reset Windows', 'Fill Gaps'])
+  assert.deepEqual(tail.map((i) => i.label ?? i.type), ['separator', 'Reset Windows', 'Fill Gaps', 'Lock Windows'])
   tail[1].click!()
   tail[2].click!()
   assert.deepEqual(calls, ['reset', 'fill'])
@@ -77,4 +77,24 @@ test('parseHidden: keeps only window ids from a hand-edited or corrupt file', ()
   assert.deepEqual(parseHidden(['album', 3, '', 'rack', null]), ['album', 'rack'])
   assert.equal(parseHidden('album'), undefined)
   assert.equal(parseHidden(undefined), undefined)
+})
+
+test('parseLocked: only a boolean survives', () => {
+  assert.equal(parseLocked(true), true)
+  assert.equal(parseLocked(false), false)
+  assert.equal(parseLocked('yes'), undefined)
+  assert.equal(parseLocked(1), undefined)
+  assert.equal(parseLocked(undefined), undefined)
+})
+
+test('contextMenu: Lock Windows is a checkbox ticked by locked, enabled when locked or lockable, and runs toggleLock', () => {
+  const find = (locked: boolean, canLock: boolean, toggleLock = () => {}) =>
+    (contextMenu(windows, () => {}, { ...acts, toggleLock }, boost, locked, canLock)[0].submenu as { label?: string; type?: string; checked?: boolean; enabled?: boolean; click?: () => void }[]).find((i) => i.label === 'Lock Windows')!
+  assert.equal(find(false, true).type, 'checkbox')
+  assert.deepEqual([find(false, true).checked, find(false, true).enabled], [false, true])
+  assert.deepEqual([find(false, false).checked, find(false, false).enabled], [false, false])
+  assert.deepEqual([find(true, false).checked, find(true, false).enabled], [true, true])
+  let n = 0
+  find(false, true, () => n++).click!()
+  assert.equal(n, 1)
 })

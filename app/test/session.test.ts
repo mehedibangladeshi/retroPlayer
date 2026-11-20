@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { nextSession, parseSession, restoreCommands, restoreStep, type Session } from '../src/main/session.ts'
+import { nextSession, parseSession, restoreCommands, restoreStep, shouldSaveSession, type Session } from '../src/main/session.ts'
 import type { Album, EngineEvent, TrackInfo } from '../src/shared/protocol.ts'
 
 const v = 1 as const
@@ -63,4 +63,18 @@ test('restoreStep: waits for one track state per restore command, so the load at
 test('restoreStep: an error ends the wait, and with no restore nothing waits', () => {
   assert.equal(restoreStep(2, { v, type: 'error', code: 'file_not_found', message: '' }), 0)
   assert.equal(restoreStep(0, state('/x.flac', 0)), 0)
+})
+
+test('shouldSaveSession: not while the loaded album is the cleared one', () => {
+  assert.equal(shouldSaveSession('/m/a', '/m/a'), false)
+})
+
+test('shouldSaveSession: a re-imported album (clearedAlbum reset) or another album saves', () => {
+  assert.equal(shouldSaveSession('/m/a', null), true)
+  assert.equal(shouldSaveSession('/m/b', '/m/a'), true)
+})
+
+test('shouldSaveSession: a single file (no album) always saves', () => {
+  assert.equal(shouldSaveSession(null, '/m/a'), true)
+  assert.equal(shouldSaveSession(null, null), true)
 })

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { nineSlice } from './stretchFit'
-import { useStretchFit } from './useStretchFit'
+import { useChromeFit } from './chromeFit'
+import { FREE_MIN_COMP } from '@shared/freeMin'
 import { RACK as R, type Rect } from '@shared/layout'
 import { SHADE } from '@shared/shade'
+import { cassetteCount } from './rackCount'
 import { SPINE_ASPECT, type RackState } from '@shared/rack'
 import { moveDir } from './rackOrder'
 import { dragGhostBox } from './rackDrag'
@@ -50,11 +52,11 @@ export default function RackView() {
   const [shaded, setShaded] = useState(false)
   useEffect(() => window.retro.onShaded(setShaded), [])
   // A free window: the composition grows to fill it, the art drawn nine-slice (see RACK.SLICE).
-  const fit = useStretchFit(R.WINDOW.w, R.WINDOW.h, SHADE.rack.barH, shaded)
+  const fit = useChromeFit(FREE_MIN_COMP.rack, shaded)
   const dw = fit.w - R.WINDOW.w
   const dh = fit.h - R.WINDOW.h
 
-  const [rack, setRack] = useState<RackState>({ sort: 'recent', spines: [] })
+  const [rack, setRack] = useState<RackState>({ sort: 'recent', spines: [], nowPlaying: null })
   useEffect(() => {
     let live = true
     void window.retro.getRack().then((s) => live && setRack(s))
@@ -213,7 +215,7 @@ export default function RackView() {
             <button
               key={s.dir}
               type="button"
-              className={`rk-spine${gap === i ? ' drop-before' : ''}${gap === i + 1 && i === rack.spines.length - 1 ? ' drop-after' : ''}${previewDir === s.dir ? ' previewing' : ''}`}
+              className={`rk-spine${gap === i ? ' drop-before' : ''}${gap === i + 1 && i === rack.spines.length - 1 ? ' drop-after' : ''}${previewDir === s.dir ? ' previewing' : ''}${rack.nowPlaying === s.dir ? ' playing' : ''}`}
               aria-label={s.text}
               data-index={i}
               data-dir={s.dir}
@@ -260,6 +262,7 @@ export default function RackView() {
           )}
         </div>
         {/* The only drag region: no children, ends left of the minimize button. */}
+        <div className="rk-count" style={{ left: 0, top: 0, width: R.MINIMIZE.x + dw - 12, height: SHADE.rack.barH }}>{cassetteCount(rack.spines.length)}</div>
         <div className="rk-titlebar" style={{ width: R.MINIMIZE.x + dw - 4, height: SHADE.rack.barH }} />
         <button type="button" className={`rk-chrome${shaded ? ' shaded' : ''}`} aria-label={shaded ? 'Restore' : 'Roll up'} style={box(right(R.MINIMIZE, dw))} onClick={() => window.retro.toggleShade()} />
         <button type="button" className="rk-chrome" aria-label="Close cassette rack" style={box(right(R.CLOSE, dw))} onClick={() => window.retro.closeWindow()} />

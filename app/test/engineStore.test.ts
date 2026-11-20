@@ -19,3 +19,14 @@ test('levels events leave the snapshot untouched', () => {
   emit({ v: 1, type: 'levels', rms: 0.5, peak: 0.9, bands: [0], wave: [0] })
   assert.equal(store.getSnapshot(), before)
 })
+
+test('options start unknown and become known on the first options event', async () => {
+  const fresh = await import('../src/renderer/src/engine/store.ts?fresh')
+  assert.equal(fresh.getSnapshot().optionsKnown, false)
+  const h = (globalThis as unknown as { window: { retro: { onEvent: (h: Handler) => () => void } } }).window.retro
+  let e2: Handler = () => {}
+  h.onEvent = (x) => ((e2 = x), () => {})
+  fresh.start()
+  e2({ v: 1, type: 'options', volume: 0.3, loop: false, shuffle: false, boostDb: 0 })
+  assert.equal(fresh.getSnapshot().optionsKnown, true)
+})

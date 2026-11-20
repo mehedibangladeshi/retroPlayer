@@ -14,6 +14,14 @@ body { background: transparent; overflow: hidden; }
 .rk .rk-chrome.shaded::after { content: ''; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #ddd; border-top-width: 4px; }
 /* The shelf: one row of spines, scrolled sideways (the wheel's vertical delta scrolls it too, see RackView.tsx). */
 .rk-shelf { position: absolute; box-sizing: border-box; display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; }
+/* Shelf scrollbar: white thumb on a grey track, thick enough to grab. */
+.rk-shelf::-webkit-scrollbar { height: 12px; }
+.rk-shelf::-webkit-scrollbar-track { background: #4e4e54; }
+.rk-shelf::-webkit-scrollbar-thumb { background: #ffffff; border: 2px solid #4e4e54; border-radius: 6px; min-width: 48px; }
+.rk-shelf::-webkit-scrollbar-thumb:hover { background: #e6e6e6; }
+.rk-shelf::-webkit-scrollbar-thumb:active { background: #d0d0d0; }
+/* Cassette count in the title bar: not a drag region, clicks fall through to the bar. */
+.rk-count { position: absolute; display: flex; align-items: center; justify-content: flex-end; font: 300 13px 'Montserrat', sans-serif; color: #e0e0e0; pointer-events: none; }
 /* A cassette spine: sizes are fractions of the spine width --sw (211 px in the design), measured from 2 bg.png (corner radius 22 px) and 3 bg outer line.png (inset 8 px sides / 13 px top / 14 px bottom, 4 px stroke, #e0e0e0). */
 .rk .rk-spine, .rk .rk-add { position: relative; flex: none; margin: 0; padding: 0; border: 0; border-radius: calc(var(--sw) * 0.104); overflow: hidden; cursor: pointer; font: inherit; }
 .rk .rk-spine::after, .rk .rk-add::after { content: ''; position: absolute; inset: calc(var(--sw) * 0.063) calc(var(--sw) * 0.038); border: max(1px, calc(var(--sw) * 0.019)) solid #e0e0e0; border-radius: calc(var(--sw) * 0.06); pointer-events: none; }
@@ -27,6 +35,7 @@ body { background: transparent; overflow: hidden; }
   .rk:not(.dragging) .rk-spine:hover, .rk:not(.dragging) .rk-add:hover, .rk .rk-spine.previewing { transform: translateY(max(calc(var(--sw) * -0.02), -4px)); }
 }
 .rk .rk-add { background: transparent; color: #e0e0e0; font-weight: 300; font-size: calc(var(--sw) * 0.5); line-height: 1; }
+.rk .rk-spine.playing { box-shadow: inset 0 0 0 2px rgba(255, 226, 170, 0.75), inset 0 0 10px rgba(255, 210, 140, 0.45); filter: brightness(1.08); }
 .rk .rk-spine.drop-before { box-shadow: -6px 0 0 #e8e8e8; }
 .rk .rk-spine.drop-after { box-shadow: 6px 0 0 #e8e8e8; }
 /* Reads top to bottom, centred across the spine, starting 20.7% down, glyph box 66 px wide of 211 (4 name reff.png). */
@@ -38,7 +47,13 @@ body { background: transparent; overflow: hidden; }
 .rk-preview.right .rk-preview-paper { --from: -100%; }
 .rk-preview.left .rk-preview-paper { --from: 100%; }
 .rk-preview-heading { flex: none; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rk-preview-rows { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.3) transparent; }
+.rk-preview-rows { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+/* Webkit scrollbar rules only: Chromium ignores them once scrollbar-width / scrollbar-color is set. Same grabbable look as the playlist rows. */
+.rk-preview-rows::-webkit-scrollbar { width: 12px; }
+.rk-preview-rows::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.08); }
+.rk-preview-rows::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.38); border: 2px solid transparent; background-clip: padding-box; border-radius: 6px; min-height: 40px; }
+.rk-preview-rows::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.5); background-clip: padding-box; }
+.rk-preview-rows::-webkit-scrollbar-thumb:active { background: rgba(0, 0, 0, 0.6); background-clip: padding-box; }
 .rk-preview-loading { margin: 0; opacity: 0.6; }
 /* No motion; the fallback timeout in RackView.tsx unmounts the closing panel. */
 @media (prefers-reduced-motion: reduce) { .rk-preview .rk-preview-paper { transition: none; } }

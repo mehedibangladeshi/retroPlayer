@@ -1,5 +1,6 @@
 import type { Command } from '@shared/protocol'
 import type { SoundName } from '@shared/sounds'
+import { transportDisabled } from '../views/transport'
 import { expectAutoPlay, getSnapshot } from './store'
 
 type Body = Command extends infer C ? (C extends unknown ? Omit<C, 'v'> : never) : never
@@ -49,6 +50,18 @@ export const setLoop = (on: boolean): void => send({ type: 'setLoop', on })
 export const setShuffle = (on: boolean): void => send({ type: 'setShuffle', on })
 export const next = (): void => send({ type: 'next' })
 export const previous = (): void => send({ type: 'previous' })
+
+/** Next/previous with the forward/backward buttons' `seek` sound (keyboard N/P). */
+export function pressStep(delta: 1 | -1): void {
+  playSound('seek')
+  stepTrack(delta)
+}
+
+/** Stop applies only while playing or paused, like the Stop button. */
+export function pressStopKey(): void {
+  const { status } = getSnapshot()
+  if (!transportDisabled(status).stop) pressStop()
+}
 
 /** Next (+1) or previous (-1) track; the engine owns play order and shuffle. */
 export function stepTrack(delta: 1 | -1): void {

@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useLayoutEffect, useState, useSyncExternalStore } from 'react'
+import { extrapolate, noBackslide } from './smoothPosition'
 import { getSnapshot, subscribe, type EngineState } from './store'
 
 export function useEngine(): EngineState {
@@ -6,26 +7,41 @@ export function useEngine(): EngineState {
 }
 
 /**
- * Position for display: smoothed between `position` events only while playing.
- * Consumers only show mm:ss, so the animated value is floored to whole seconds:
- * setState bails out on an equal value and the player re-renders once a second, not every frame.
+ * One rAF loop for as long as the status is `playing` (not restarted per `position` event: it reads the
+ * latest store values each frame). `shape` turns the extrapolated ms into the shown value; setState bails
+ * out on an equal value, so a coarse `shape` re-renders rarely.
  */
-export function useDisplayPosition(): number {
-  const { status, positionMs, durationMs, lastPositionAt } = useEngine()
-  const [animated, setAnimated] = useState({ key: -1, value: 0 })
+function useFramePosition(shape: (ms: number, prevShown: number) => number): number {
+  const { status, positionMs } = useEngine()
+  const [shown, setShown] = useState(0)
   const playing = status === 'playing'
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!playing) return
     let raf = 0
+    let prev = -Infinity
     const frame = (): void => {
-      const p = positionMs + (performance.now() - lastPositionAt)
-      setAnimated({ key: lastPositionAt, value: Math.floor((durationMs === null ? p : Math.min(p, durationMs)) / 1000) * 1000 })
+      const s = getSnapshot()
+      prev = shape(extrapolate(s.positionMs, s.lastPositionAt, performance.now(), s.durationMs, true), prev)
+      setShown(prev)
       raf = requestAnimationFrame(frame)
     }
-    raf = requestAnimationFrame(frame)
+    frame()
     return () => cancelAnimationFrame(raf)
-  }, [playing, positionMs, durationMs, lastPositionAt])
+  }, [playing, shape])
 
-  return playing && animated.key === lastPositionAt ? animated.value : positionMs
+  return playing ? shown : positionMs
+}
+
+const wholeSecond = (ms: number): number => Math.floor(ms / 1000) * 1000
+const noBack = (ms: number, prev: number): number => noBackslide(prev, ms)
+
+/** For the mm:ss timer: whole seconds, so the player re-renders once a second, not every frame. */
+export function useDisplayPosition(): number {
+  return useFramePosition(wholeSecond)
+}
+
+/** For the seek bar: unfloored, moves every frame, never steps back on event jitter. */
+export function useSmoothPosition(): number {
+  return useFramePosition(noBack)
 }

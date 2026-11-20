@@ -149,7 +149,7 @@ export default function CassettePlayer() {
           type="button"
           aria-label={id}
           aria-pressed={id === 'rewind' || id === 'forward' ? !!pressed[id] : undefined}
-          className={`cp-btn${pressed[id] ? ' pressed' : ''}${latched[id] ? ' latched' : ''}`}
+          className={`cp-btn${id === 'play' || id === 'pause' || id === 'stop' ? ' cp-spring' : ''}${pressed[id] ? ' pressed' : ''}${latched[id] ? ' latched' : ''}`}
           disabled={off[id]}
           style={{ ...rectStyle(BUTTONS[id]), '--art': `url(${layerUrl('bodyButtons')})`, '--pos': `${-BUTTONS[id].x}px ${-BUTTONS[id].y}px`, '--pad-r': `${BUTTON_SHADOW_PAD.right}px`, '--pad-b': `${BUTTON_SHADOW_PAD.bottom}px` } as CSSProperties}
           {...buttonProps[id]}

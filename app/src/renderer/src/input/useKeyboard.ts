@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { setLoop, setShuffle, setVolume, stepTrack, togglePlayPause } from '../engine/commands'
+import { setLoop, setShuffle, pressStep, pressStopKey, setVolume, togglePlayPause } from '../engine/commands'
 import { getSnapshot } from '../engine/store'
 import { stepVolume } from '../views/powerMath'
 import { powerKeyAction } from './powerKeys'
@@ -34,13 +34,14 @@ export function useKeyboard(seek: Pick<SeekHold, 'start' | 'stop'>, onOpen?: () 
         e.preventDefault()
         if (!e.repeat) togglePlayPause()
       } else if (e.key.toLowerCase() === 'n' || e.key.toLowerCase() === 'p') {
-        if (!e.repeat) stepTrack(e.key.toLowerCase() === 'n' ? 1 : -1)
+        if (!e.repeat) pressStep(e.key.toLowerCase() === 'n' ? 1 : -1)
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault()
         if (!e.repeat) start(KEY_DIR[e.key], 'key')
       } else {
-        const { options } = getSnapshot()
-        switch (powerKeyAction(e)) {
+        const { options, optionsKnown } = getSnapshot()
+        const action = powerKeyAction(e)
+        switch (optionsKnown || action === 'stop' ? action : null) { // volume, loop and shuffle wait for real engine options
           case 'volumeUp':
             e.preventDefault()
             setVolume(stepVolume(options.volume, 1))
@@ -48,6 +49,9 @@ export function useKeyboard(seek: Pick<SeekHold, 'start' | 'stop'>, onOpen?: () 
           case 'volumeDown':
             e.preventDefault()
             setVolume(stepVolume(options.volume, -1))
+            break
+          case 'stop':
+            pressStopKey()
             break
           case 'loop':
             setLoop(!options.loop)

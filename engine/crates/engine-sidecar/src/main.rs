@@ -20,7 +20,7 @@ mod protocol;
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -203,6 +203,20 @@ fn seed() -> u64 {
     (n ^ (n >> 31)).wrapping_mul(0x9E37_79B9_7F4A_7C15)
 }
 
+/// What to do once a track ended. `next` is the replay target (Loop Song) or the album's next track.
+#[derive(Debug, PartialEq)]
+enum EndAction {
+    Load(PathBuf),
+    /// Last track with Loop Song off: stay stopped and sound like pressing Stop.
+    StopWithSound,
+}
+
+/// `track` is the one that ended; `playlist_next` is the album's next track (None for a single file).
+fn end_action(looped: bool, track: Option<&Path>, playlist_next: Option<PathBuf>) -> EndAction {
+    let next = if looped { track.map(Path::to_path_buf) } else { playlist_next };
+    next.map_or(EndAction::StopWithSound, EndAction::Load)
+}
+
 /// On a track end: replay it (Loop Song) or auto-advance the album. An `Ended` can be queued
 /// while the user already picked another track, so only act if the player is stopped on
 /// the track that ended (the playlist's current one, for an album).
@@ -218,21 +232,27 @@ fn on_ended(
     let track = snap.track.as_ref().map(|t| t.path.as_path());
     let cur = match playlist.as_ref() {
         Some(pl) => pl.current().map(|i| pl.album().tracks[i].path.as_path()),
-        None if opts.looped => track,
-        None => return Ok(()),
+        None => track, // single file: replay or stop with sound below
     };
     if !should_advance(ended_gen, player.generation(), snap.status, track, cur) {
         return Ok(());
     }
     let cover = playlist.as_ref().and_then(|pl| pl.album().cover.clone());
-    let next = if opts.looped {
-        track.map(Path::to_path_buf)
+    // Only advance the album when not looping, so Loop Song never moves its cursor.
+    let playlist_next = if opts.looped {
+        None
     } else {
         playlist.as_mut().and_then(|pl| pl.advance().map(Path::to_path_buf))
     };
-    match next {
-        Some(p) => load_track(player, &p, cover.as_ref(), art, send, true),
-        None => Ok(()), // last track: stay stopped
+    match end_action(opts.looped, track, playlist_next) {
+        EndAction::Load(p) => load_track(player, &p, cover.as_ref(), art, send, true),
+        EndAction::StopWithSound => {
+            // The clip may not be loaded (tests, missing asset): that is not an error.
+            if let Err(e) = player.play_sound("stop") {
+                eprintln!("engine-sidecar: end-of-playlist sound not played: {}", e.message);
+            }
+            Ok(())
+        }
     }
 }
 
@@ -484,6 +504,18 @@ mod tests {
         assert!(!should_advance(3, 3, Status::Playing, Some(a), Some(a)));
         assert!(!should_advance(3, 3, Status::Stopped, Some(a), Some(b)));
         assert!(!should_advance(3, 3, Status::Stopped, None, Some(a)));
+    }
+
+    #[test]
+    fn end_action_plays_stop_sound_only_after_the_last_track() {
+        let a = PathBuf::from("a.flac");
+        let b = PathBuf::from("b.flac");
+        // album: middle track advances, last track stops with sound
+        assert_eq!(end_action(false, Some(&a), Some(b.clone())), EndAction::Load(b));
+        assert_eq!(end_action(false, Some(&a), None), EndAction::StopWithSound);
+        // single file (no playlist): stop with sound, or replay when looped
+        assert_eq!(end_action(false, Some(&a), None), EndAction::StopWithSound);
+        assert_eq!(end_action(true, Some(&a), None), EndAction::Load(a));
     }
 
     fn read_all(input: &[u8], cap: usize) -> Vec<(Read, Vec<u8>)> {
