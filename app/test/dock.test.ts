@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { GAP, fillGaps, fitGroup, inferDocks, layout, overlaps, snap, snapResize, subtree, type Docks, type Limits, type Rect } from '../src/main/dock.ts'
+import { GAP, fillGaps, fitGroup, groupResize, inferDocks, layout, overlaps, snap, snapResize, subtree, type Docks, type Limits, type Rect, type SizeRule } from '../src/main/dock.ts'
 
 const r = (x: number, y: number, width: number, height: number): Rect => ({ x, y, width, height })
 const P = r(100, 100, 400, 300) // player
@@ -259,4 +259,90 @@ test('fillGaps: maxHeight is respected', () => {
 test('fillGaps: a window that already overlaps the free window blocks its growth', () => {
   const rects = { player: r(0, 0, 400, 300), playlist: r(300, 200, 100, 100), rack: r(0, 300, 600, 200) }
   assert.deepEqual(fillGaps(rects, ['playlist'], { playlist: L }), {})
+})
+
+// Default arrangement: player, album left, playlist right, power right of playlist, rack on top.
+const BIG: Limits = { minWidth: 1, minHeight: 1, maxWidth: 5000, maxHeight: 5000 }
+const rules: Record<string, SizeRule> = {
+  player: { aspect: 767 / 616, extraH: 0, limits: BIG },
+  album: { aspect: 2, extraH: 20, limits: BIG },
+  playlist: { aspect: null, extraH: 0, limits: BIG },
+  power: { aspect: 1.5, extraH: 20, limits: BIG },
+  rack: { aspect: null, extraH: 0, limits: BIG }
+}
+const gDocks: Docks = {
+  album: { to: 'player', side: 'left', ratio: 0 },
+  playlist: { to: 'player', side: 'right', ratio: 0 },
+  power: { to: 'playlist', side: 'right', ratio: 0 },
+  rack: { to: 'player', side: 'top', ratio: 0 }
+}
+const gRects: Record<string, Rect> = {
+  rack: r(300, 100, 767, 200),
+  album: r(100, 302, 198, 616),
+  player: r(300, 302, 767, 616),
+  playlist: r(1069, 302, 300, 616),
+  power: r(1371, 302, 300, 616)
+}
+// Heights: album h=616 -> width (616-20)*2, so make the fixture consistent.
+gRects.album = r(100, 302, 1192, 616)
+gRects.power = r(1371, 302, 894, 616)
+
+function check(out: Record<string, Rect>, f: number): void {
+  for (const [id, d] of Object.entries(gDocks)) {
+    const a = out[d!.to]
+    const b = out[id]
+    if (d!.side === 'right') assert.equal(b.x - (a.x + a.width), GAP)
+    if (d!.side === 'left') assert.equal(a.x - (b.x + b.width), GAP)
+    if (d!.side === 'top') assert.equal(a.y - (b.y + b.height), GAP)
+  }
+  for (const id of ['album', 'power'])
+    assert.ok(Math.abs(out[id].width / (out[id].height - 20) - rules[id].aspect!) < 0.02, id)
+  assert.ok(Math.abs(out.player.width - 767 * f) <= 1)
+  for (const id of ['album', 'playlist', 'power']) assert.ok(Math.abs(out[id].height - out.player.height) <= 1, id)
+  assert.equal(out.rack.x, out.player.x) // rack sits above player at ratio 0
+}
+
+for (const f of [1.25, 0.8]) {
+  test(`groupResize: default arrangement at f=${f}`, () => {
+    const out = groupResize(gRects, gDocks, rules, 'player', r(300, 302, 767 * f, 616 * f))
+    check(out, f)
+    assert.equal(Math.min(...Object.values(out).map((o) => o.x)), 100)
+    assert.equal(Math.min(...Object.values(out).map((o) => o.y)), 100)
+  })
+}
+
+test('groupResize: tightest limit wins', () => {
+  const tight = { ...rules, rack: { ...rules.rack, limits: { ...BIG, maxWidth: 800 } } }
+  const out = groupResize(gRects, gDocks, tight, 'player', r(300, 302, 767 * 2, 616 * 2))
+  assert.ok(out.rack.width <= 800)
+  assert.ok(Math.abs(out.rack.width - 800) <= 1)
+  assert.ok(Math.abs(out.player.width - 800) <= 1)
+})
+
+test('groupResize: factor from width when width changed more, else height', () => {
+  const byW = groupResize(gRects, gDocks, rules, 'playlist', r(1069, 302, 600, 640)) // w x2, h x1.04
+  assert.ok(Math.abs(byW.player.width - 767 * 2) <= 1)
+  const byH = groupResize(gRects, gDocks, rules, 'playlist', r(1069, 302, 310, 1232)) // h x2
+  assert.ok(Math.abs(byH.player.width - 767 * 2) <= 1)
+})
+
+test('groupResize: a matched child with a different aspect and tight maxWidth stays within its limits', () => {
+  const tight = { ...rules, album: { ...rules.album, limits: { ...BIG, maxWidth: 1400 } } }
+  const out = groupResize(gRects, gDocks, tight, 'player', r(300, 302, 767 * 2, 616 * 2))
+  assert.ok(out.album.width <= 1400)
+  assert.ok(out.album.height <= 5000)
+  assert.ok(Math.abs(out.album.height - out.player.height) <= 1)
+})
+
+test('groupResize: real min limits stop a shrink, and no window ends outside a fractional limit', () => {
+  const mins = { ...rules, playlist: { ...rules.playlist, limits: { ...BIG, minWidth: 250.5, minHeight: 500.5 } } }
+  const out = groupResize(gRects, gDocks, mins, 'player', r(300, 302, 767 * 0.1, 616 * 0.1))
+  assert.ok(out.playlist.width >= 250.5 && out.playlist.height >= 500.5)
+  assert.ok(out.player.height >= 501)
+})
+
+test('groupResize: conflicting limits leave the group unchanged', () => {
+  const bad = { ...rules, rack: { ...rules.rack, limits: { ...BIG, minWidth: 900 } }, player: { ...rules.player, limits: { ...BIG, maxWidth: 800 } } }
+  const out = groupResize(gRects, gDocks, bad, 'player', r(300, 302, 767 * 1.5, 616 * 1.5))
+  for (const id of Object.keys(gRects)) assert.deepEqual([out[id].width, out[id].height], [gRects[id].width, gRects[id].height])
 })

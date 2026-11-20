@@ -266,3 +266,74 @@ export function fillGaps(rects: Record<string, Rect>, free: string[], limits: Re
   }
   return out
 }
+
+export interface SizeRule { aspect: number | null; extraH: number; limits: Limits }
+
+/** New rects for every window in `rects` after the user resized `resized` to `next`, all scaled by one factor. */
+export function groupResize(rects: Record<string, Rect>, docks: Docks, rules: Record<string, SizeRule>, resized: string, next: Rect): Record<string, Rect> {
+  const old = rects[resized]
+  const dw = Math.abs(next.width / old.width - 1)
+  const dh = Math.abs(next.height / old.height - 1)
+  const f0 = dw >= dh ? next.width / old.width : next.height / old.height
+
+  // Every window's size at factor f, matched children included, in whole pixels (or gaps would come out fractional).
+  const sizeAt = (f: number): Record<string, Rect> => {
+    const widthFor = (id: string, h: number): number => (rules[id].aspect ? (h - rules[id].extraH) * rules[id].aspect! : rects[id].width * f)
+    const heightFor = (id: string, w: number): number => (rules[id].aspect ? w / rules[id].aspect! + rules[id].extraH : rects[id].height * f)
+    const whole = (r: Rect): Rect => ({ ...r, width: Math.round(r.width), height: Math.round(r.height) })
+    const scale = (id: string): Rect => ({ ...rects[id], width: rects[id].width * f, height: heightFor(id, rects[id].width * f) })
+    const sized: Record<string, Rect> = { ...rects }
+    const done = new Set(Object.keys(rects).filter((id) => !docks[id] || !rects[docks[id]!.to]))
+    for (const id of done) sized[id] = whole(scale(id))
+    // Parents before children, so a matched size follows the parent's new size.
+    for (let grew = true; grew; ) {
+      grew = false
+      for (const id of Object.keys(rects)) {
+        const d = docks[id]
+        if (done.has(id) || !d || !done.has(d.to)) continue
+        const o = rects[id]
+        const po = rects[d.to]
+        const pn = sized[d.to]
+        let s = scale(id)
+        if ((d.side === 'left' || d.side === 'right') && Math.abs(o.height - po.height) <= GAP) {
+          s = { ...o, height: pn.height, width: widthFor(id, pn.height) }
+        } else if ((d.side === 'top' || d.side === 'bottom') && Math.abs(o.width - po.width) <= GAP) {
+          s = { ...o, width: pn.width, height: heightFor(id, pn.width) }
+        }
+        sized[id] = whole(s)
+        done.add(id)
+        grew = true
+      }
+    }
+    return sized
+  }
+  // Sizes only grow with f, so "too small" and "too big" each flip once: bisect for the f range where nothing leaves its limits.
+  const bad = (f: number, dir: 'min' | 'max'): boolean =>
+    Object.entries(sizeAt(f)).some(([id, r]) => {
+      const l = rules[id].limits
+      return dir === 'min' ? r.width < l.minWidth || r.height < l.minHeight : r.width > l.maxWidth || r.height > l.maxHeight
+    })
+  const bisect = (dir: 'min' | 'max'): number => {
+    let a = 1e-3
+    let b = 1e3
+    for (let i = 0; i < 50; i++) {
+      const m = Math.sqrt(a * b)
+      if (bad(m, dir) === (dir === 'min')) a = m
+      else b = m
+    }
+    return dir === 'min' ? b : a
+  }
+  const lo = bisect('min')
+  const hi = bisect('max')
+  // lo > hi: no single factor fits every window, so leave the group as it is.
+  const f = lo > hi ? 1 : Math.min(Math.max(f0, lo), hi)
+  const sized = lo > hi ? rects : sizeAt(f)
+
+  // Re-place so gaps stay exactly GAP, then pin the group's top-left where it was.
+  const out = layout(sized, docks)
+  const ids = Object.keys(rects)
+  const dx = Math.min(...ids.map((i) => rects[i].x)) - Math.min(...ids.map((i) => out[i].x))
+  const dy = Math.min(...ids.map((i) => rects[i].y)) - Math.min(...ids.map((i) => out[i].y))
+  for (const i of ids) out[i] = { ...out[i], x: out[i].x + dx, y: out[i].y + dy }
+  return out
+}
