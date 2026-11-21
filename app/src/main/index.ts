@@ -1,4 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
+import { lockHeightAfterResize } from './resizeEnd'
 import { dirname, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/api'
@@ -16,7 +17,7 @@ import { loadSettings, saveSettings, type WindowState } from './settings'
 import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, shouldSaveSession, type Session } from './session'
 import { FREE_MIN_COMP, freeMinWindow } from '@shared/freeMin'
-import { clampToLimits, defaultPlayerHeight, displayLimits, fitsWorkArea, fitSize, initialHeight, proportional, type Limits } from './windowSize'
+import { clampToLimits, defaultPlayerHeight, displayLimits, fitsWorkArea, fitSize, initialHeight, limitsFor, proportional, type Limits } from './windowSize'
 import { Sidecar } from './sidecar'
 import { clear, foldResume, rackPlayCommands, record, remove, reorder, resumePlan, setSort, view, type RackFile } from './rack'
 import { loadRack, makeSpine, saveRack } from './rackStore'
@@ -247,7 +248,7 @@ function satelliteBounds(s: Satellite): { x?: number; y?: number; width: number;
   const fitted = fitSaved(loadSettings()[s.key], s.aspect, s.designH, s.free, s.extraH, s.freeMin)
   if (fitted) return fitted
   const p = live(win) ? win.getBounds() : undefined
-  const l = displayLimits(s.aspect, areaOf(p), s.designH, s.free, s.extraH, s.freeMin)
+  const l = limitsFor(s, areaOf(p))
   const size = sizeAt(s, Math.min(l.maxHeight, Math.max(l.minHeight, p?.height ?? 0)), l.minWidth)
   return p ? { ...size, x: p.x + p.width, y: p.y } : size
 }
@@ -427,11 +428,12 @@ function keepProportion(id: string): Record<string, Rect> {
   const lim = s ?? PLAYER
   // Moved edges snap to nearby edges of the other windows (so windows tile); that also keeps an aspect window's aspect.
   const others = Object.entries(rectsNow()).filter(([k]) => k !== id).map(([, r]) => r)
-  const snapped = snapResize(cur, from, others, s?.free ? null : s ? (s.aspect * (cur.height - s.extraH)) / cur.height : ASPECT, lim)
+  const snapped = snapResize(cur, from, others, s?.free ? null : s ? (s.aspect * (cur.height - s.extraH)) / cur.height : ASPECT, lim, s?.extraH ?? 0)
   if (!sameRect(snapped, cur)) {
     // snapResize assumes the whole window keeps one aspect; for a bar window re-impose the body aspect on its result.
     const fixed = s && s.extraH > 0 ? proportional(snapped, cur, s.aspect, lim, s.extraH) : snapped
     programmatic(w, fixed)
+    if (s) lockAspect(w, s, lockHeightAfterResize(s.extraH, cur, fixed) ?? fixed.height) // keep the native lock in step
     resizeTarget.set(id, fixed)
     return { [id]: fixed }
   }
@@ -439,6 +441,7 @@ function keepProportion(id: string): Record<string, Rect> {
   const want = proportional(cur, from, s ? s.aspect : ASPECT, lim, s?.extraH)
   if (Math.abs(want.width - cur.width) <= 1 && Math.abs(want.height - cur.height) <= 1) return {}
   programmatic(w, want)
+  if (s) lockAspect(w, s, lockHeightAfterResize(s.extraH, cur, want) ?? want.height) // else the WM's stale lock undoes the fix
   resizeTarget.set(id, want)
   return { [id]: want }
 }
@@ -763,7 +766,7 @@ function toggleShade(s: Satellite, from?: Rect): void {
 
 function createSatellite(s: Satellite): BrowserWindow {
   const b = satelliteBounds(s)
-  Object.assign(s, displayLimits(s.aspect, areaOf(b), s.designH, s.free, s.extraH, s.freeMin))
+  Object.assign(s, limitsFor(s, areaOf(b)))
   const w = new BrowserWindow({
     ...(b.x !== undefined && b.y !== undefined ? { x: b.x, y: b.y } : { center: true }),
     width: b.width,
@@ -945,7 +948,7 @@ async function resetWindows(): Promise<void> {
   const height = defaultPlayerHeight(area, AL_ASPECT + ASPECT + PL_ASPECT + PD_ASPECT, 2)
   const rects: Record<string, Rect> = { player: { x: p.x, y: p.y, width: Math.round(height * ASPECT), height } }
   for (const s of satellites) {
-    const l = displayLimits(s.aspect, area, s.designH, s.free, s.extraH)
+    const l = limitsFor(s, area)
     rects[s.hash] = { x: 0, y: 0, ...sizeAt(s, Math.min(l.maxHeight, Math.max(l.minHeight, height)), l.minWidth) }
   }
   const laid = layout(rects, docks)

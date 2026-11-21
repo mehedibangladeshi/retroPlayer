@@ -635,3 +635,9 @@ Why: A locked group behaves as one unit, so windows cannot be pulled apart by ac
 Decision: The rack's right-click menu has `Clear cassette rack…`, disabled when the rack is empty. A native confirm (Cancel is the default) says it removes all N cassettes and their saved progress, and does not delete music files. Clear All empties `rack.json`, which holds every per-album resume point, and drops the global `session` in `settings.json`. It sends no engine command, so playback continues. While the album that was playing at clear time stays loaded, no session or resume is saved for it. Loading or re-importing any album resets that, and a re-imported album starts fresh.
 
 Why: This is the owner's decision. Without dropping the global session, session restore would bring the cleared album back at the next launch. Saving nothing for the loaded album stops its progress from returning the cleared entry while it still plays.
+
+## 2026-11-21 — Every window's minimum height is 200
+
+Decision: Every window (player, album, power, playlist and rack) has the same minimum height, 200 px, so docked windows can always line up with the player at the smallest size. The playlist's minimum composition is lowered (FREE_MIN_COMP.playlist.h 395 -> 363), and at 200 px tall its list still fits about 4 rows. The rack's minimum height rises from 178 to 200. Minimum widths are unchanged: playlist 220 and rack 330 DIP from `freeMin.ts`, album and power from their aspect.
+
+Why: The playlist's 218 px minimum was taller than the player's 200, so at the smallest size the playlist could not line up with the player's bottom edge. That broke the default layout on small screens and the dock E2E on the 1024 px Windows and macOS CI runners. `resetWindows` also now plans with the free windows' real minimums; it used the 200 floor while the native window enforced 220x218, so the power deck overlapped the playlist after a display change.
