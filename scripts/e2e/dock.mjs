@@ -755,6 +755,31 @@ const hiddenSaved = () => app.ev(`const fs = process.mainModule.require('fs'), p
   check('real right-click on the body: the menu stays open', shows.length === 1 && !!close && close[1] - shows[0][1] >= 700, `${fmt(ev.map(([k, t]) => [k, t - (ev[0]?.[1] ?? 0)]))}`)
 }
 
+// Locked windows: a real OS click on the power deck's visualizer still switches its mode. The locked body is a drag region,
+// a native caption that swallows the click unless an HTML box cuts a hole in it (the <svg>'s own no-drag cuts none).
+// A CDP Input event would skip the OS hit test, so this uses the OS pointer (a drag of 0 px is a click).
+{
+  const pw = `byId('power').webContents.executeJavaScript`
+  await menu('Lock Windows')
+  await sleep(500)
+  const vis = await app.ev(`const w = byId('power'); const c = w.getContentBounds();
+    const p = await w.webContents.executeJavaScript(\`(() => { const r = document.querySelector('.pvis').getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      return { x, y, hit: !!document.elementFromPoint(x, y)?.closest('.pvis'), locked: !!document.querySelector('.pd-stage.locked') } })()\`);
+    return { x: c.x + p.x, y: c.y + p.y, hit: p.hit, locked: p.locked, scale: screen.getDisplayMatching(c).scaleFactor }`)
+  check('lock: the power deck is locked and its visualizer is on top at its centre', vis.locked && vis.hit, fmt(vis))
+  const label = () => app.ev(`return ${pw}("document.querySelector('.pvis').getAttribute('aria-label')")`)
+  const before = await label()
+  await realDrag(vis.x, vis.y, 0, 0, vis.scale, 1)
+  await sleep(400)
+  const after = await label()
+  check('lock: a real click on the visualizer switches its mode', before !== after && /spectrum|wave/.test(after), `${before} -> ${after} at ${fmt(vis)}`)
+  if (before !== after) await realDrag(vis.x, vis.y, 0, 0, vis.scale, 1) // back to the saved mode
+  await sleep(400)
+  await menu('Lock Windows')
+  await sleep(500)
+  check('lock: unlocked again, visualizer mode restored', (await label()) === before && !(await app.ev(`return ${pw}("!!document.querySelector('.pd-stage.locked')")`)), before)
+}
+
 const quit = async () => {
   void app.ev(`setTimeout(() => app.quit(), 50)`).catch(() => {})
   app.ws.close() // --inspect holds the exit until the debugger disconnects

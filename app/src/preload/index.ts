@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { IPC, type RetroApi } from '@shared/api'
+import { IPC, type AlbumEditState, type RetroApi } from '@shared/api'
 import type { Album, EngineEvent } from '@shared/protocol'
 import type { RackState } from '@shared/rack'
 
@@ -27,6 +27,8 @@ const api: RetroApi = {
       ipcRenderer.removeListener(IPC.shaded, listener)
     }
   },
+  getVisualizerMode: () => ipcRenderer.invoke(IPC.getVisualizerMode) as Promise<'bars' | 'wave'>,
+  setVisualizerMode: (m) => ipcRenderer.send(IPC.setVisualizerMode, m),
   getLocked: () => ipcRenderer.invoke(IPC.getLocked) as Promise<boolean>,
   onLocked: (cb) => {
     const listener = (_e: IpcRendererEvent, locked: boolean): void => cb(locked)
@@ -48,7 +50,19 @@ const api: RetroApi = {
   rackAdd: (dirs) => ipcRenderer.send(IPC.rackAdd, dirs),
   rackReorder: (dirs) => ipcRenderer.send(IPC.rackReorder, dirs),
   rackMenu: (dir) => ipcRenderer.send(IPC.rackMenu, dir),
-  rackTracks: (dir) => ipcRenderer.invoke(IPC.rackTracks, dir) as Promise<Album | null>
+  rackTracks: (dir) => ipcRenderer.invoke(IPC.rackTracks, dir) as Promise<Album | null>,
+  openAlbumEdit: (dir) => ipcRenderer.send(IPC.openAlbumEdit, dir),
+  getAlbumEdit: () => ipcRenderer.invoke(IPC.getAlbumEdit) as Promise<AlbumEditState | null>,
+  onAlbumEdit: (cb) => {
+    const listener = (_e: IpcRendererEvent, s: AlbumEditState): void => cb(s)
+    ipcRenderer.on(IPC.albumEditChanged, listener)
+    return () => {
+      ipcRenderer.removeListener(IPC.albumEditChanged, listener)
+    }
+  },
+  pickAlbumCover: () => ipcRenderer.invoke(IPC.pickAlbumCover) as Promise<{ token: string; dataUrl: string } | null>,
+  saveAlbumEdit: (save) => ipcRenderer.invoke(IPC.saveAlbumEdit, save) as Promise<void>,
+  closeAlbumEdit: () => ipcRenderer.send(IPC.closeAlbumEdit)
 }
 
 contextBridge.exposeInMainWorld('retro', api)

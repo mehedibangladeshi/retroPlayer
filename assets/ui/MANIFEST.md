@@ -29,6 +29,14 @@ Command per file (ImageMagick 7):
 
 Mapping: `player-body-base`->`body-base`, `player-body-top-cover-and-utility`->`body-top-cover`, `player-body-bottom-part-with-boltu`->`body-bottom`, `player-body-buttons`->`body-buttons`, `cassette/audio-red-{base,mid,reel}`->`cassette-{base,mid,reel}`.
 
+### Cassette colour variants (new, 24 files)
+
+`png/cassette-<colour>-{base,mid,reel}.png` for colour in black, blue, cream, grey, pastel-green, red, white, yellow. Sources: `all basic cassette/basic <colour> cassette/{1 base,2 mid,3 reel}.png` (1783x1040). Each uses the same CASSETTE rect {x:90,y:85,w:586,h:342} and reel positions as the original `cassette-*.png` above. Export (same as the original cassette):
+
+    magick "SRC" -filter Lanczos -resize 1172x684! -strip PNG32:"png/cassette-<colour>-<layer>.png"
+
+The original `cassette-base/mid/reel.png` files are unchanged and remain the default cassette.
+
 Size: sources 7 PNGs 260,174 B; shipped 7 PNGs 269,166 B (resampled to 2x, still lossless).
 
 Edits to the artist's art (2026-11-01): in `source/player-body-bottom-part-with-boltu.png` the right pill (alpha island at x 2013-2213, y 1461-1494) was moved 47 px right (+15.5 CSS px) so both pills have a 24 px gap to the window edge; the island was cut and pasted unchanged, the vacated area cleared to transparent, and `png/body-bottom.png` regenerated with the command above (left pill at 2x x 48, right pill ends at 2x x 1485). Then both pills (source bboxes x 73-273 and 2060-2261, y 1461-1495) were moved 60 px down so they are centred on the seam between the upper body and the lower panel (2x seam rows 1010-1012; pills now 2x y 1000-1022, CSS y 500-511), same cut, clear and paste method. Finally the seam was redrawn as a thinner shaded groove in the same source layer (it paints over body-base): on the straight run (source x 34 to 2299, feathered over 14 px so the artist's rounded panel corners stay), rows 1533-1544 are set to, top to bottom, #2F3138 #2A2B31 #1E1F24 #15161A #141519 #18191D #1E1F24 #25262C #3A3C44 #34363D #2F3138 #2F3138 (upper edge casting a shadow into a dark groove, lit lip on the lower panel); the pills were composited back on top.

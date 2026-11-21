@@ -4,7 +4,7 @@ import { hexRgb, inkFor, meanRgb, nameColor, clear, foldResume, parseRack, rackP
 import { restoreStep } from '../src/main/session.ts'
 import { SPINE_ASPECT, type Spine } from '../src/shared/rack.ts'
 
-const sp = (dir: string, text = dir): Spine => ({ dir, text, image: null, bg: '#102030', ink: '#ffffff' })
+const sp = (dir: string, text = dir): Spine => ({ dir, text, image: null, bg: '#102030', ink: '#ffffff', design: null })
 const file = (...dirs: string[]): RackFile => ({ sort: 'recent', entries: dirs.map((d, i) => ({ ...sp(d), lastUsed: i })) })
 const dirs = (f: RackFile): string[] => f.entries.map((e) => e.dir)
 

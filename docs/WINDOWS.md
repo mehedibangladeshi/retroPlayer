@@ -157,6 +157,25 @@ through `useLocked()`.
 Limitation: on macOS no move events arrive during a drag, so the group follows at the drop. Group resize applies at
 resize end, so windows can overlap briefly during a drag. Untested on Windows and macOS.
 
+## Album Edit window
+
+The Album Edit window is a dialog, not a side window. It edits the customisation of one album in the cassette rack
+(see `docs/ARCHITECTURE.md`, Rack history). Its URL hash is `#edit`.
+
+1. One frameless, transparent, non-resizable dialog, 760x532 DIP. It is centred over the player and kept on its
+   display's work area. Its parent is the player window on every OS, and it is `skipTaskbar: true`.
+2. Not minimizable or maximizable. A `maximize` event is undone at once, because Linux ignores `maximizable: false`.
+   The OS system menu is suppressed.
+3. Not a satellite. It never docks, never counts toward the window lock, and is not in `openIds` or `hiddenWindows`.
+   It never saves its bounds and never comes back on restart. It gets no engine events.
+4. Single instance. Opening it again while it is open retargets it to the new album.
+5. The drag-region rule (rule 5 of Side windows) applies: one childless strip in its top bar, left of the close button.
+   Nothing else in the view sets `-webkit-app-region`.
+6. Opened from three places: the player's right-click menu, `Edit Album…` (enabled when the now-playing album is in
+   the rack), the rack spine's right-click menu, `Edit album…`, and an Edit button shown on a spine on hover in the rack.
+7. Its IPC is listed in `docs/ARCHITECTURE.md` (Album edit). The app windows may open it, and only the edit window
+   may use the rest.
+
 ## OS rules (keep these when you change window code)
 
 ## OS rules (keep these when you change window code)
