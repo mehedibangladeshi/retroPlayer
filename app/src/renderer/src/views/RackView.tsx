@@ -91,7 +91,7 @@ export default function RackView() {
     if (!shelf || !el) return
     // offset*/client*/scroll* are layout px, i.e. design px: the .rk scale transform doesn't affect them.
     const w = Math.max(el.offsetWidth * 2, Math.min(el.offsetWidth * 6, shelf.clientWidth - 2 * SHELF_MARGIN - el.offsetWidth))
-    const at = previewPlacement({ left: el.offsetLeft, width: el.offsetWidth }, { scrollLeft: shelf.scrollLeft, width: shelf.clientWidth }, w)
+    const at = previewPlacement({ left: (el.parentElement as HTMLElement).offsetLeft, width: el.offsetWidth }, { scrollLeft: shelf.scrollLeft, width: shelf.clientWidth }, w)
     previewRef.current = dir
     setPreviewDir(dir)
     setPanel({ dir, text: el.getAttribute('aria-label') ?? '', w, ...at })
@@ -212,8 +212,8 @@ export default function RackView() {
           onContextMenu={(e) => { e.preventDefault(); closePreview(); window.retro.rackMenu(null) }}
         >
           {rack.spines.map((s, i) => (
+            <div key={s.dir} className="rk-spine-wrap">
             <button
-              key={s.dir}
               type="button"
               className={`rk-spine${gap === i ? ' drop-before' : ''}${gap === i + 1 && i === rack.spines.length - 1 ? ' drop-after' : ''}${previewDir === s.dir ? ' previewing' : ''}${rack.nowPlaying === s.dir ? ' playing' : ''}`}
               aria-label={s.text}
@@ -229,6 +229,19 @@ export default function RackView() {
             >
               <span className="rk-spine-text">{s.text}</span>
             </button>
+            {/* Sibling of the spine (a button can't nest in a button), so its clicks never reach the spine's preview/play/drag. */}
+            <button
+              type="button"
+              className="rk-edit"
+              aria-label="Edit album"
+              style={{ ['--sw' as string]: `${spineW}px` }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); window.retro.openAlbumEdit(s.dir) }}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14l1-4 8-8 3 3-8 8-4 1zM10 3l3 3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>
+            </button>
+            </div>
           ))}
           <button
             type="button"

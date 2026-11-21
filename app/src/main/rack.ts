@@ -1,9 +1,14 @@
 // Pure model of the cassette-rack album history (no electron, no fs).
-import { SPINE_ASPECT, type RackState, type SortMode, type Spine } from '@shared/rack'
+import { SPINE_ASPECT, type AlbumCustom, type RackState, type SortMode, type Spine } from '@shared/rack'
+import { isCassetteDesign, randomDesign, type CassetteDesign } from '@shared/cassettes'
 import type { Command, EngineEvent } from '@shared/protocol'
 
-export interface RackEntry extends Spine {
+/** A spine as makeSpine returns it: the design is assigned by record/editAlbum. */
+export type SpineBase = Omit<Spine, 'design'>
+export interface RackEntry extends SpineBase {
   lastUsed: number
+  design?: CassetteDesign
+  custom?: AlbumCustom
   resume?: { index: number; path: string; positionMs: number } // where the album was left; main-only, never sent to renderers
 }
 export interface RackFile {
@@ -12,6 +17,20 @@ export interface RackFile {
 }
 
 const HEX = /^#[0-9a-f]{6}$/i
+const COVER_NAME = /^[a-f0-9]{8,64}\.jpg$/ // main writes JPEG only (readCover serves image/jpeg)
+
+/** Keeps only the valid fields of an album's overrides; undefined when none survive. */
+export function parseAlbumCustom(v: unknown): AlbumCustom | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const o = v as Record<string, unknown>
+  const c: AlbumCustom = {}
+  if (typeof o.cover === 'string' && COVER_NAME.test(o.cover)) c.cover = o.cover
+  if (typeof o.spineOffset === 'number' && o.spineOffset >= 0 && o.spineOffset <= 1) c.spineOffset = o.spineOffset
+  if (typeof o.spineColor === 'string' && HEX.test(o.spineColor)) c.spineColor = o.spineColor
+  if (typeof o.ink === 'string' && HEX.test(o.ink)) c.ink = o.ink
+  if (typeof o.text === 'string' && o.text.trim()) c.text = o.text.trim().slice(0, 200)
+  return Object.keys(c).length ? c : undefined
+}
 
 export function parseRack(raw: unknown): RackFile {
   const empty: RackFile = { sort: 'recent', entries: [] }
@@ -24,11 +43,14 @@ export function parseRack(raw: unknown): RackFile {
     const o = e as Record<string, unknown>
     if (typeof o.dir !== 'string' || !o.dir || seen.has(o.dir)) continue
     if (typeof o.text !== 'string' || typeof o.bg !== 'string' || !HEX.test(o.bg)) continue
-    if (o.ink !== '#000000' && o.ink !== '#ffffff') continue
+    if (typeof o.ink !== 'string' || !HEX.test(o.ink)) continue
     if (o.image !== null && typeof o.image !== 'string') continue
     if (typeof o.lastUsed !== 'number' || !Number.isFinite(o.lastUsed)) continue
     seen.add(o.dir)
     const entry: RackEntry = { dir: o.dir, text: o.text, image: o.image, bg: o.bg, ink: o.ink, lastUsed: o.lastUsed }
+    if (isCassetteDesign(o.design)) entry.design = o.design
+    const custom = parseAlbumCustom(o.custom)
+    if (custom) entry.custom = custom
     const rs = o.resume as Record<string, unknown> | null | undefined
     if (rs && typeof rs === 'object' && Number.isInteger(rs.index) && (rs.index as number) >= 0 && typeof rs.path === 'string' && rs.path && typeof rs.positionMs === 'number' && Number.isFinite(rs.positionMs) && rs.positionMs >= 0) {
       entry.resume = { index: rs.index as number, path: rs.path, positionMs: rs.positionMs }
@@ -84,7 +106,7 @@ function luminance([r, g, b]: [number, number, number]): number {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
 }
 
-export function inkFor(rgb: [number, number, number]): '#000000' | '#ffffff' {
+export function inkFor(rgb: [number, number, number]): string {
   const l = luminance(rgb)
   // contrast vs white (1.05 / (l + .05)) beats vs black ((l + .05) / .05) only when l is low
   return 1.05 / (l + 0.05) > (l + 0.05) / 0.05 ? '#ffffff' : '#000000'
@@ -95,7 +117,7 @@ export function hexRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
-export function spineCrop(w: number, h: number): { x: number; y: number; width: number; height: number } {
+export function spineCrop(w: number, h: number, offset = 0.5): { x: number; y: number; width: number; height: number } {
   let width = Math.round(h * SPINE_ASPECT)
   let height = h
   if (width > w) {
@@ -104,13 +126,23 @@ export function spineCrop(w: number, h: number): { x: number; y: number; width: 
   }
   width = Math.max(1, Math.min(w, width))
   height = Math.max(1, Math.min(h, height))
-  return { x: Math.floor((w - width) / 2), y: Math.floor((h - height) / 2), width, height }
+  const t = Math.max(0, Math.min(1, offset))
+  return { x: Math.floor((w - width) * t), y: Math.floor((h - height) * t), width, height }
 }
 
-export function record(f: RackFile, s: Spine, now: number): RackFile {
+const withoutDesign = (s: SpineBase): SpineBase => ({ dir: s.dir, text: s.text, image: s.image, bg: s.bg, ink: s.ink })
+
+export function record(f: RackFile, s: SpineBase, now: number, rand?: () => number): RackFile {
   const old = f.entries.find((e) => e.dir === s.dir)
-  const entry: RackEntry = { ...s, lastUsed: now, ...(old?.resume && { resume: old.resume }) }
+  const base = withoutDesign(s) // callers may pass a full Spine; the entry's design is kept or assigned below
+  const entry: RackEntry = { ...base, lastUsed: now, design: old?.design ?? randomDesign(rand), ...(old?.custom && { custom: old.custom }), ...(old?.resume && { resume: old.resume }) }
   return { ...f, entries: old ? f.entries.map((e) => (e.dir === s.dir ? entry : e)) : [...f.entries, entry] }
+}
+
+/** Replaces one album's spine, design and overrides (the edit dialog's save). Unknown dir: unchanged. */
+export function editAlbum(f: RackFile, dir: string, s: SpineBase, design: CassetteDesign, custom: AlbumCustom): RackFile {
+  const base = withoutDesign(s)
+  return { ...f, entries: f.entries.map((e) => (e.dir === dir ? { ...e, ...base, dir, design, custom } : e)) }
 }
 
 export function remove(f: RackFile, dir: string): RackFile {
@@ -133,7 +165,7 @@ export function setSort(f: RackFile, sort: SortMode): RackFile {
 
 export function view(f: RackFile, playing: string | null = null): RackState {
   const list = f.sort === 'recent' ? [...f.entries].sort((a, b) => b.lastUsed - a.lastUsed) : f.entries
-  return { sort: f.sort, nowPlaying: playing !== null && f.entries.some((e) => e.dir === playing) ? playing : null, spines: list.map((e) => ({ dir: e.dir, text: e.text, image: e.image, bg: e.bg, ink: e.ink })) }
+  return { sort: f.sort, nowPlaying: playing !== null && f.entries.some((e) => e.dir === playing) ? playing : null, spines: list.map((e) => ({ dir: e.dir, text: e.text, image: e.image, bg: e.bg, ink: e.ink, design: e.design ?? null })) }
 }
 
 /** Where to resume an album: the saved file's index in the album's current track list (by path), or null to start fresh. */

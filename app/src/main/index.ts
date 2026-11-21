@@ -1,7 +1,9 @@
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { lockHeightAfterResize } from './resizeEnd'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
-import { IPC } from '@shared/api'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { IPC, parseVisualizerMode, type AlbumEditState } from '@shared/api'
 import { ALBUM, PLAYLIST, POWER, RACK, WINDOW } from '@shared/layout'
 import { SUPPORTED_EXTENSIONS, type Album, type Command } from '@shared/protocol'
 import { SHADE } from '@shared/shade'
@@ -16,9 +18,10 @@ import { loadSettings, saveSettings, type WindowState } from './settings'
 import { AWAITING, optionsCommands, optionsStep } from './options'
 import { nextSession, restoreCommands, restoreStep, shouldSaveSession, type Session } from './session'
 import { FREE_MIN_COMP, freeMinWindow } from '@shared/freeMin'
-import { clampToLimits, defaultPlayerHeight, displayLimits, fitsWorkArea, fitSize, initialHeight, proportional, type Limits } from './windowSize'
+import { clampToLimits, defaultPlayerHeight, displayLimits, fitsWorkArea, fitSize, initialHeight, limitsFor, proportional, type Limits } from './windowSize'
 import { Sidecar } from './sidecar'
-import { clear, foldResume, rackPlayCommands, record, remove, reorder, resumePlan, setSort, view, type RackFile } from './rack'
+import { clear, editAlbum, foldResume, parseAlbumCustom, spineText, rackPlayCommands, record, remove, reorder, resumePlan, setSort, view, type RackFile } from './rack'
+import { coverTooLarge, editBounds, editState, planSave, type PendingCover } from './albumEdit'
 import { loadRack, makeSpine, saveRack } from './rackStore'
 import { dirArg, dirsArg, rackMenuTemplate } from './rackIpc'
 import { scanWaiter } from './rackTracks'
@@ -156,8 +159,27 @@ function setRack(f: RackFile): void {
 let rackSavedAt = 0
 let nowPlaying: string | null = null // dir of the album in the deck (null: a single file or nothing)
 function pushRack(): void {
-  if (live(rack.win)) rack.win.webContents.send(IPC.rackChanged, view(rackFile, nowPlaying))
+  const v = view(rackFile, nowPlaying)
+  for (const w of [rack.win, win]) if (live(w)) w.webContents.send(IPC.rackChanged, v) // the player draws the album's cassette design
 }
+// An album's custom cover (Album Edit) as a data URL, or null. The name was validated by parseAlbumCustom (parseRack or
+// planSave), so it is a bare file name and joining it under covers/ cannot leave that folder.
+const coversDir = (): string => join(app.getPath('userData'), 'covers')
+const customCover = (dir: string | null): string | null => readCover(rackFile.entries.find((e) => e.dir === dir)?.custom?.cover)
+function readCover(name: string | undefined): string | null {
+  if (!name) return null
+  try {
+    return 'data:image/jpeg;base64,' + readFileSync(join(coversDir(), name)).toString('base64')
+  } catch (err) {
+    console.warn('[main] custom cover unreadable', name, err)
+    return null
+  }
+}
+// The spine of an album as loaded, with its saved customisation (record keeps custom, but the image is rebuilt here).
+const spineOf = (a: Album): ReturnType<typeof makeSpine> => makeSpine(a, rackFile.entries.find((e) => e.dir === a.dir)?.custom, customCover(a.dir) ?? undefined)
+// The last forwarded artwork event: Sidecar caches this same object for windows that load later, so patching it
+// after an Album Edit save also fixes what they get.
+let lastArt: { cover: string | null } | null = null
 // Options-save gate (see optionsStep): waits for a fresh engine's defaults, then skips the half-applied echoes.
 let optionsSkip = AWAITING
 const sidecar = new Sidecar(
@@ -182,7 +204,15 @@ const sidecar = new Sidecar(
     if (preview && !evt.album) setRack(remove(rackFile, evt.path)) // unreadable folder (a timeout keeps the spine)
     if ((evt.type === 'playlist' || evt.type === 'albumInfo') && evt.album && !preview) {
       clearedAlbum = null // re-added: starts fresh
-      setRack(record(rackFile, makeSpine(evt.album), Date.now()))
+      setRack(record(rackFile, spineOf(evt.album), Date.now()))
+    }
+    // A custom cover replaces the folder's in what the windows see (the album window draws playlist.album.cover and
+    // artwork.cover). Patched in place: Sidecar forwards and caches this same object. The engine sends playlist before
+    // the first track's artwork, so nowPlaying is already this album's dir here.
+    if (evt.type === 'playlist' && evt.album) evt.album.cover = customCover(evt.album.dir) ?? evt.album.cover
+    if (evt.type === 'artwork') {
+      evt.cover = customCover(nowPlaying) ?? evt.cover
+      lastArt = evt
     }
     restoreLeft = restoreStep(restoreLeft, evt)
     if (restoreLeft > 0) return o.forward
@@ -206,8 +236,108 @@ const sidecar = new Sidecar(
 const previewScans = scanWaiter((path) => sidecar.send({ v: 1, type: 'scanAlbum', path }), 5000)
 const devUrl = process.env.ELECTRON_RENDERER_URL
 
+const isFrom = (w: BrowserWindow | null, e: IpcMainEvent | IpcMainInvokeEvent): boolean => live(w) && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame
 function fromAppWindow(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
-  return [win, ...satellites.map((s) => s.win)].some((w) => live(w) && e.sender === w.webContents && e.senderFrame === w.webContents.mainFrame)
+  return [win, ...satellites.map((s) => s.win)].some((w) => isFrom(w, e))
+}
+
+// Album Edit dialog (#edit): one frameless window over the player. It is not a satellite, so it never docks, joins the
+// lock, counts in openIds/hiddenWindows or saves bounds, and it gets no engine events (Sidecar's window list). It may
+// call only the edit IPC (fromEditWindow), and fromAppWindow does not accept it.
+let editWin: BrowserWindow | null = null
+let editDir: string | null = null // the album being edited
+let pendingCover: PendingCover | null = null // picked, not saved yet; dropped on close or retarget
+const fromEditWindow = (e: IpcMainEvent | IpcMainInvokeEvent): boolean => isFrom(editWin, e)
+async function editStateFor(dir: string): Promise<AlbumEditState | null> {
+  const entry = rackFile.entries.find((e) => e.dir === dir)
+  if (!entry) return null
+  const album = existsSync(dir) ? await previewScans.request(dir).catch(() => null) : null
+  const now = rackFile.entries.find((e) => e.dir === dir) // re-read: the rack may have changed during the scan
+  return now ? editState(now, album, customCover(dir), spineText) : null
+}
+function openAlbumEdit(dir: string): void {
+  if (!live(win) || !rackFile.entries.some((e) => e.dir === dir)) return
+  editDir = dir
+  pendingCover = null
+  if (live(editWin)) {
+    editWin.focus()
+    const w = editWin
+    void editStateFor(dir).then((st) => st && editDir === dir && live(w) && w.webContents.send(IPC.albumEditChanged, st))
+    return
+  }
+  const pb = win.getBounds()
+  const w = new BrowserWindow({
+    ...editBounds(pb, screen.getDisplayMatching(pb).workArea),
+    useContentSize: true,
+    frame: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    parent: win, // stays above the player and closes with it
+    title: 'Cassette Player: Edit Album',
+    transparent: true,
+    backgroundColor: '#00000000',
+    show: false,
+    webPreferences: { preload: join(__dirname, '../preload/index.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  editWin = w
+  w.once('ready-to-show', () => w.show())
+  w.on('maximize', () => w.unmaximize()) // Linux ignores maximizable:false; nothing may maximize
+  w.on('system-context-menu', (e) => e.preventDefault()) // no OS window menu on its drag strip
+  w.on('closed', () => {
+    if (editWin === w) {
+      editWin = null
+      editDir = null
+      pendingCover = null
+    }
+  })
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  w.webContents.on('will-navigate', (e, url) => {
+    if (!devUrl || !url.startsWith(devUrl)) e.preventDefault()
+  })
+  if (devUrl) void w.loadURL(`${devUrl}#edit`)
+  else void w.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'edit' })
+}
+const MAX_COVER_BYTES = 50 * 1024 * 1024
+// The native image dialog; the picked file is decoded, scaled to at most 1000 px on its longest side and kept as JPEG
+// in memory under a random token. Only main ever sees the path.
+async function pickAlbumCover(parent: BrowserWindow): Promise<{ token: string; dataUrl: string } | null> {
+  const dir = editDir
+  const r = await dialog.showOpenDialog(parent, { properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] })
+  const file = r.canceled ? null : (r.filePaths[0] ?? null)
+  // Retargeted or closed while the dialog was open: this pick belongs to no edit.
+  if (!file || editWin !== parent || editDir !== dir) return null
+  const st = statSync(file, { throwIfNoEntry: false })
+  if (!st?.isFile() || st.size > MAX_COVER_BYTES) throw new Error('That file is not a usable image (over 50 MB or not a file).')
+  let img = nativeImage.createFromPath(file)
+  if (img.isEmpty()) throw new Error('That image could not be read. Use a JPEG or PNG file.')
+  const { width, height } = img.getSize()
+  if (coverTooLarge({ width, height })) throw new Error('That image is too large.')
+  if (Math.max(width, height) > 1000) img = img.resize(width >= height ? { width: 1000, quality: 'best' } : { height: 1000, quality: 'best' })
+  const jpeg = img.toJPEG(90)
+  pendingCover = { token: randomBytes(16).toString('hex'), jpeg }
+  return { token: pendingCover.token, dataUrl: 'data:image/jpeg;base64,' + jpeg.toString('base64') }
+}
+async function saveAlbumEdit(arg: unknown): Promise<void> {
+  const plan = planSave(arg, rackFile.entries, pendingCover, parseAlbumCustom, editDir) // throws on anything invalid
+  const album = existsSync(plan.dir) ? await previewScans.request(plan.dir).catch(() => null) : null
+  if (!album) throw new Error('The album folder could not be read.')
+  if (plan.write) {
+    mkdirSync(coversDir(), { recursive: true })
+    writeFileSync(join(coversDir(), plan.write.name), plan.write.jpeg)
+    pendingCover = null
+  }
+  if (!rackFile.entries.some((e) => e.dir === plan.dir)) throw new Error('The album was removed from the rack.')
+  const cover = readCover(plan.custom.cover)
+  setRack(editAlbum(rackFile, plan.dir, makeSpine(album, plan.custom, cover ?? undefined), plan.design, plan.custom))
+  // The playing album's new cover goes to the windows now, and into the cached artwork for windows that load later.
+  if (cover && nowPlaying === plan.dir) {
+    if (lastArt) lastArt.cover = cover
+    if (sessionAlbum?.dir === plan.dir) sessionAlbum.cover = cover
+    for (const w of allWindows()) w.webContents.send(IPC.event, { v: 1, type: 'artwork', cover })
+  }
 }
 
 const ASPECT = WINDOW.width / WINDOW.height
@@ -247,7 +377,7 @@ function satelliteBounds(s: Satellite): { x?: number; y?: number; width: number;
   const fitted = fitSaved(loadSettings()[s.key], s.aspect, s.designH, s.free, s.extraH, s.freeMin)
   if (fitted) return fitted
   const p = live(win) ? win.getBounds() : undefined
-  const l = displayLimits(s.aspect, areaOf(p), s.designH, s.free, s.extraH, s.freeMin)
+  const l = limitsFor(s, areaOf(p))
   const size = sizeAt(s, Math.min(l.maxHeight, Math.max(l.minHeight, p?.height ?? 0)), l.minWidth)
   return p ? { ...size, x: p.x + p.width, y: p.y } : size
 }
@@ -427,11 +557,12 @@ function keepProportion(id: string): Record<string, Rect> {
   const lim = s ?? PLAYER
   // Moved edges snap to nearby edges of the other windows (so windows tile); that also keeps an aspect window's aspect.
   const others = Object.entries(rectsNow()).filter(([k]) => k !== id).map(([, r]) => r)
-  const snapped = snapResize(cur, from, others, s?.free ? null : s ? (s.aspect * (cur.height - s.extraH)) / cur.height : ASPECT, lim)
+  const snapped = snapResize(cur, from, others, s?.free ? null : s ? (s.aspect * (cur.height - s.extraH)) / cur.height : ASPECT, lim, s?.extraH ?? 0)
   if (!sameRect(snapped, cur)) {
     // snapResize assumes the whole window keeps one aspect; for a bar window re-impose the body aspect on its result.
     const fixed = s && s.extraH > 0 ? proportional(snapped, cur, s.aspect, lim, s.extraH) : snapped
     programmatic(w, fixed)
+    if (s) lockAspect(w, s, lockHeightAfterResize(s.extraH, cur, fixed) ?? fixed.height) // keep the native lock in step
     resizeTarget.set(id, fixed)
     return { [id]: fixed }
   }
@@ -439,6 +570,7 @@ function keepProportion(id: string): Record<string, Rect> {
   const want = proportional(cur, from, s ? s.aspect : ASPECT, lim, s?.extraH)
   if (Math.abs(want.width - cur.width) <= 1 && Math.abs(want.height - cur.height) <= 1) return {}
   programmatic(w, want)
+  if (s) lockAspect(w, s, lockHeightAfterResize(s.extraH, cur, want) ?? want.height) // else the WM's stale lock undoes the fix
   resizeTarget.set(id, want)
   return { [id]: want }
 }
@@ -719,7 +851,9 @@ function createWindow(): void {
       else s.win?.close()
     }
     const boost = { db: loadSettings().options?.boostDb ?? 0, set: (boostDb: number) => sidecar.send({ v: 1, type: 'setBoost', boostDb }) }
-    Menu.buildFromTemplate(contextMenu(items, toggle, { reset: () => void resetWindows(), fillGaps: fillGapsAction, toggleLock: () => setLocked(!locked) }, boost, locked, canLock(openIds(), docks))).popup({ window: w })
+    const playing = nowPlaying
+    const editAction = playing && rackFile.entries.some((x) => x.dir === playing) ? () => openAlbumEdit(playing) : undefined
+    Menu.buildFromTemplate(contextMenu(items, toggle, { reset: () => void resetWindows(), fillGaps: fillGapsAction, toggleLock: () => setLocked(!locked), editAlbum: editAction }, boost, locked, canLock(openIds(), docks))).popup({ window: w })
   })
   // A right-click on a drag region also fires 'system-context-menu' (Windows, Linux) first, on the button press: only
   // suppress the OS window menu there. A menu shown from it is closed by the release, and two menus left none open on Windows.
@@ -763,7 +897,7 @@ function toggleShade(s: Satellite, from?: Rect): void {
 
 function createSatellite(s: Satellite): BrowserWindow {
   const b = satelliteBounds(s)
-  Object.assign(s, displayLimits(s.aspect, areaOf(b), s.designH, s.free, s.extraH, s.freeMin))
+  Object.assign(s, limitsFor(s, areaOf(b)))
   const w = new BrowserWindow({
     ...(b.x !== undefined && b.y !== undefined ? { x: b.x, y: b.y } : { center: true }),
     width: b.width,
@@ -945,7 +1079,7 @@ async function resetWindows(): Promise<void> {
   const height = defaultPlayerHeight(area, AL_ASPECT + ASPECT + PL_ASPECT + PD_ASPECT, 2)
   const rects: Record<string, Rect> = { player: { x: p.x, y: p.y, width: Math.round(height * ASPECT), height } }
   for (const s of satellites) {
-    const l = displayLimits(s.aspect, area, s.designH, s.free, s.extraH)
+    const l = limitsFor(s, area)
     rects[s.hash] = { x: 0, y: 0, ...sizeAt(s, Math.min(l.maxHeight, Math.max(l.minHeight, height)), l.minWidth) }
   }
   const laid = layout(rects, docks)
@@ -1029,6 +1163,11 @@ if (relaunch) {
     if (dir) saveSettings({ lastOpenDir: dirname(dir) })
     return dir
   })
+  ipcMain.handle(IPC.getVisualizerMode, (e) => (fromAppWindow(e) && loadSettings().visualizerMode) || 'bars')
+  ipcMain.on(IPC.setVisualizerMode, (e, m: unknown) => {
+    const mode = parseVisualizerMode(m)
+    if (fromAppWindow(e) && mode) saveSettings({ visualizerMode: mode })
+  })
   ipcMain.handle(IPC.getLocked, (e) => fromAppWindow(e) && locked)
   ipcMain.handle(IPC.rackGet, (e) => (fromAppWindow(e) ? view(rackFile, nowPlaying) : null))
   const doubleClickMs = readDoubleClickMs()
@@ -1074,6 +1213,7 @@ if (relaunch) {
     const template = rackMenuTemplate(rackFile.sort, hasDir, rackFile.entries.length, {
       setSort: (s) => setRack(setSort(rackFile, s)),
       remove: () => dir && setRack(remove(rackFile, dir)),
+      edit: () => dir && openAlbumEdit(dir),
       clear: async () => {
         if (clearing) return
         clearing = true
@@ -1095,6 +1235,24 @@ if (relaunch) {
       }
     })
     Menu.buildFromTemplate(template).popup({ window: w })
+  })
+  ipcMain.on(IPC.openAlbumEdit, (e, arg: unknown) => {
+    const dir = dirArg(arg)
+    if (fromAppWindow(e) && dir) openAlbumEdit(dir)
+  })
+  ipcMain.handle(IPC.getAlbumEdit, (e) => (fromEditWindow(e) && editDir ? editStateFor(editDir) : null))
+  ipcMain.handle(IPC.pickAlbumCover, (e) => (fromEditWindow(e) && live(editWin) ? pickAlbumCover(editWin) : null))
+  ipcMain.handle(IPC.saveAlbumEdit, async (e, arg: unknown) => {
+    if (!fromEditWindow(e)) throw new Error('not allowed')
+    try {
+      await saveAlbumEdit(arg)
+    } catch (err) {
+      console.warn('[main] album edit not saved:', err)
+      throw err // the dialog shows why
+    }
+  })
+  ipcMain.on(IPC.closeAlbumEdit, (e) => {
+    if (fromEditWindow(e)) editWin?.close()
   })
   ipcMain.on(IPC.showPlaylist, (e) => {
     if (!fromAppWindow(e)) return

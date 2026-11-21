@@ -12,3 +12,7 @@ app/build/sidecar/
 .claude/*
 !.claude/skills/
 graphify-out/
+
+# Hillside font: personal-use licence, must not be redistributed in this public repo
+assets/ui/updated send 9-11-26/fonts/hillside.zip
+assets/ui/updated send 9-11-26/fonts/hillside/

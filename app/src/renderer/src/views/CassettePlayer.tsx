@@ -8,16 +8,24 @@ import { openAlbum, openFile } from '../input/openFile'
 import { useFileDrop } from '../input/useFileDrop'
 import { useKeyboard } from '../input/useKeyboard'
 import { useSeekHold } from '../input/useSeekHold'
+import type { RackState } from '@shared/rack'
+import type { CassetteDesign } from '@shared/cassettes'
+import { cassetteFiles, nowPlayingDesign } from './cassetteDesign'
 import { transportDisabled } from './transport'
 import { useReels } from './useReels'
 import './CassettePlayer.css'
 
 const urls = import.meta.glob<string>('@assets/png/*.png', { query: '?url', import: 'default', eager: true })
+const urlFor = (file: string): string | undefined => Object.entries(urls).find(([k]) => k.endsWith(`/${file}`))?.[1]
 const layerUrl = (id: LayerId): string => {
-  const file = LAYERS.find((l) => l.id === id)!.file
-  const hit = Object.entries(urls).find(([k]) => k.endsWith(`/${file}`))
-  if (!hit) throw new Error(`missing artwork for ${id}`)
-  return hit[1]
+  const url = urlFor(LAYERS.find((l) => l.id === id)!.file)
+  if (!url) throw new Error(`missing artwork for ${id}`)
+  return url
+}
+/** Now-playing album's cassette layer; falls back to the original if the file is missing. */
+const cassetteUrl = (id: 'cassetteBase' | 'cassetteMid' | 'cassetteReel', design: CassetteDesign | null): string => {
+  const f = cassetteFiles(design)
+  return urlFor({ cassetteBase: f.base, cassetteMid: f.mid, cassetteReel: f.reel }[id]) ?? layerUrl(id)
 }
 
 /** Scale that fits the fixed composition inside the viewport (letterboxed), tracked on resize. */
@@ -40,22 +48,23 @@ const TOAST_INSET = 40
 // Popover sits at the bottom centre of the cassette window, above the "click to open" hint.
 const MENU = { x: CASSETTE.x + CASSETTE.w / 2 - 70, y: CASSETTE.y + CASSETTE.h - 96 }
 const PROMPT = 'CLICK OR DROP A FILE'
-const STATIC_LAYERS: LayerId[] = ['bodyBase', 'cassetteBase', 'cassetteMid']
+const STATIC_LAYERS: LayerId[] = ['bodyBase']
 const TOP_LAYERS: LayerId[] = ['bodyTopCover', 'bodyBottom']
 const layerRect = (id: LayerId): Rect => LAYERS.find((l) => l.id === id)!.rect
 
-function Layer({ id }: { id: LayerId }) {
-  return <img className="layer" src={layerUrl(id)} alt="" draggable={false} style={rectStyle(layerRect(id))} />
+function Layer({ id, design }: { id: LayerId; design?: CassetteDesign | null }) {
+  const src = id === 'cassetteBase' || id === 'cassetteMid' ? cassetteUrl(id, design ?? null) : layerUrl(id)
+  return <img className="layer" src={src} alt="" draggable={false} style={rectStyle(layerRect(id))} />
 }
 
-function Reel({ circle, reelRef }: { circle: { cx: number; cy: number; r: number }; reelRef: React.RefObject<HTMLImageElement | null> }) {
+function Reel({ circle, reelRef, design }: { design: CassetteDesign | null; circle: { cx: number; cy: number; r: number }; reelRef: React.RefObject<HTMLImageElement | null> }) {
   const cx = circle.cx - CASSETTE.x
   const cy = circle.cy - CASSETTE.y
   return (
     <img
       ref={reelRef}
       className="layer reel"
-      src={layerUrl('cassetteReel')}
+      src={cassetteUrl('cassetteReel', design)}
       alt=""
       draggable={false}
       style={{ ...rectStyle(CASSETTE), clipPath: `circle(${circle.r}px at ${cx}px ${cy}px)`, transformOrigin: `${cx}px ${cy}px` }}
@@ -78,6 +87,17 @@ export default function CassettePlayer() {
   const dragging = useFileDrop()
   const off = transportDisabled(status)
   const fit = useFitScale()
+  const [design, setDesign] = useState<CassetteDesign | null>(null)
+  useEffect(() => {
+    let live = true
+    const apply = (r: RackState): void => setDesign(nowPlayingDesign(r))
+    void window.retro.getRack().then((r) => live && apply(r))
+    const off = window.retro.onRack((r) => {
+      live = false // a push is newer than the initial read, which may still be pending
+      apply(r)
+    })
+    return () => { live = false; off() }
+  }, [])
   const loaded = status !== 'empty'
   const title = trackInfo?.title || PROMPT
 
@@ -137,8 +157,10 @@ export default function CassettePlayer() {
       {STATIC_LAYERS.map((id) => (
         <Layer key={id} id={id} />
       ))}
-      <Reel circle={REELS.left} reelRef={reels.left} />
-      <Reel circle={REELS.right} reelRef={reels.right} />
+      <Layer id="cassetteBase" design={design} />
+      <Layer id="cassetteMid" design={design} />
+      <Reel circle={REELS.left} reelRef={reels.left} design={design} />
+      <Reel circle={REELS.right} reelRef={reels.right} design={design} />
       {TOP_LAYERS.map((id) => (
         <Layer key={id} id={id} />
       ))}

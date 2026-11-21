@@ -26,4 +26,6 @@ body { background: transparent; overflow: hidden; }
 .pd-boost-text { position: absolute; text-align: center; font-size: 8px; line-height: 10px; letter-spacing: 1px; text-transform: uppercase; color: #8b9099; pointer-events: none; }
 /* While locked, the empty body drags the whole window group; every control opts out (drag regions swallow mouse events). */
 .pd-stage.locked .pd-body { -webkit-app-region: drag; }
+/* Chromium cuts no drag hole for an <svg>, so a last-child HTML box over POWER.VIS (pointer-events: none, clicks reach the svg) cuts it. shortcut: duplicates layout.ts POWER.VIS, update both if it moves. */
+.pd-stage.locked .pd::after { content: ''; position: absolute; left: 33.5px; top: 468px; width: 256px; height: 191.5px; pointer-events: none; -webkit-app-region: no-drag; }
 .pd-stage.locked button, .pd-stage.locked input, .pd-stage.locked .pk-hit, .pd-stage.locked .ps, .pd-stage.locked .pvis { -webkit-app-region: no-drag; }

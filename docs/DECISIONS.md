@@ -635,3 +635,51 @@ Why: A locked group behaves as one unit, so windows cannot be pulled apart by ac
 Decision: The rack's right-click menu has `Clear cassette rack…`, disabled when the rack is empty. A native confirm (Cancel is the default) says it removes all N cassettes and their saved progress, and does not delete music files. Clear All empties `rack.json`, which holds every per-album resume point, and drops the global `session` in `settings.json`. It sends no engine command, so playback continues. While the album that was playing at clear time stays loaded, no session or resume is saved for it. Loading or re-importing any album resets that, and a re-imported album starts fresh.
 
 Why: This is the owner's decision. Without dropping the global session, session restore would bring the cleared album back at the next launch. Saving nothing for the loaded album stops its progress from returning the cleared entry while it still plays.
+
+## 2026-11-21 — Every window's minimum height is 200
+
+Decision: Every window (player, album, power, playlist and rack) has the same minimum height, 200 px, so docked windows can always line up with the player at the smallest size. The playlist's minimum composition is lowered (FREE_MIN_COMP.playlist.h 395 -> 363), and at 200 px tall its list still fits about 4 rows. The rack's minimum height rises from 178 to 200. Minimum widths are unchanged: playlist 220 and rack 330 DIP from `freeMin.ts`, album and power from their aspect.
+
+Why: The playlist's 218 px minimum was taller than the player's 200, so at the smallest size the playlist could not line up with the player's bottom edge. That broke the default layout on small screens and the dock E2E on the 1024 px Windows and macOS CI runners. `resetWindows` also now plans with the free windows' real minimums; it used the 200 floor while the native window enforced 220x218, so the power deck overlapped the playlist after a display change.
+
+## 2026-11-21 — Album Edit is a separate dialog window, outside docking and the lock
+
+Decision: The Album Edit window (`#edit`) is a frameless dialog window. It is not a side window: it never docks, never counts toward the window lock, is not in `openIds` or `hiddenWindows`, and never restores on restart. See `docs/WINDOWS.md`, Album Edit window.
+
+Why: A short-lived editor should not have to dock to keep the lock valid.
+
+## 2026-11-21 — Per-album customisation lives on the rack entry
+
+Decision: Each album's cassette design and customisation (`design`, and `custom` with the cover, spine offset, spine colour, ink and text) are stored on its rack entry in `rack.json`, keyed by album folder. They are not stored in `settings.json`. See `docs/ARCHITECTURE.md`, Rack history.
+
+Why: The rack already holds one record per album, so the look belongs to the album. Old `rack.json` files load unchanged, because the new fields are optional.
+
+## 2026-11-21 — Custom covers are copied into userData under a content hash
+
+Decision: A custom cover is picked in a native dialog in main, decoded and scaled there, and written to `userData/covers/<first 32 hex of sha256>.jpg` on save. The renderer never sends a file path or a cover file name. See `docs/ARCHITECTURE.md`, Album edit.
+
+Why: The renderer must not read or name files, as the security rules say. A content hash names each cover once, so the same image is stored once.
+
+## 2026-11-21 — Eight new cassette designs ship as PNGs; CSS redraw is deferred
+
+Decision: The eight new cassette designs (`assets/ui/all basic cassette/`) ship as PNGs resized from the provided art, the same way as the original cassette. A redraw of all nine cassettes in HTML and CSS was requested. It is deferred to its own plan, `docs/plans/2026-11-21-css-cassettes.md`, and needs the owner's approval per design.
+
+Why: The PNGs match the artwork the owner supplied, so the batch can ship now. `AGENTS.md` says not to redraw final artwork without approval, so a redraw waits for it.
+
+## 2026-11-21 — Visualizer mode is saved globally
+
+Decision: The visualizer mode (`bars` or `wave`) is saved once in `settings.json` as `visualizerMode`. It is read and set over `ui:getVisualizerMode` and `ui:setVisualizerMode`. It is not per album, and it is not an engine option.
+
+Why: The visualizer is a display choice, not a property of the album. A global value is the simplest one that survives a restart.
+
+## 2026-11-21 — Playlist border drag under the lock is not changed
+
+Decision: Letting the playlist border drag while the windows are locked was considered, and it was not changed. The rule that rack and playlist content never drags stays (`docs/WINDOWS.md`, Window lock, rule 8). This is the owner's choice.
+
+Why: The owner chose to keep the rule. A change to a window rule needs the owner's approval.
+
+## 2026-11-21 — Power-deck visualizer freezes under the lock on Windows
+
+Decision: under the window lock, a no-drag `.pd::after` box over the visualizer (PowerView.css, a copy of POWER.VIS) cuts the drag hole; the `.pvis` rule on the `<svg>` alone cuts none.
+
+Why: Chromium does not collect an outer `<svg>` box as a no-drag region, and the full-size layer images after it inherit drag, so a hole must be the last child of `.pd`. On Windows a drag region is HTCAPTION, so the OS swallowed every click and the visualizer looked frozen. Reproduced with real XTest drags on Linux X11 too. The dock E2E checks it with a real OS click, since CDP input skips the OS hit test.

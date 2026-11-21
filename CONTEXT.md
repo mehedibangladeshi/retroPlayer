@@ -29,3 +29,11 @@ _Avoid_: bookmark, saved session
 
 **Boost**:
 Extra gain on the music for quiet tracks: Off, +3, +6, +9 or +12 dB. It is limited so it does not clip, and it is separate from the volume knob, which only lowers the level.
+
+**Cassette design**:
+The look of the cassette in the deck for one album: one of eight colour sets (black, blue, cream, grey, pastel green, red, white, yellow). An album gets one at random the first time it reaches the **Rack** and keeps it until the owner picks another. Single songs and an empty deck show the original cassette.
+_Avoid_: skin, theme, tape colour
+
+**Album edit**:
+The owner's customisation of one album: its cover image, which part of the cover the **Spine** shows, an optional solid spine colour, the spine text and its colour, and the **Cassette design**. Made in the Album Edit window and kept with the album's **Rack** entry.
+_Avoid_: album settings, metadata edit
