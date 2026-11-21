@@ -10,6 +10,7 @@ const views = [
   { name: 'Album', css: 'AlbumView.css', tsx: 'AlbumView.tsx', strip: 'al-titlebar', lockedDrag: true },
   { name: 'Rack', css: 'RackView.css', tsx: 'RackView.tsx', strip: 'rk-titlebar', lockedDrag: false },
   { name: 'Power deck', css: 'PowerView.css', tsx: 'PowerView.tsx', strip: 'pd-titlebar', lockedDrag: true },
+  { name: 'Album Edit', css: 'EditView.css', tsx: 'EditView.tsx', strip: 'ed-titlebar', lockedDrag: false },
 ]
 
 const read = (file: string) => readFileSync(new URL(`../src/renderer/src/views/${file}`, import.meta.url), 'utf8')

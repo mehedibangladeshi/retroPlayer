@@ -177,9 +177,9 @@ function nearest(v: number, edges: number[]): number | null {
 /**
  * At the end of a user resize (`from` -> `cur`), snap each moved edge to the nearest parallel edge of `others` that
  * shares (or touches) its span. A free window (aspect null) snaps edges independently; an aspect window snaps the
- * edge of the dimension that changed most and derives the other, keeping the unmoved edges fixed. cur if no target.
+ * edge of the dimension that changed most and derives the other, keeping the unmoved edges fixed. extraH is a fixed bar inside the height (aspect is then the whole window's ratio at cur). cur if no target.
  */
-export function snapResize(cur: Rect, from: Rect, others: Rect[], aspect: number | null, l: Limits): Rect {
+export function snapResize(cur: Rect, from: Rect, others: Rect[], aspect: number | null, l: Limits, extraH = 0): Rect {
   // Docked neighbours sit GAP apart, so "touching" tolerates GAP (+1 for rounding) on the shared span.
   const t = GAP + 1
   const touchY = others.filter((o) => o.y <= cur.y + cur.height + t && cur.y <= o.y + o.height + t)
@@ -213,7 +213,8 @@ export function snapResize(cur: Rect, from: Rect, others: Rect[], aspect: number
     return { x, y, width, height }
   }
 
-  const byWidth = Math.abs(cur.width - from.width) / from.width > Math.abs(cur.height - from.height) / from.height
+  // A bar window's height holds a fixed bar, so judge the drag on the body (else a bottom-edge drag reads as a width drag).
+  const byWidth = Math.abs(cur.width - from.width) / from.width > Math.abs(cur.height - from.height) / (from.height - extraH)
   let width: number
   let height: number
   if (byWidth) {
@@ -224,7 +225,7 @@ export function snapResize(cur: Rect, from: Rect, others: Rect[], aspect: number
   } else {
     if (tT === null && tB === null) return cur
     height = Math.round(clamp((tB ?? bottom) - (tT ?? cur.y), Math.max(l.minHeight, Math.ceil(l.minWidth / aspect)), Math.min(l.maxHeight, Math.floor(l.maxWidth / aspect))))
-    width = clamp(Math.round(height * aspect), l.minWidth, l.maxWidth)
+    width = clamp(Math.round((height - extraH) * aspect * cur.height / (cur.height - extraH)), l.minWidth, l.maxWidth)
   }
   return { x: movedL ? right - width : cur.x, y: movedT ? bottom - height : cur.y, width, height }
 }

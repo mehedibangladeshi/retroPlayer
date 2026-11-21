@@ -139,6 +139,19 @@ test('snap: the start edge still wins when it is closer', () => {
 
 const L: Limits = { minWidth: 50, minHeight: 50, maxWidth: 2000, maxHeight: 2000 }
 
+test('snapResize: a bottom-edge drag of a bar window is a height drag and snaps flush with the player bottom', () => {
+  const a = 937 / 875 // body aspect, bar excluded
+  const bar = 34
+  for (const over of [7, 5]) {
+    const from = r(-187, 100, 285, 300) // left of the player, bottom at 400 like the player's
+    const h = 300 + over
+    const cur = r(-187, 100, Math.round((h - bar) * a), h)
+    const snapped = snapResize(cur, from, [P], (a * (h - bar)) / h, L, bar)
+    assert.equal(snapped.y + snapped.height, 400)
+    assert.equal(snapped.width, Math.round((snapped.height - bar) * a))
+  }
+})
+
 test('snapResize: a free window right edge snaps to a neighbour right edge, height untouched', () => {
   const from = r(100, 400, 300, 200) // below the player (100..500)
   const cur = r(100, 400, 392, 210) // right edge 8 px short of 500, bottom moved too but nothing near it

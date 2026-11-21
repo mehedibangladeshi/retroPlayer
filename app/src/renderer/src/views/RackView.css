@@ -28,14 +28,24 @@ body { background: transparent; overflow: hidden; }
 .rk .rk-spine:focus-visible, .rk .rk-add:focus-visible { outline: 3px solid rgba(255, 255, 255, 0.6); outline-offset: 2px; }
 /* Hover lifts a spine inside the shelf's top padding (24 px: lift and shadow stay within it); pressing pushes it back in; the previewed one stays lifted. */
 .rk .rk-spine, .rk .rk-add { transition: transform 150ms ease-out, box-shadow 150ms ease-out; }
-.rk:not(.dragging) .rk-spine:hover, .rk:not(.dragging) .rk-add:hover, .rk .rk-spine.previewing { transform: translateY(max(calc(var(--sw) * -0.06), -12px)); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4); z-index: 1; }
-.rk:not(.dragging) .rk-spine:hover:active, .rk:not(.dragging) .rk-add:hover:active { transform: translateY(max(calc(var(--sw) * -0.03), -6px)); }
+.rk:not(.dragging) .rk-spine-wrap:hover .rk-spine, .rk:not(.dragging) .rk-add:hover, .rk .rk-spine.previewing { transform: translateY(max(calc(var(--sw) * -0.06), -12px)); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4); z-index: 1; }
+.rk:not(.dragging) .rk-spine-wrap:hover .rk-spine:active, .rk:not(.dragging) .rk-add:hover:active { transform: translateY(max(calc(var(--sw) * -0.03), -6px)); }
 @media (prefers-reduced-motion: reduce) {
   .rk .rk-spine, .rk .rk-add { transition: none; }
-  .rk:not(.dragging) .rk-spine:hover, .rk:not(.dragging) .rk-add:hover, .rk .rk-spine.previewing { transform: translateY(max(calc(var(--sw) * -0.02), -4px)); }
+  .rk:not(.dragging) .rk-spine-wrap:hover .rk-spine, .rk:not(.dragging) .rk-add:hover, .rk .rk-spine.previewing { transform: translateY(max(calc(var(--sw) * -0.02), -4px)); }
 }
 .rk .rk-add { background: transparent; color: #e0e0e0; font-weight: 300; font-size: calc(var(--sw) * 0.5); line-height: 1; }
 .rk .rk-spine.playing { box-shadow: inset 0 0 0 2px rgba(255, 226, 170, 0.75), inset 0 0 10px rgba(255, 210, 140, 0.45); filter: brightness(1.08); }
+.rk .rk-spine-wrap { position: relative; display: flex; flex: none; }
+/* Hover glow rides on box-shadow; the playing light (inset) is re-stated so both show. */
+.rk:not(.dragging) .rk-spine-wrap:hover .rk-spine { box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 190, 110, 0.4); }
+.rk:not(.dragging) .rk-spine-wrap:hover .rk-spine.playing { box-shadow: inset 0 0 0 2px rgba(255, 226, 170, 0.75), inset 0 0 10px rgba(255, 210, 140, 0.45), 0 4px 8px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 190, 110, 0.4); }
+.rk .rk-edit { position: absolute; z-index: 2; top: calc(var(--sw) * 0.1); left: 50%; width: calc(var(--sw) * 0.5); height: calc(var(--sw) * 0.5); transform: translateX(-50%); display: grid; place-items: center; padding: 0; border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 50%; background: rgba(20, 16, 12, 0.7); color: #f1e3c8; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 150ms ease-out, transform 150ms ease-out; }
+.rk:not(.dragging) .rk-spine-wrap:hover .rk-edit { transform: translate(-50%, max(calc(var(--sw) * -0.06), -12px)); }
+.rk .rk-edit svg { width: 62%; height: 62%; }
+.rk:not(.dragging) .rk-spine-wrap:hover .rk-edit, .rk:not(.dragging) .rk-spine-wrap:focus-within .rk-edit { opacity: 1; pointer-events: auto; }
+.rk .rk-edit:hover { background: rgba(60, 44, 28, 0.9); }
+.rk .rk-edit:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.7); }
 .rk .rk-spine.drop-before { box-shadow: -6px 0 0 #e8e8e8; }
 .rk .rk-spine.drop-after { box-shadow: 6px 0 0 #e8e8e8; }
 /* Reads top to bottom, centred across the spine, starting 20.7% down, glyph box 66 px wide of 211 (4 name reff.png). */

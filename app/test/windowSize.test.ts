@@ -1,7 +1,7 @@
 import { FREE_MIN_COMP, freeMinWindow } from '../src/shared/freeMin.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clampToLimits, defaultPlayerHeight, displayLimits, fitSize, fitsWorkArea, heightRange, initialHeight, migrateSettings, proportional, LAYOUT_VERSION } from '../src/main/windowSize.ts'
+import { clampToLimits, defaultPlayerHeight, displayLimits, fitSize, limitsFor, fitsWorkArea, heightRange, initialHeight, migrateSettings, proportional, LAYOUT_VERSION } from '../src/main/windowSize.ts'
 
 const A = 767 / 616
 
@@ -88,11 +88,21 @@ test('displayLimits: free rack window ties min width to min height', () => {
 
 test('displayLimits: a free window with its own minimum uses it for width and height', () => {
   const l = displayLimits(1623 / 936, { width: 1920, height: 1040 }, 936, true, 0, freeMinWindow(FREE_MIN_COMP.rack))
-  assert.deepEqual(l, { minWidth: 330, minHeight: 178, maxWidth: 1623, maxHeight: 936 })
+  assert.deepEqual(l, { minWidth: 330, minHeight: 200, maxWidth: 1623, maxHeight: 936 })
 })
 test('freeMinWindow: the composition at CHROME_SCALE, rounded up', () => {
-  assert.deepEqual(freeMinWindow(FREE_MIN_COMP.playlist), { width: 220, height: 218 })
+  assert.deepEqual(freeMinWindow(FREE_MIN_COMP.playlist), { width: 220, height: 200 })
   assert.deepEqual(freeMinWindow(FREE_MIN_COMP.rack), { width: 330, height: 178 })
+})
+
+test('limitsFor: free windows get their freeMin width and the flat 200 height (reset plans with the same limits)', () => {
+  const area = { width: 1920, height: 1040 }
+  const pl = limitsFor({ aspect: 1, designH: 937, free: true, extraH: 0, freeMin: freeMinWindow(FREE_MIN_COMP.playlist) }, area)
+  assert.equal(pl.minWidth, 220)
+  assert.equal(pl.minHeight, 200)
+  const rk = limitsFor({ aspect: 1.7, designH: 936, free: true, extraH: 0, freeMin: freeMinWindow(FREE_MIN_COMP.rack) }, area)
+  assert.equal(rk.minWidth, 330)
+  assert.equal(rk.minHeight, 200)
 })
 
 test('displayLimits: aspect window widths follow heights', () => {

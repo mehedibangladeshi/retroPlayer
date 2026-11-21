@@ -21,7 +21,17 @@ export default function PowerVisualizer(): React.JSX.Element {
   })
   const barRefs = useRef<(SVGRectElement | null)[]>([])
   const capRefs = useRef<(SVGRectElement | null)[]>([])
-  const toggle = (): void => setMode((m) => (m === 'bars' ? 'wave' : 'bars'))
+  const touched = useRef(false) // a toggle before the saved mode loads wins over it
+  useEffect(() => {
+    void window.retro.getVisualizerMode().then((m) => touched.current || setMode(m))
+  }, [])
+  const toggle = (): void =>
+    setMode((m) => {
+      touched.current = true
+      const next = m === 'bars' ? 'wave' : 'bars'
+      window.retro.setVisualizerMode(next)
+      return next
+    })
 
   // Heights are written straight to the DOM from rAF, so React does not re-render at 60 fps.
   useEffect(() => {

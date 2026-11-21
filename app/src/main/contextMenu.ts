@@ -29,7 +29,7 @@ const SHORTCUTS: ([label: string, key: string] | null)[] = [
 export function contextMenu(
   windows: { label: string; visible: boolean }[],
   toggle: (i: number, show: boolean) => void,
-  actions: { reset: () => void; fillGaps: () => void; toggleLock?: () => void },
+  actions: { reset: () => void; fillGaps: () => void; toggleLock?: () => void; editAlbum?: () => void }, // editAlbum: only while an album is loaded
   boost: { db: number; set: (db: number) => void },
   locked = false,
   canLock = false
@@ -54,6 +54,7 @@ export function contextMenu(
       // The keys only show beside each item: the windows handle them, so the menu must not bind them.
       submenu: SHORTCUTS.map((s) => (s ? { label: s[0], accelerator: s[1], registerAccelerator: false } : { type: 'separator' }))
     },
+    { label: 'Edit Album…', enabled: !!actions.editAlbum, click: () => actions.editAlbum?.() },
     { type: 'separator' },
     // shortcut: placeholders that do nothing yet, wire them up when Settings, updates and About exist.
     { label: 'Settings…' },

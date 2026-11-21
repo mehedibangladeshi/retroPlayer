@@ -1,6 +1,7 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { parseVisualizerMode, type VisualizerMode } from '@shared/api'
 import { parseHidden, parseLocked } from './contextMenu'
 import { parseOptions, type Options } from './options'
 import { parseSession, type Session } from './session'
@@ -9,7 +10,7 @@ import { LAYOUT_VERSION, migrateSettings } from './windowSize'
 export { LAYOUT_VERSION, migrateSettings }
 
 export interface WindowState { x: number; y: number; width: number; height: number }
-export interface Settings { layoutVersion?: number; lastOpenDir?: string; window?: WindowState; playlistWindow?: WindowState; albumWindow?: WindowState; rackWindow?: WindowState; powerWindow?: WindowState; hiddenWindows?: string[]; session?: Session; options?: Options; windowsLocked?: boolean }
+export interface Settings { layoutVersion?: number; lastOpenDir?: string; window?: WindowState; playlistWindow?: WindowState; albumWindow?: WindowState; rackWindow?: WindowState; powerWindow?: WindowState; hiddenWindows?: string[]; session?: Session; options?: Options; windowsLocked?: boolean; visualizerMode?: VisualizerMode }
 
 let cache: Settings | null = null
 
@@ -52,6 +53,8 @@ function parse(raw: unknown): Settings {
   if (options) out.options = options
   const locked = parseLocked(r.windowsLocked)
   if (locked !== undefined) out.windowsLocked = locked
+  const vis = parseVisualizerMode(r.visualizerMode)
+  if (vis) out.visualizerMode = vis
   return out
 }
 

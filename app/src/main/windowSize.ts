@@ -61,9 +61,13 @@ export function heightRange(area: Area, designH: number): { minHeight: number; m
 // `freeMin`: a free window's own smallest size (freeMin.ts); without it a free window is 200 x 200 at least.
 export function displayLimits(aspect: number, area: Area, designH: number, free = false, extraH = 0, freeMin?: { width: number; height: number }): Limits {
   const { minHeight: floor, maxHeight } = heightRange(area, designH)
-  const minHeight = free && freeMin ? freeMin.height : floor
+  const minHeight = floor // every window, free ones included, may shrink to the flat floor
   return { minWidth: free ? (freeMin?.width ?? floor) : Math.round((floor - extraH) * aspect), minHeight, maxWidth: Math.round((maxHeight - extraH) * aspect), maxHeight }
 }
+
+/** displayLimits for a window spec, so every call site passes freeMin the same way. */
+export const limitsFor = (s: { aspect: number; designH: number; free: boolean; extraH: number; freeMin?: { width: number; height: number } }, area: Area): Limits =>
+  displayLimits(s.aspect, area, s.designH, s.free, s.extraH, s.freeMin)
 
 // groupW/groupH: the default window group's extent in player heights; it fills at most 75% of the work area.
 export function defaultPlayerHeight(area: Area, groupW: number, groupH: number): number {

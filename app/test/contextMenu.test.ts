@@ -38,9 +38,9 @@ test('contextMenu: the Windows submenu ends with a separator, Reset Windows and 
   assert.deepEqual(calls, ['reset', 'fill'])
 })
 
-test('contextMenu: Keyboard Shortcuts, then Settings, About and Check for Updates as placeholder items', () => {
+test('contextMenu: Keyboard Shortcuts, Edit Album, then Settings, About and Check for Updates as placeholder items', () => {
   const labels = contextMenu(windows, () => {}, acts, boost).filter((i) => i.type !== 'separator').map((i) => i.label)
-  assert.deepEqual(labels, ['Windows', 'Volume boost', 'Keyboard Shortcuts', 'Settings…', 'Check for Updates…', 'About'])
+  assert.deepEqual(labels, ['Windows', 'Volume boost', 'Keyboard Shortcuts', 'Edit Album…', 'Settings…', 'Check for Updates…', 'About'])
 })
 
 test('contextMenu: Keyboard Shortcuts lists every app shortcut with its key, shown only (never bound)', () => {
